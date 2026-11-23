@@ -67,8 +67,18 @@ export const SnapshotNodeSchema = z.object({
   depth: z.number().int().nonnegative().default(0),
   bbox: BoundingBoxSchema.optional(),
   selectorHint: z.string().optional(),
+  frameId: z.number().int().nonnegative().optional(),
+  frameUrl: z.string().optional(),
+  inShadowDom: z.boolean().optional(),
 });
 export type SnapshotNode = z.infer<typeof SnapshotNodeSchema>;
+
+export const FrameSummarySchema = z.object({
+  frameId: z.number().int().nonnegative(),
+  url: z.string(),
+  title: z.string().default(''),
+});
+export type FrameSummary = z.infer<typeof FrameSummarySchema>;
 
 export const PageSnapshotSchema = z.object({
   snapshotId: z.string(),
@@ -88,6 +98,7 @@ export const PageSnapshotSchema = z.object({
   nodes: z.array(SnapshotNodeSchema),
   filteredHiddenCount: z.number().int().nonnegative().default(0),
   webMcpToolCount: z.number().int().nonnegative().default(0),
+  frames: z.array(FrameSummarySchema).optional(),
 });
 export type PageSnapshot = z.infer<typeof PageSnapshotSchema>;
 
@@ -115,7 +126,8 @@ export const ActionStepSchema = z.discriminatedUnion('kind', [
     kind: z.literal('fill'),
     ref: z.string().optional(),
     selector: z.string().optional(),
-    value: z.string(),
+    value: z.string().optional(),
+    secretRef: z.string().optional(),
     clearFirst: z.boolean().default(true),
     submit: z.boolean().default(false),
   }),
@@ -123,7 +135,8 @@ export const ActionStepSchema = z.discriminatedUnion('kind', [
     kind: z.literal('type'),
     ref: z.string().optional(),
     selector: z.string().optional(),
-    text: z.string(),
+    text: z.string().optional(),
+    secretRef: z.string().optional(),
     delayMs: z.number().int().min(0).max(200).default(15),
   }),
   z.object({
@@ -156,6 +169,12 @@ export const ActionStepSchema = z.discriminatedUnion('kind', [
     targetRef: z.string(),
   }),
   z.object({
+    kind: z.literal('upload'),
+    ref: z.string().optional(),
+    selector: z.string().optional(),
+    files: z.array(z.string().min(1)).min(1).max(20),
+  }),
+  z.object({
     kind: z.literal('wait'),
     ms: z.number().int().min(50).max(15000).optional(),
     selector: z.string().optional(),
@@ -164,6 +183,46 @@ export const ActionStepSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 export type ActionStep = z.infer<typeof ActionStepSchema>;
+
+export const PendingDialogSchema = z.object({
+  tabId: z.number().int(),
+  type: z.enum(['alert', 'confirm', 'prompt', 'beforeunload']),
+  message: z.string(),
+  defaultPrompt: z.string().optional(),
+  url: z.string().optional(),
+  timestamp: z.number(),
+});
+export type PendingDialog = z.infer<typeof PendingDialogSchema>;
+
+export const DownloadItemSchema = z.object({
+  id: z.number().int(),
+  filename: z.string(),
+  url: z.string(),
+  state: z.enum(['in_progress', 'interrupted', 'complete']),
+  bytesReceived: z.number().nonnegative().default(0),
+  totalBytes: z.number().default(-1),
+  mime: z.string().optional(),
+  startTime: z.string().optional(),
+});
+export type DownloadItem = z.infer<typeof DownloadItemSchema>;
+
+export const EmulationConfigSchema = z.object({
+  preset: z.enum(['desktop', 'iphone-15', 'pixel-9', 'ipad', 'reset']).optional(),
+  width: z.number().int().min(240).max(3840).optional(),
+  height: z.number().int().min(240).max(2160).optional(),
+  deviceScaleFactor: z.number().min(0.5).max(4).optional(),
+  mobile: z.boolean().optional(),
+  colorScheme: z.enum(['light', 'dark', 'auto']).optional(),
+  network: z.enum(['online', 'fast-3g', 'slow-3g', 'offline']).optional(),
+  geolocation: z
+    .object({
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180),
+      accuracy: z.number().min(1).max(10000).default(50),
+    })
+    .optional(),
+});
+export type EmulationConfig = z.infer<typeof EmulationConfigSchema>;
 
 export const StepOutcomeSchema = z.object({
   index: z.number().int().nonnegative(),
@@ -183,6 +242,7 @@ export const BatchActResultSchema = z.object({
   totalSteps: z.number().int().nonnegative(),
   outcomes: z.array(StepOutcomeSchema),
   snapshot: PageSnapshotSchema.optional(),
+  pendingDialog: PendingDialogSchema.optional(),
 });
 export type BatchActResult = z.infer<typeof BatchActResultSchema>;
 
@@ -259,6 +319,14 @@ export type WebMcpToolInfo = z.infer<typeof WebMcpToolInfoSchema>;
 // Workflow Recorder
 // ---------------------------------------------------------------------------
 
+export const WorkflowParameterSchema = z.object({
+  name: z.string().min(1),
+  defaultValue: z.string().optional(),
+  description: z.string().optional(),
+  sensitive: z.boolean().default(false),
+});
+export type WorkflowParameter = z.infer<typeof WorkflowParameterSchema>;
+
 export const RecordedStepSchema = z.object({
   timestamp: z.number(),
   url: z.string(),
@@ -274,6 +342,7 @@ export const RecordedWorkflowSchema = z.object({
   createdAt: z.number(),
   startUrl: z.string(),
   steps: z.array(RecordedStepSchema),
+  parameters: z.array(WorkflowParameterSchema).optional(),
 });
 export type RecordedWorkflow = z.infer<typeof RecordedWorkflowSchema>;
 
@@ -299,13 +368,25 @@ export const DEFAULT_BLOCKED_DOMAINS = [
   '*.alfabank.ru',
 ];
 
+export const READ_ONLY_DOMAIN_PRESETS = [
+  'mail.google.com',
+  'github.com',
+  'linear.app',
+  'notion.so',
+] as const;
+
 export const SecurityPolicySchema = z.object({
   scopeMode: z.enum(['agent-group', 'all-tabs']).default('agent-group'),
   blockedDomains: z.array(z.string()).default(DEFAULT_BLOCKED_DOMAINS),
   allowedDomains: z.array(z.string()).default([]),
+  readOnlyDomains: z.array(z.string()).default([]),
   requireApprovalForEval: z.boolean().default(true),
   requireApprovalForPasswords: z.boolean().default(true),
   requireApprovalForPayments: z.boolean().default(true),
+  requireApprovalForUploads: z.boolean().default(true),
+  uploadAllowedDirs: z.array(z.string()).default([]),
+  dialogPolicy: z.enum(['ask-agent', 'auto-dismiss', 'approval']).default('ask-agent'),
+  cdpProxyEnabled: z.boolean().default(false),
   cdpIdleDetachSec: z.number().int().min(10).max(600).default(60),
   promptInjectionShield: z.boolean().default(true),
 });
@@ -337,11 +418,13 @@ export const ActivityEventSchema = z.object({
   timestamp: z.number(),
   profileId: z.string(),
   tabId: z.number().int().optional(),
+  url: z.string().optional(),
   tool: z.string(),
   summary: z.string(),
   status: z.enum(['running', 'ok', 'error', 'blocked']),
   engine: z.enum(['content-script', 'cdp', 'webmcp', 'broker']).optional(),
   durationMs: z.number().optional(),
+  thumbnailDataUrl: z.string().optional(),
 });
 export type ActivityEvent = z.infer<typeof ActivityEventSchema>;
 
@@ -364,6 +447,7 @@ export const DeckStateSchema = z.object({
   tabs: z.record(z.string(), z.array(TabInfoSchema)),
   policy: SecurityPolicySchema,
   pendingApprovals: z.array(ApprovalRequestSchema),
+  pendingDialogs: z.record(z.string(), PendingDialogSchema).optional(),
   recentActivity: z.array(ActivityEventSchema),
   recentErrors: z.array(ConsoleEntrySchema),
   recentFailedNetwork: z.array(NetworkEntrySchema),

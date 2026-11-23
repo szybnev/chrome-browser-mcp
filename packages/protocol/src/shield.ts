@@ -186,8 +186,14 @@ function matchDomainPatternParsed(parts: ParsedUrlParts, pattern: string): boole
     return false;
   }
 
-  // Pattern with path (e.g., *.stripe.com/dashboard*)
+  // Pattern with path (e.g., *.stripe.com/dashboard* or github.com/settings*)
   if (trimmed.includes('/')) {
+    if (trimmed.startsWith('*.')) {
+      return (
+        getWildcardRegex(trimmed).test(parts.hostAndPath) ||
+        getWildcardRegex(trimmed.slice(2)).test(parts.hostAndPath)
+      );
+    }
     return getWildcardRegex(trimmed).test(parts.hostAndPath);
   }
 
@@ -202,6 +208,64 @@ function matchDomainPatternParsed(parts: ParsedUrlParts, pattern: string): boole
 
 export function matchDomainPattern(urlString: string, pattern: string): boolean {
   return matchDomainPatternParsed(parseUrlOnce(urlString), pattern);
+}
+
+export function isUrlReadOnly(
+  urlString: string,
+  readOnlyDomains: string[],
+): { readOnly: boolean; reason?: string } {
+  if (readOnlyDomains.length === 0) return { readOnly: false };
+  const parts = parseUrlOnce(urlString);
+  for (const pattern of readOnlyDomains) {
+    if (matchDomainPatternParsed(parts, pattern)) {
+      return { readOnly: true, reason: `URL matches read-only rule "${pattern}"` };
+    }
+  }
+  return { readOnly: false };
+}
+
+const SENSITIVE_BODY_PATTERNS: Array<{ re: RegExp; replacement: string }> = [
+  // Bearer / JWT tokens
+  {
+    re: /\bBearer\s+[A-Za-z0-9\-._~+/]+=*/gi,
+    replacement: 'Bearer [REDACTED]',
+  },
+  {
+    re: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
+    replacement: '[REDACTED_JWT]',
+  },
+  // JSON string properties containing secret/token/password/api_key/cookie/session
+  {
+    re: /("(?:[^"]*(?:password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|session[_-]?id|cookie|authorization)[^"]*)"\s*:\s*)"([^"\\]*(?:\\.[^"\\]*)*)"/gi,
+    replacement: '$1"[REDACTED]"',
+  },
+];
+
+export function redactSensitiveBody(
+  raw: string,
+  maxChars = 65_536,
+): { text: string; truncated: boolean; redactedCount: number } {
+  let truncated = false;
+  let text = raw;
+  if (text.length > maxChars) {
+    text = text.slice(0, maxChars);
+    truncated = true;
+  }
+
+  let redactedCount = 0;
+  for (const { re, replacement } of SENSITIVE_BODY_PATTERNS) {
+    re.lastIndex = 0;
+    text = text.replace(re, (...args) => {
+      redactedCount += 1;
+      // Handle capture group $1 when present
+      if (replacement.includes('$1') && typeof args[1] === 'string') {
+        return replacement.replace('$1', args[1]);
+      }
+      return replacement;
+    });
+  }
+
+  return { text, truncated, redactedCount };
 }
 
 export function isUrlBlocked(

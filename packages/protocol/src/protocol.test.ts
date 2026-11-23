@@ -2,12 +2,21 @@ import { describe, expect, it } from 'vitest';
 import {
   computeSnapshotDiff,
   DEFAULT_BLOCKED_DOMAINS,
+  exportWorkflowToPlaywright,
+  extractWorkflowParamNames,
   formatFullSnapshot,
   frameUntrustedPageContent,
+  I18N_CATALOG,
+  interpolateWorkflowSteps,
   isUrlBlocked,
+  isUrlReadOnly,
+  redactSensitiveBody,
   redactSensitiveHeaders,
+  resolveLocale,
   sanitizePageText,
+  translate,
   type PageSnapshot,
+  type RecordedWorkflow,
 } from './index.js';
 
 function makeSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapshot {
@@ -153,5 +162,73 @@ describe('Snapshot Formatter & Incremental Diff Engine', () => {
     const diff = computeSnapshotDiff(prev, next);
     expect(diff.urlChanged).toBe(true);
     expect(diff.formatted).toContain('PAGE: Dashboard | https://example.com/dashboard');
+  });
+});
+
+describe('v2.0 Protocol Enhancements (Read-Only, Body Redaction, Workflows, i18n)', () => {
+  it('detects read-only domains using wildcards and exact hosts', () => {
+    const rules = ['mail.google.com', '*.github.com/settings*'];
+    expect(isUrlReadOnly('https://mail.google.com/mail/u/0/', rules).readOnly).toBe(true);
+    expect(isUrlReadOnly('https://github.com/settings/tokens', rules).readOnly).toBe(true);
+    expect(isUrlReadOnly('https://example.com/', rules).readOnly).toBe(false);
+  });
+
+  it('redacts JWTs, Bearer tokens, and JSON secrets from response bodies', () => {
+    const raw = JSON.stringify({
+      user: 'alice',
+      access_token: 'super-secret-value',
+      auth: 'Bearer abc.def.ghi',
+      jwt: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U',
+    });
+    const res = redactSensitiveBody(raw);
+    expect(res.redactedCount).toBeGreaterThanOrEqual(3);
+    expect(res.text).not.toContain('super-secret-value');
+    expect(res.text).not.toContain('abc.def.ghi');
+    expect(res.text).not.toContain('eyJhbGciOiJIUzI1NiJ9');
+    expect(res.text).toContain('"user":"alice"');
+  });
+
+  it('extracts, interpolates, and exports parameterized workflows to Playwright', () => {
+    const wf: RecordedWorkflow = {
+      id: 'wf-1',
+      name: 'Search Docs',
+      createdAt: 1_700_000_000_000,
+      startUrl: 'https://docs.example.com/{{section}}',
+      parameters: [
+        { name: 'section', defaultValue: 'api', sensitive: false },
+        { name: 'query', sensitive: false },
+      ],
+      steps: [
+        {
+          timestamp: 1,
+          url: 'https://docs.example.com/api',
+          description: 'Fill search box',
+          maskedSensitiveValue: false,
+          step: { kind: 'fill', selector: '#search', value: '{{query}}', clearFirst: true, submit: true },
+        },
+      ],
+    };
+
+    expect(extractWorkflowParamNames(wf)).toEqual(['section', 'query']);
+    expect(() => interpolateWorkflowSteps(wf, {})).toThrow(/query/);
+
+    const resolved = interpolateWorkflowSteps(wf, { query: 'WebMCP' });
+    expect(resolved.startUrl).toBe('https://docs.example.com/api');
+    expect(resolved.steps[0]?.kind === 'fill' && resolved.steps[0].value).toBe('WebMCP');
+
+    const spec = exportWorkflowToPlaywright(wf);
+    expect(spec).toContain(`import { test, expect } from '@playwright/test';`);
+    expect(spec).toContain(`await page.locator('#search').fill(vars.query);`);
+    expect(spec).toContain(`await page.locator('#search').press('Enter');`);
+  });
+
+  it('maintains complete i18n key parity across EN, RU, and ZH-CN', () => {
+    const enKeys = Object.keys(I18N_CATALOG.en).sort();
+    expect(Object.keys(I18N_CATALOG.ru).sort()).toEqual(enKeys);
+    expect(Object.keys(I18N_CATALOG['zh-CN']).sort()).toEqual(enKeys);
+    expect(resolveLocale('auto', 'ru-RU')).toBe('ru');
+    expect(resolveLocale('auto', 'zh-CN')).toBe('zh-CN');
+    expect(resolveLocale('auto', 'en-US')).toBe('en');
+    expect(translate('ru', 'status.connected')).toBe('Подключено');
   });
 });

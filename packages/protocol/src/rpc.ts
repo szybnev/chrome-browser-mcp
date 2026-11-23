@@ -5,6 +5,7 @@ import {
   BrowserProfileInfoSchema,
   ConsoleEntrySchema,
   NetworkEntrySchema,
+  PendingDialogSchema,
   RecordedWorkflowSchema,
   SecurityPolicySchema,
   TabInfoSchema,
@@ -27,10 +28,15 @@ export const ExtensionRpcMethodSchema = z.enum([
   'page.read',
   'page.screenshot',
   'page.act',
+  'page.dialog',
+  'page.emulate',
   'devtools.console',
   'devtools.network',
+  'devtools.networkBody',
   'devtools.eval',
   'devtools.audit',
+  'browser.downloads',
+  'cdp.raw',
   'webmcp.list',
   'webmcp.call',
   'state.setPaused',
@@ -117,6 +123,11 @@ export const ExtensionToBrokerMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('event.workflowDeleted'),
     workflowId: z.string(),
+  }),
+  z.object({
+    type: z.literal('event.dialog'),
+    tabId: z.number().int(),
+    dialog: PendingDialogSchema.nullable(),
   }),
 ]);
 export type ExtensionToBrokerMessage = z.infer<typeof ExtensionToBrokerMessageSchema>;

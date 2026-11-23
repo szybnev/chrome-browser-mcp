@@ -54,9 +54,12 @@ export function formatFullSnapshot(snapshot: PageSnapshot, maxNodes = 250): stri
       ? Math.round((viewport.scrollY / Math.max(1, viewport.scrollHeight - viewport.height)) * 100)
       : 0;
 
+  const framePart =
+    snapshot.frames && snapshot.frames.length > 1 ? ` frames=${snapshot.frames.length}` : '';
+
   const lines: string[] = [
     `PAGE: ${snapshot.title} | ${snapshot.url}`,
-    `VIEWPORT: ${viewport.width}x${viewport.height} scroll=${scrollPct}% engine=${snapshot.engine} nodes=${snapshot.nodes.length}${snapshot.webMcpToolCount > 0 ? ` webmcp_tools=${snapshot.webMcpToolCount}` : ''}`,
+    `VIEWPORT: ${viewport.width}x${viewport.height} scroll=${scrollPct}% engine=${snapshot.engine} nodes=${snapshot.nodes.length}${framePart}${snapshot.webMcpToolCount > 0 ? ` webmcp_tools=${snapshot.webMcpToolCount}` : ''}`,
   ];
 
   const limit = Math.min(snapshot.nodes.length, maxNodes);

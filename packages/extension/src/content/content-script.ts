@@ -882,7 +882,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       const rect = el.getBoundingClientRect();
       showClickPulse(Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.height / 2));
 
-      const textVal = step.kind === 'fill' ? step.value : step.text;
+      const textVal = (step.kind === 'fill' ? step.value : step.text) ?? '';
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
         const nextVal = step.kind === 'fill' && step.clearFirst ? textVal : `${el.value}${textVal}`;
         setNativeValue(el, nextVal);
