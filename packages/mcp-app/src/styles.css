@@ -1,59 +1,141 @@
 :root {
   color-scheme: light dark;
 
-  --fallback-bg-light: #f8fafc;
-  --fallback-bg-dark: #0e131f;
+  /* Unified Google Antigravity Palette — WCAG 2.1 AA/AAA verified */
+  --fallback-bg-light: #f4f5f7;
+  --fallback-bg-dark: #0c0d10;
   --fallback-surface-light: #ffffff;
-  --fallback-surface-dark: #161d2d;
-  --fallback-surface-2-light: #f1f5f9;
-  --fallback-surface-2-dark: #1d273b;
-  --fallback-border-light: #e2e8f0;
-  --fallback-border-dark: #2a3752;
-  --fallback-text-light: #0f172a;
-  --fallback-text-dark: #f1f5f9;
-  --fallback-muted-light: #475569;
-  --fallback-muted-dark: #94a3b8;
-  --fallback-accent-light: #0d9488;
-  --fallback-accent-dark: #38e4d4;
-  --fallback-danger-light: #dc2626;
-  --fallback-danger-dark: #f87171;
-  --fallback-warn-light: #d97706;
+  --fallback-surface-dark: #141518;
+  --fallback-surface-2-light: #eef0f4;
+  --fallback-surface-2-dark: #1d1f23;
+  --fallback-surface-hover-light: #e4e7ee;
+  --fallback-surface-hover-dark: #26292f;
+  --fallback-border-light: #d6dae2;
+  --fallback-border-dark: #2c2f36;
+  --fallback-control-border-light: #747c8c;
+  --fallback-control-border-dark: #676f7f;
+  --fallback-agent-border-light: #93b4f5;
+  --fallback-agent-border-dark: #2f4569;
+  --fallback-text-light: #111318;
+  --fallback-text-dark: #f1f3f5;
+  --fallback-muted-light: #505766;
+  --fallback-muted-dark: #9ca3af;
+  --fallback-accent-fill-light: #1d4ed8;
+  --fallback-accent-fill-dark: #2563eb;
+  --fallback-accent-fill-hover-light: #1e40af;
+  --fallback-accent-fill-hover-dark: #1d4ed8;
+  --fallback-accent-text-light: #1d4ed8;
+  --fallback-accent-text-dark: #60a5fa;
+  --fallback-danger-fill-light: #c81e1e;
+  --fallback-danger-fill-dark: #dc2626;
+  --fallback-danger-fill-hover-light: #991b1b;
+  --fallback-danger-fill-hover-dark: #b91c1c;
+  --fallback-danger-text-light: #b91c1c;
+  --fallback-danger-text-dark: #f87171;
+  --fallback-warn-light: #92400e;
   --fallback-warn-dark: #fbbf24;
+  --fallback-scroll-thumb-light: #b8bec9;
+  --fallback-scroll-thumb-dark: #3f444f;
 
   --fb-bg: var(--fallback-bg-light);
   --fb-surface: var(--fallback-surface-light);
   --fb-surface-2: var(--fallback-surface-2-light);
+  --fb-surface-hover: var(--fallback-surface-hover-light);
   --fb-border: var(--fallback-border-light);
+  --fb-control-border: var(--fallback-control-border-light);
+  --fb-agent-border: var(--fallback-agent-border-light);
   --fb-text: var(--fallback-text-light);
   --fb-muted: var(--fallback-muted-light);
-  --fb-accent: var(--fallback-accent-light);
-  --fb-danger: var(--fallback-danger-light);
+  --fb-accent-fill: var(--fallback-accent-fill-light);
+  --fb-accent-fill-hover: var(--fallback-accent-fill-hover-light);
+  --fb-accent-text: var(--fallback-accent-text-light);
+  --fb-danger-fill: var(--fallback-danger-fill-light);
+  --fb-danger-fill-hover: var(--fallback-danger-fill-hover-light);
+  --fb-danger-text: var(--fallback-danger-text-light);
   --fb-warn: var(--fallback-warn-light);
+  --fb-scroll-thumb: var(--fallback-scroll-thumb-light);
 
+  /* Default mode follows host theme tokens with Antigravity palette fallbacks */
   --bg: var(--color-background-primary, var(--fb-bg));
   --surface: var(--color-background-secondary, var(--fb-surface));
   --surface-2: var(--color-background-tertiary, var(--fb-surface-2));
+  --surface-hover: var(--fb-surface-hover);
   --border: var(--color-border-primary, var(--fb-border));
+  --control-border: var(--fb-control-border);
+  --agent-border: var(--fb-agent-border);
   --text: var(--color-text-primary, var(--fb-text));
   --muted: var(--color-text-secondary, var(--fb-muted));
-  --accent: var(--color-ring-primary, var(--fb-accent));
-  --danger: var(--color-text-danger, var(--fb-danger));
+  --accent-fill: var(--fb-accent-fill);
+  --accent-fill-hover: var(--fb-accent-fill-hover);
+  --accent-fg: #ffffff;
+  --accent-text: var(--color-ring-primary, var(--fb-accent-text));
+  --danger-fill: var(--fb-danger-fill);
+  --danger-fill-hover: var(--fb-danger-fill-hover);
+  --danger: var(--color-text-danger, var(--fb-danger-text));
   --warn: var(--color-text-warning, var(--fb-warn));
-  --scrollbar-thumb: var(--border);
+  --scrollbar-thumb: var(--fb-scroll-thumb);
   --scrollbar-track: transparent;
 }
 
+/* Reflect <meta name="color-scheme"> override back into CSS color-scheme */
+:root:has(> head > meta[name='color-scheme'][content='dark']) {
+  color-scheme: dark;
+  --fb-bg: var(--fallback-bg-dark);
+  --fb-surface: var(--fallback-surface-dark);
+  --fb-surface-2: var(--fallback-surface-2-dark);
+  --fb-surface-hover: var(--fallback-surface-hover-dark);
+  --fb-border: var(--fallback-border-dark);
+  --fb-control-border: var(--fallback-control-border-dark);
+  --fb-agent-border: var(--fallback-agent-border-dark);
+  --fb-text: var(--fallback-text-dark);
+  --fb-muted: var(--fallback-muted-dark);
+  --fb-accent-fill: var(--fallback-accent-fill-dark);
+  --fb-accent-fill-hover: var(--fallback-accent-fill-hover-dark);
+  --fb-accent-text: var(--fallback-accent-text-dark);
+  --fb-danger-fill: var(--fallback-danger-fill-dark);
+  --fb-danger-fill-hover: var(--fallback-danger-fill-hover-dark);
+  --fb-danger-text: var(--fallback-danger-text-dark);
+  --fb-warn: var(--fallback-warn-dark);
+  --fb-scroll-thumb: var(--fallback-scroll-thumb-dark);
+}
+
+:root:has(> head > meta[name='color-scheme'][content='light']) {
+  color-scheme: light;
+}
+
+/* When explicitly overridden via toggle, bypass host inline --color-* tokens */
+:root:has(> head > meta[name='color-scheme'][content='dark']),
+:root:has(> head > meta[name='color-scheme'][content='light']) {
+  --bg: var(--fb-bg);
+  --surface: var(--fb-surface);
+  --surface-2: var(--fb-surface-2);
+  --border: var(--fb-border);
+  --text: var(--fb-text);
+  --muted: var(--fb-muted);
+  --accent-text: var(--fb-accent-text);
+  --danger: var(--fb-danger-text);
+  --warn: var(--fb-warn);
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) {
     --fb-bg: var(--fallback-bg-dark);
     --fb-surface: var(--fallback-surface-dark);
     --fb-surface-2: var(--fallback-surface-2-dark);
+    --fb-surface-hover: var(--fallback-surface-hover-dark);
     --fb-border: var(--fallback-border-dark);
+    --fb-control-border: var(--fallback-control-border-dark);
+    --fb-agent-border: var(--fallback-agent-border-dark);
     --fb-text: var(--fallback-text-dark);
     --fb-muted: var(--fallback-muted-dark);
-    --fb-accent: var(--fallback-accent-dark);
-    --fb-danger: var(--fallback-danger-dark);
+    --fb-accent-fill: var(--fallback-accent-fill-dark);
+    --fb-accent-fill-hover: var(--fallback-accent-fill-hover-dark);
+    --fb-accent-text: var(--fallback-accent-text-dark);
+    --fb-danger-fill: var(--fallback-danger-fill-dark);
+    --fb-danger-fill-hover: var(--fallback-danger-fill-hover-dark);
+    --fb-danger-text: var(--fallback-danger-text-dark);
     --fb-warn: var(--fallback-warn-dark);
+    --fb-scroll-thumb: var(--fallback-scroll-thumb-dark);
   }
 }
 
@@ -62,17 +144,76 @@
     --fb-bg: light-dark(var(--fallback-bg-light), var(--fallback-bg-dark));
     --fb-surface: light-dark(var(--fallback-surface-light), var(--fallback-surface-dark));
     --fb-surface-2: light-dark(var(--fallback-surface-2-light), var(--fallback-surface-2-dark));
+    --fb-surface-hover: light-dark(
+      var(--fallback-surface-hover-light),
+      var(--fallback-surface-hover-dark)
+    );
     --fb-border: light-dark(var(--fallback-border-light), var(--fallback-border-dark));
+    --fb-control-border: light-dark(
+      var(--fallback-control-border-light),
+      var(--fallback-control-border-dark)
+    );
+    --fb-agent-border: light-dark(
+      var(--fallback-agent-border-light),
+      var(--fallback-agent-border-dark)
+    );
     --fb-text: light-dark(var(--fallback-text-light), var(--fallback-text-dark));
     --fb-muted: light-dark(var(--fallback-muted-light), var(--fallback-muted-dark));
-    --fb-accent: light-dark(var(--fallback-accent-light), var(--fallback-accent-dark));
-    --fb-danger: light-dark(var(--fallback-danger-light), var(--fallback-danger-dark));
+    --fb-accent-fill: light-dark(
+      var(--fallback-accent-fill-light),
+      var(--fallback-accent-fill-dark)
+    );
+    --fb-accent-fill-hover: light-dark(
+      var(--fallback-accent-fill-hover-light),
+      var(--fallback-accent-fill-hover-dark)
+    );
+    --fb-accent-text: light-dark(
+      var(--fallback-accent-text-light),
+      var(--fallback-accent-text-dark)
+    );
+    --fb-danger-fill: light-dark(
+      var(--fallback-danger-fill-light),
+      var(--fallback-danger-fill-dark)
+    );
+    --fb-danger-fill-hover: light-dark(
+      var(--fallback-danger-fill-hover-light),
+      var(--fallback-danger-fill-hover-dark)
+    );
+    --fb-danger-text: light-dark(
+      var(--fallback-danger-text-light),
+      var(--fallback-danger-text-dark)
+    );
     --fb-warn: light-dark(var(--fallback-warn-light), var(--fallback-warn-dark));
+    --fb-scroll-thumb: light-dark(
+      var(--fallback-scroll-thumb-light),
+      var(--fallback-scroll-thumb-dark)
+    );
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --bg: Canvas;
+    --surface: Canvas;
+    --surface-2: Canvas;
+    --surface-hover: Canvas;
+    --border: ButtonBorder;
+    --control-border: ButtonBorder;
+    --agent-border: Highlight;
+    --text: CanvasText;
+    --muted: GrayText;
+    --accent-fill: Highlight;
+    --accent-fill-hover: Highlight;
+    --accent-fg: HighlightText;
+    --accent-text: LinkText;
+    --danger-fill: Highlight;
+    --danger: CanvasText;
+    --warn: CanvasText;
   }
 }
 
 html {
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 
 * {
@@ -86,6 +227,51 @@ body {
   font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* CSS-driven theme toggle branching */
+.theme-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-opt-to-light {
+  display: none;
+}
+
+.theme-opt-to-dark {
+  display: inline-flex;
+}
+
+:root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-light {
+  display: inline-flex;
+}
+
+:root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) .theme-opt-to-light {
+    display: inline-flex;
+  }
+
+  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) .theme-opt-to-dark {
+    display: none;
+  }
 }
 
 .deck {
@@ -125,30 +311,37 @@ body {
 
 .deck-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 10px;
   padding: 12px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+}
+
+.deck-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .deck-title-group {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .status-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--danger);
+  background: var(--danger-fill);
+  flex: none;
 }
 
 .status-dot.ok {
-  background: var(--accent);
+  background: var(--accent-fill);
 }
 
 .deck-title {
@@ -178,15 +371,25 @@ body {
   cursor: pointer;
 }
 
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
 .tab-btn[aria-selected='true'] {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .tab-btn[aria-selected='true']::after {
   content: '';
   position: absolute;
   inset: auto 4px 0;
-  border-block-end: 2.5px solid var(--accent);
+  border-block-end: 2px solid var(--accent-text);
 }
 
 .scroller {
@@ -228,7 +431,7 @@ body {
 }
 
 .card.agent-box {
-  border-color: var(--accent);
+  border-color: var(--agent-border);
   flex: 0 0 auto;
 }
 
@@ -252,16 +455,21 @@ body {
   width: 100%;
   background: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 7px;
   padding: 6px 10px;
   font: 400 12px/1.3 inherit;
   flex: 0 0 auto;
 }
 
-.search-input:focus {
-  outline: 1.5px solid var(--accent);
-  border-color: var(--accent);
+.search-input::placeholder {
+  color: var(--muted);
+}
+
+.search-input:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -1px;
+  border-color: var(--accent-text);
 }
 
 .virtual-list {
@@ -272,10 +480,6 @@ body {
 .virtual-list-fill {
   flex: 1 1 auto;
   min-height: 0;
-}
-
-.item-row.agent-row {
-  border: 1px solid var(--accent);
 }
 
 /* Accessible Security Toggletips (popover="hint" + interestfor + CSS Anchor Positioning) */
@@ -303,7 +507,7 @@ body {
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   background: var(--surface-2);
   color: var(--muted);
   font: 700 11px/1 inherit;
@@ -322,8 +526,8 @@ body {
 .infotip-btn:hover,
 .infotip-btn:focus-visible,
 .infotip-btn:is(:interest-source, .interest-source) {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-text);
+  color: var(--accent-text);
   outline: none;
 }
 
@@ -382,7 +586,7 @@ body {
 
 .btn {
   appearance: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   background: var(--surface-2);
   color: var(--text);
   border-radius: 7px;
@@ -392,19 +596,49 @@ body {
 }
 
 .btn:hover {
-  border-color: var(--accent);
+  background: var(--surface-hover);
+  border-color: var(--accent-text);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+
+.btn.icon-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.btn.icon-btn:hover {
+  color: var(--text);
 }
 
 .btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #041d1c;
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--accent-fg);
+}
+
+.btn.primary:hover {
+  background: var(--accent-fill-hover);
+  border-color: var(--accent-fill-hover);
 }
 
 .btn.danger {
-  background: var(--danger);
-  border-color: var(--danger);
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
   color: #ffffff;
+}
+
+.btn.danger:hover {
+  background: var(--danger-fill-hover);
+  border-color: var(--danger-fill-hover);
 }
 
 .btn.small {
@@ -415,10 +649,15 @@ body {
 .select {
   background: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 7px;
   padding: 4px 8px;
   font: 500 12px/1.2 inherit;
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
 }
 
 .pill {
@@ -433,8 +672,8 @@ body {
 }
 
 .pill.accent {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-text);
+  color: var(--accent-text);
 }
 
 .pill.warn {
@@ -455,6 +694,7 @@ body {
   padding: 7px 9px;
   border-radius: 8px;
   background: var(--surface-2);
+  border: 1px solid var(--border);
 }
 
 .item-meta {

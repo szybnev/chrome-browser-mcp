@@ -1,57 +1,114 @@
 :root {
   color-scheme: light dark;
 
-  --bg-light: #f8fafc;
-  --bg-dark: #0b1120;
+  /* Unified Google Antigravity Palette — WCAG 2.1 AA/AAA verified */
+  --bg-light: #f4f5f7;
+  --bg-dark: #0c0d10;
   --surface-light: #ffffff;
-  --surface-dark: #111a2e;
-  --surface-2-light: #f1f5f9;
-  --surface-2-dark: #18233a;
-  --border-light: #e2e8f0;
-  --border-dark: #263552;
-  --text-light: #0f172a;
-  --text-dark: #f1f5f9;
-  --muted-light: #475569;
-  --muted-dark: #94a3b8;
-  --accent-light: #0d9488;
-  --accent-dark: #38e4d4;
+  --surface-dark: #141518;
+  --surface-2-light: #eef0f4;
+  --surface-2-dark: #1d1f23;
+  --surface-hover-light: #e4e7ee;
+  --surface-hover-dark: #26292f;
+  --border-light: #d6dae2;
+  --border-dark: #2c2f36;
+  --control-border-light: #747c8c;
+  --control-border-dark: #676f7f;
+  --agent-border-light: #93b4f5;
+  --agent-border-dark: #2f4569;
+  --text-light: #111318;
+  --text-dark: #f1f3f5;
+  --muted-light: #505766;
+  --muted-dark: #9ca3af;
+  --accent-fill-light: #1d4ed8;
+  --accent-fill-dark: #2563eb;
+  --accent-fill-hover-light: #1e40af;
+  --accent-fill-hover-dark: #1d4ed8;
   --accent-fg-light: #ffffff;
-  --accent-fg-dark: #042f2e;
-  --danger-light: #dc2626;
-  --danger-dark: #f87171;
-  --warn-light: #d97706;
-  --warn-dark: #fbbf24;
-  --scroll-thumb-light: #94a3b8;
-  --scroll-thumb-dark: #475569;
-  --scroll-track-light: #e2e8f0;
-  --scroll-track-dark: #111a2e;
+  --accent-fg-dark: #ffffff;
+  --accent-text-light: #1d4ed8;
+  --accent-text-dark: #60a5fa;
+  --danger-fill-light: #c81e1e;
+  --danger-fill-dark: #dc2626;
+  --danger-fill-hover-light: #991b1b;
+  --danger-fill-hover-dark: #b91c1c;
+  --danger-text-light: #b91c1c;
+  --danger-text-dark: #f87171;
+  --warn-text-light: #92400e;
+  --warn-text-dark: #fbbf24;
+  --scroll-thumb-light: #b8bec9;
+  --scroll-thumb-dark: #3f444f;
+  --scroll-track-light: transparent;
+  --scroll-track-dark: transparent;
 
   --bg: var(--bg-light);
   --surface: var(--surface-light);
   --surface-2: var(--surface-2-light);
+  --surface-hover: var(--surface-hover-light);
   --border: var(--border-light);
+  --control-border: var(--control-border-light);
+  --agent-border: var(--agent-border-light);
   --text: var(--text-light);
   --muted: var(--muted-light);
-  --accent: var(--accent-light);
+  --accent-fill: var(--accent-fill-light);
+  --accent-fill-hover: var(--accent-fill-hover-light);
   --accent-fg: var(--accent-fg-light);
-  --danger: var(--danger-light);
-  --warn: var(--warn-light);
+  --accent-text: var(--accent-text-light);
+  --danger-fill: var(--danger-fill-light);
+  --danger-fill-hover: var(--danger-fill-hover-light);
+  --danger-text: var(--danger-text-light);
+  --warn: var(--warn-text-light);
   --scrollbar-thumb: var(--scroll-thumb-light);
   --scrollbar-track: var(--scroll-track-light);
 }
 
+/* Reflect <meta name="color-scheme"> override back into CSS color-scheme */
+:root:has(> head > meta[name='color-scheme'][content='dark']) {
+  color-scheme: dark;
+  --bg: var(--bg-dark);
+  --surface: var(--surface-dark);
+  --surface-2: var(--surface-2-dark);
+  --surface-hover: var(--surface-hover-dark);
+  --border: var(--border-dark);
+  --control-border: var(--control-border-dark);
+  --agent-border: var(--agent-border-dark);
+  --text: var(--text-dark);
+  --muted: var(--muted-dark);
+  --accent-fill: var(--accent-fill-dark);
+  --accent-fill-hover: var(--accent-fill-hover-dark);
+  --accent-fg: var(--accent-fg-dark);
+  --accent-text: var(--accent-text-dark);
+  --danger-fill: var(--danger-fill-dark);
+  --danger-fill-hover: var(--danger-fill-hover-dark);
+  --danger-text: var(--danger-text-dark);
+  --warn: var(--warn-text-dark);
+  --scrollbar-thumb: var(--scroll-thumb-dark);
+  --scrollbar-track: var(--scroll-track-dark);
+}
+
+:root:has(> head > meta[name='color-scheme'][content='light']) {
+  color-scheme: light;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) {
     --bg: var(--bg-dark);
     --surface: var(--surface-dark);
     --surface-2: var(--surface-2-dark);
+    --surface-hover: var(--surface-hover-dark);
     --border: var(--border-dark);
+    --control-border: var(--control-border-dark);
+    --agent-border: var(--agent-border-dark);
     --text: var(--text-dark);
     --muted: var(--muted-dark);
-    --accent: var(--accent-dark);
+    --accent-fill: var(--accent-fill-dark);
+    --accent-fill-hover: var(--accent-fill-hover-dark);
     --accent-fg: var(--accent-fg-dark);
-    --danger: var(--danger-dark);
-    --warn: var(--warn-dark);
+    --accent-text: var(--accent-text-dark);
+    --danger-fill: var(--danger-fill-dark);
+    --danger-fill-hover: var(--danger-fill-hover-dark);
+    --danger-text: var(--danger-text-dark);
+    --warn: var(--warn-text-dark);
     --scrollbar-thumb: var(--scroll-thumb-dark);
     --scrollbar-track: var(--scroll-track-dark);
   }
@@ -62,20 +119,48 @@
     --bg: light-dark(var(--bg-light), var(--bg-dark));
     --surface: light-dark(var(--surface-light), var(--surface-dark));
     --surface-2: light-dark(var(--surface-2-light), var(--surface-2-dark));
+    --surface-hover: light-dark(var(--surface-hover-light), var(--surface-hover-dark));
     --border: light-dark(var(--border-light), var(--border-dark));
+    --control-border: light-dark(var(--control-border-light), var(--control-border-dark));
+    --agent-border: light-dark(var(--agent-border-light), var(--agent-border-dark));
     --text: light-dark(var(--text-light), var(--text-dark));
     --muted: light-dark(var(--muted-light), var(--muted-dark));
-    --accent: light-dark(var(--accent-light), var(--accent-dark));
+    --accent-fill: light-dark(var(--accent-fill-light), var(--accent-fill-dark));
+    --accent-fill-hover: light-dark(var(--accent-fill-hover-light), var(--accent-fill-hover-dark));
     --accent-fg: light-dark(var(--accent-fg-light), var(--accent-fg-dark));
-    --danger: light-dark(var(--danger-light), var(--danger-dark));
-    --warn: light-dark(var(--warn-light), var(--warn-dark));
+    --accent-text: light-dark(var(--accent-text-light), var(--accent-text-dark));
+    --danger-fill: light-dark(var(--danger-fill-light), var(--danger-fill-dark));
+    --danger-fill-hover: light-dark(var(--danger-fill-hover-light), var(--danger-fill-hover-dark));
+    --danger-text: light-dark(var(--danger-text-light), var(--danger-text-dark));
+    --warn: light-dark(var(--warn-text-light), var(--warn-text-dark));
     --scrollbar-thumb: light-dark(var(--scroll-thumb-light), var(--scroll-thumb-dark));
     --scrollbar-track: light-dark(var(--scroll-track-light), var(--scroll-track-dark));
   }
 }
 
+@media (forced-colors: active) {
+  :root {
+    --bg: Canvas;
+    --surface: Canvas;
+    --surface-2: Canvas;
+    --surface-hover: Canvas;
+    --border: ButtonBorder;
+    --control-border: ButtonBorder;
+    --agent-border: Highlight;
+    --text: CanvasText;
+    --muted: GrayText;
+    --accent-fill: Highlight;
+    --accent-fill-hover: Highlight;
+    --accent-fg: HighlightText;
+    --accent-text: LinkText;
+    --danger-fill: Highlight;
+    --danger-text: CanvasText;
+    --warn: CanvasText;
+  }
+}
+
 html {
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
 }
 
 * {
@@ -87,6 +172,51 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 400 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* CSS-driven theme toggle branching: follows both OS preference and <meta> override */
+.theme-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-opt-to-light {
+  display: none;
+}
+
+.theme-opt-to-dark {
+  display: inline-flex;
+}
+
+:root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-light {
+  display: inline-flex;
+}
+
+:root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) .theme-opt-to-light {
+    display: inline-flex;
+  }
+
+  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) .theme-opt-to-dark {
+    display: none;
+  }
 }
 
 .app-shell {
@@ -144,6 +274,13 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -155,12 +292,12 @@ body {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--danger);
+  background: var(--danger-fill);
   flex: none;
 }
 
 .brand-dot.online {
-  background: var(--accent);
+  background: var(--accent-fill);
 }
 
 .brand-title {
@@ -198,19 +335,29 @@ body {
   cursor: pointer;
 }
 
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
 .tab-btn[aria-selected='true'] {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .tab-btn[aria-selected='true']::after {
   content: '';
   position: absolute;
   inset: auto 4px 0;
-  border-block-end: 2.5px solid var(--accent);
+  border-block-end: 2px solid var(--accent-text);
 }
 
 .tab-panel-inner {
-  padding: 12px 14px 16px;
+  padding: 12px 14px 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -226,7 +373,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 11px 12px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -237,11 +384,11 @@ body {
 }
 
 .card.paused-banner {
-  border-color: var(--danger);
+  border-color: var(--danger-text);
 }
 
 .card.agent-box {
-  border-color: var(--accent);
+  border-color: var(--agent-border);
   flex: 0 0 auto;
 }
 
@@ -259,6 +406,27 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.search-input {
+  width: 100%;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font: 400 12px/1.3 inherit;
+  flex: 0 0 auto;
+}
+
+.search-input::placeholder {
+  color: var(--muted);
+}
+
+.search-input:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -1px;
+  border-color: var(--accent-text);
 }
 
 .virtual-list {
@@ -296,7 +464,7 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   background: var(--surface-2);
   color: var(--muted);
   font: 700 10.5px/1 inherit;
@@ -315,8 +483,8 @@ body {
 .infotip-btn:hover,
 .infotip-btn:focus-visible,
 .infotip-btn:is(:interest-source, .interest-source) {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-text);
+  color: var(--accent-text);
   outline: none;
 }
 
@@ -386,7 +554,7 @@ body {
 
 .btn {
   appearance: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   background: var(--surface-2);
   color: var(--text);
   border-radius: 7px;
@@ -396,19 +564,49 @@ body {
 }
 
 .btn:hover {
-  border-color: var(--accent);
+  background: var(--surface-hover);
+  border-color: var(--accent-text);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+
+.btn.icon-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.btn.icon-btn:hover {
+  color: var(--text);
 }
 
 .btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
   color: var(--accent-fg);
 }
 
+.btn.primary:hover {
+  background: var(--accent-fill-hover);
+  border-color: var(--accent-fill-hover);
+}
+
 .btn.danger {
-  background: var(--danger);
-  border-color: var(--danger);
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
   color: #ffffff;
+}
+
+.btn.danger:hover {
+  background: var(--danger-fill-hover);
+  border-color: var(--danger-fill-hover);
 }
 
 .btn.small {
@@ -429,8 +627,8 @@ body {
 }
 
 .pill.accent {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-text);
+  color: var(--accent-text);
 }
 
 .pill.warn {
@@ -443,10 +641,17 @@ body {
   width: 100%;
   background: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 7px;
   padding: 7px 9px;
   font: 400 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.input:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -1px;
+  border-color: var(--accent-text);
 }
 
 .textarea {
@@ -465,14 +670,10 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 7px 8px;
+  padding: 7px 9px;
   border-radius: 8px;
   background: var(--surface-2);
-  border: 1px solid transparent;
-}
-
-.tab-row.attached {
-  border-color: var(--accent);
+  border: 1px solid var(--border);
 }
 
 .tab-meta {

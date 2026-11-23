@@ -8,13 +8,13 @@ export default defineConfig({
     emptyOutDir: false,
     target: 'esnext',
     lib: {
-      entry: resolve(__dirname, 'src/background/service-worker.ts'),
+      entry: resolve(import.meta.dirname, 'src/background/service-worker.ts'),
       formats: ['es'],
       fileName: () => 'service-worker.js',
     },
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        inlineDynamicImports: true,
+        codeSplitting: false,
       },
     },
   },

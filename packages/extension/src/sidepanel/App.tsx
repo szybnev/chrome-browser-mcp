@@ -7,6 +7,7 @@ import type {
 import type { ExtensionRuntimeState, ExtensionSettings } from '../shared/storage.js';
 import { VirtualList } from './VirtualList.js';
 import { InfoTip } from './InfoTip.js';
+import { ThemeToggle, type ThemeOverride } from './ThemeToggle.js';
 
 interface SidePanelPayload {
   settings: ExtensionSettings;
@@ -101,6 +102,15 @@ export function App() {
   const { settings, runtime, tabs, workflows, recordingSteps } = data;
   const isRecording = runtime.recordingTabId !== null;
 
+  const handleThemePersist = async (next: ThemeOverride) => {
+    await sendSw({
+      type: 'sp.saveSettings',
+      patch: { theme: next },
+      reconnect: false,
+    });
+    await refresh();
+  };
+
   const handleTogglePause = async () => {
     await sendSw({ type: 'sp.setPaused', paused: !runtime.paused });
     await refresh();
@@ -182,7 +192,7 @@ export function App() {
   ];
 
   const renderTabRow = (t: TabInfo) => (
-    <div key={t.tabId} className={`tab-row ${t.inAgentGroup ? 'attached' : ''}`}>
+    <div key={t.tabId} className="tab-row">
       <div className="tab-meta">
         <div className="tab-title">
           {t.title || '(untitled)'}{' '}
@@ -212,14 +222,20 @@ export function App() {
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          className={`btn small ${runtime.paused ? 'primary' : 'danger'}`}
-          onClick={handleTogglePause}
-          title="Shortcut: Alt+Shift+P"
-        >
-          {runtime.paused ? 'Resume' : 'Pause'}
-        </button>
+        <div className="header-actions">
+          <ThemeToggle
+            persistedTheme={settings.theme ?? null}
+            onPersist={(next) => void handleThemePersist(next)}
+          />
+          <button
+            type="button"
+            className={`btn small ${runtime.paused ? 'primary' : 'danger'}`}
+            onClick={handleTogglePause}
+            title="Shortcut: Alt+Shift+P"
+          >
+            {runtime.paused ? 'Resume' : 'Pause'}
+          </button>
+        </div>
       </header>
 
       <div
@@ -347,7 +363,7 @@ export function App() {
               </div>
               <input
                 type="search"
-                className="input"
+                className="search-input"
                 placeholder={`Filter ${tabs.length - attachedTabs.length} tabs…`}
                 value={tabQuery}
                 onChange={(e) => setTabQuery(e.target.value)}

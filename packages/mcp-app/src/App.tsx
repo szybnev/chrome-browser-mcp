@@ -3,6 +3,7 @@ import { useApp, useHostStyles } from '@modelcontextprotocol/ext-apps/react';
 import { APP_VERSION, type DeckState, type RecordedWorkflow, type TabInfo } from '@chrome-browser-mcp/protocol';
 import { VirtualList } from './VirtualList.js';
 import { InfoTip } from './InfoTip.js';
+import { ThemeToggle } from './ThemeToggle.js';
 
 type DeckTab = 'overview' | 'timeline' | 'devtools' | 'workflows' | 'security';
 
@@ -141,8 +142,8 @@ export function App() {
     { id: 'security', label: 'Security' },
   ];
 
-  const renderTabRow = (t: TabInfo, highlight = false) => (
-    <div key={t.tabId} className={`item-row ${highlight ? 'agent-row' : ''}`}>
+  const renderTabRow = (t: TabInfo) => (
+    <div key={t.tabId} className="item-row">
       <div className="item-meta">
         <div className="item-title">
           [{t.tabId}] {t.title || '(untitled)'}{' '}
@@ -187,15 +188,18 @@ export function App() {
   return (
     <div className="deck">
       <header className="deck-header">
-        <div className="deck-title-group">
-          <span className={`status-dot ${deckState.profiles.length > 0 ? 'ok' : ''}`} />
-          <div>
-            <div className="deck-title">Browser Control Deck</div>
-            <div className="muted">
-              v{deckState.brokerVersion} · {deckState.profiles.length} profile(s) ·{' '}
-              {profileTabs.length} total tab(s)
+        <div className="deck-header-top">
+          <div className="deck-title-group">
+            <span className={`status-dot ${deckState.profiles.length > 0 ? 'ok' : ''}`} />
+            <div>
+              <div className="deck-title">Browser Control Deck</div>
+              <div className="muted">
+                v{deckState.brokerVersion} · {deckState.profiles.length} profile(s) ·{' '}
+                {profileTabs.length} total tab(s)
+              </div>
             </div>
           </div>
+          <ThemeToggle />
         </div>
 
         <div className="row">
@@ -320,7 +324,7 @@ export function App() {
                 </div>
               ) : (
                 <div className="scroller agent-tabs-scroll">
-                  {agentTabs.map((t) => renderTabRow(t, true))}
+                  {agentTabs.map((t) => renderTabRow(t))}
                 </div>
               )}
             </div>
@@ -369,7 +373,7 @@ export function App() {
                   rowHeight={56}
                   fillHeight
                   getKey={(t) => t.tabId}
-                  renderRow={(t) => renderTabRow(t, false)}
+                  renderRow={(t) => renderTabRow(t)}
                   emptyState={<div className="muted">No matching tabs.</div>}
                 />
               )}

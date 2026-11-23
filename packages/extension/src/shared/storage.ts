@@ -14,6 +14,7 @@ export interface ExtensionSettings {
   profileId: string;
   profileLabel: string;
   browserName: string;
+  theme?: 'light' | 'dark' | null;
   policy: SecurityPolicy;
 }
 

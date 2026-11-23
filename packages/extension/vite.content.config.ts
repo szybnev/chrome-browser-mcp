@@ -8,14 +8,14 @@ export default defineConfig({
     emptyOutDir: false,
     target: 'esnext',
     lib: {
-      entry: resolve(__dirname, 'src/content/content-script.ts'),
+      entry: resolve(import.meta.dirname, 'src/content/content-script.ts'),
       name: 'ChromeBrowserMcpContent',
       formats: ['iife'],
       fileName: () => 'content-script.js',
     },
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        inlineDynamicImports: true,
+        codeSplitting: false,
       },
     },
   },
