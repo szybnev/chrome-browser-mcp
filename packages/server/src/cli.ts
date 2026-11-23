@@ -6,6 +6,7 @@ import { loadBrokerConfig, loadOrCreateToken, resolveDataDir } from './config.js
 import { startBrokerDaemon } from './broker.js';
 import { createBrowserMcpServer } from './mcp-server.js';
 import { RemoteBrokerHub } from './remote-hub.js';
+import { installNativeMessagingHost, runNativeMessagingHost } from './native-host.js';
 
 function parseArgs(argv: string[]) {
   const args = argv.slice(2);
@@ -14,6 +15,8 @@ function parseArgs(argv: string[]) {
   let dataDir: string | undefined;
   let idleExit = false;
   let rotate = false;
+  let enableCdpProxy = false;
+  let extensionId: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
@@ -27,16 +30,22 @@ function parseArgs(argv: string[]) {
       dataDir = args[++i];
     } else if (a.startsWith('--data-dir=') || a.startsWith('--data_dir=')) {
       dataDir = a.split('=')[1];
+    } else if (a === '--extension-id' && args[i + 1]) {
+      extensionId = args[++i];
+    } else if (a.startsWith('--extension-id=')) {
+      extensionId = a.split('=')[1];
     } else if (a === '--idle-exit') {
       idleExit = true;
     } else if (a === '--rotate') {
       rotate = true;
+    } else if (a === '--enable-cdp-proxy') {
+      enableCdpProxy = true;
     } else if (a === '-h' || a === '--help') {
       command = 'help';
     }
   }
 
-  return { command, port, dataDir, idleExit, rotate };
+  return { command, port, dataDir, idleExit, rotate, enableCdpProxy, extensionId };
 }
 
 async function isBrokerHealthy(brokerUrl: string): Promise<boolean> {
@@ -135,17 +144,68 @@ async function runStdioShim(port?: number, dataDir?: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const { command, port, dataDir, idleExit, rotate } = parseArgs(process.argv);
+  const { command, port, dataDir, idleExit, rotate, enableCdpProxy, extensionId } = parseArgs(
+    process.argv,
+  );
 
   if (command === 'help') {
     console.log(`chrome-browser-mcp — Next-gen Chrome Extension & MCP Server
 
 Usage:
-  chrome-browser-mcp [stdio] [--port=43179] [--data-dir=PATH]   Run MCP stdio bridge (auto-starts shared broker)
-  chrome-browser-mcp daemon [--port=43179] [--idle-exit]        Run shared local Broker Daemon (Streamable HTTP + WS)
-  chrome-browser-mcp status [--port=43179]                      Show broker health & connected browser profiles
-  chrome-browser-mcp token [--rotate] [--data-dir=PATH]         Print (or rotate) the local Chrome pairing token
+  chrome-browser-mcp [stdio] [--port=43179] [--data-dir=PATH]           Run MCP stdio bridge (auto-starts shared broker)
+  chrome-browser-mcp daemon [--port=43179] [--enable-cdp-proxy]         Run shared local Broker Daemon (HTTP + WS)
+  chrome-browser-mcp pair [--port=43179]                                Generate a 2-minute 6-digit pairing PIN
+  chrome-browser-mcp install-host --extension-id=<ID>                   Install Chrome Native Messaging Host manifest
+  chrome-browser-mcp native-host                                        Run Chrome Native Messaging stdio bridge
+  chrome-browser-mcp status [--port=43179]                              Show broker health & connected browser profiles
+  chrome-browser-mcp token [--rotate] [--data-dir=PATH]                 Print (or rotate) the local Chrome pairing token
 `);
+    return;
+  }
+
+  if (command === 'pair') {
+    const config = loadBrokerConfig({ port, dataDir });
+    await ensureBrokerRunning(config);
+    const res = await fetch(`${config.brokerUrl}/internal/create-pin`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-broker-token': config.token,
+      },
+      body: '{}',
+    });
+    const json = (await res.json()) as {
+      ok: boolean;
+      data?: { pin: string; expiresAt: number };
+      error?: string;
+    };
+    if (!res.ok || !json.ok || !json.data) {
+      console.error(`Failed to generate pairing PIN: ${json.error || res.statusText}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`Chrome Browser MCP — 1-Click Pairing PIN (valid for 2 minutes):`);
+    console.log(`\n    PIN:  ${json.data.pin}\n`);
+    console.log(`Enter this PIN in the Chrome Browser MCP Welcome Tour or Side Panel -> Pair tab.`);
+    console.log(`Helper page: ${config.brokerUrl}/pair`);
+    return;
+  }
+
+  if (command === 'install-host') {
+    if (!extensionId) {
+      console.error('Missing --extension-id=<32-char Chrome extension ID>');
+      process.exitCode = 1;
+      return;
+    }
+    const { manifestPath, wrapperPath } = installNativeMessagingHost({ extensionId, dataDir });
+    console.log(`Installed Chrome Native Messaging Host:`);
+    console.log(`  Manifest: ${manifestPath}`);
+    console.log(`  Wrapper:  ${wrapperPath}`);
+    return;
+  }
+
+  if (command === 'native-host') {
+    await runNativeMessagingHost({ port, dataDir });
     return;
   }
 
@@ -170,11 +230,14 @@ Usage:
   }
 
   if (command === 'daemon') {
-    const handle = await startBrokerDaemon({ port, dataDir, idleExit });
+    const handle = await startBrokerDaemon({ port, dataDir, idleExit, enableCdpProxy });
     console.error(`[chrome-browser-mcp] Broker listening on ${handle.config.brokerUrl}`);
     console.error(`[chrome-browser-mcp] Streamable HTTP MCP: ${handle.config.mcpUrl}`);
     console.error(`[chrome-browser-mcp] Extension WebSocket: ${handle.config.wsUrl}`);
     console.error(`[chrome-browser-mcp] Pairing token file:  ${handle.config.dataDir}/token.txt`);
+    if (handle.hub.getPolicy().cdpProxyEnabled) {
+      console.error(`[chrome-browser-mcp] Opt-in CDP Proxy:    ${handle.config.brokerUrl}/json/version`);
+    }
 
     const stop = async () => {
       await handle.close();

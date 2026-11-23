@@ -12,7 +12,7 @@ import type {
   SecurityPolicy,
 } from '@chrome-browser-mcp/protocol';
 import type { BrowserHubInterface } from './hub.js';
-import { isUrlBlocked, SecurityPolicySchema } from '@chrome-browser-mcp/protocol';
+import { isUrlBlocked, isUrlReadOnly, SecurityPolicySchema } from '@chrome-browser-mcp/protocol';
 
 /**
  * HTTP proxy implementation of BrowserHubInterface used by stdio shims to
@@ -101,6 +101,24 @@ export class RemoteBrokerHub implements BrowserHubInterface {
     return isUrlBlocked(url, this.cachedPolicy.blockedDomains, this.cachedPolicy.allowedDomains);
   }
 
+  checkReadOnlyPolicy(url: string): { readOnly: boolean; reason?: string } {
+    return isUrlReadOnly(url, this.cachedPolicy.readOnlyDomains);
+  }
+
+  getTabUrl(_profileId: string, _tabId?: number): string | undefined {
+    return undefined;
+  }
+
+  async resolveSecret(secretRef: string): Promise<{ value: string; maskedLabel: string }> {
+    return this.post('/internal/resolve-secret', { secretRef });
+  }
+
+  async exportAudit(
+    format: 'json' | 'html',
+  ): Promise<{ contentType: string; content: string; eventCount: number }> {
+    return this.post('/internal/audit-export', { format });
+  }
+
   async requestApprovalIfNeeded(args: {
     profileId: string;
     tabId?: number;
@@ -109,7 +127,7 @@ export class RemoteBrokerHub implements BrowserHubInterface {
     reason: string;
     risk: RiskLevel;
     preview: string;
-    kind: 'eval' | 'password' | 'payment';
+    kind: 'eval' | 'password' | 'payment' | 'upload' | 'read-only-override';
   }): Promise<void> {
     await this.post('/internal/request-approval', args);
   }

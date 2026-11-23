@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { WebSocketServer } from 'ws';
 import {
@@ -10,15 +10,19 @@ import { ExtensionToBrokerMessageSchema } from '@chrome-browser-mcp/protocol';
 import { loadBrokerConfig, type BrokerConfig } from './config.js';
 import { BrowserBrokerHub, SERVER_VERSION } from './hub.js';
 import { createBrowserMcpServer } from './mcp-server.js';
+import { attachCdpProxySocket, handleCdpDiscoveryRequest } from './cdp-proxy.js';
 
 export interface BrokerDaemonHandle {
   config: BrokerConfig;
   hub: BrowserBrokerHub;
+  createPairingPin: () => { pin: string; expiresAt: number };
   close: () => Promise<void>;
 }
 
 const LEASE_TTL_MS = 45_000;
 const IDLE_GRACE_MS = 20_000;
+const PIN_TTL_MS = 120_000;
+const MAX_PIN_ATTEMPTS = 5;
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -39,11 +43,23 @@ export async function startBrokerDaemon(options?: {
   port?: number;
   dataDir?: string;
   idleExit?: boolean;
+  enableCdpProxy?: boolean;
 }): Promise<BrokerDaemonHandle> {
   const config = loadBrokerConfig({ port: options?.port, dataDir: options?.dataDir });
   const hub = new BrowserBrokerHub(config.dataDir, config.brokerUrl, config.token);
+  if (options?.enableCdpProxy) {
+    await hub.updatePolicy({ cdpProxyEnabled: true });
+  }
   const validateHost = localhostHostValidation();
   const validateOrigin = localhostOriginValidation();
+
+  let activePin: { code: string; expiresAt: number; attempts: number } | null = null;
+  const createPairingPin = () => {
+    const code = String(randomInt(100000, 1000000));
+    const expiresAt = Date.now() + PIN_TTL_MS;
+    activePin = { code, expiresAt, attempts: 0 };
+    return { pin: code, expiresAt };
+  };
 
   const leases = new Map<string, number>();
   let hadLeases = false;
@@ -75,23 +91,94 @@ export async function startBrokerDaemon(options?: {
   const httpServer = createServer(async (req, res) => {
     try {
       if (!validateHost(req, res)) return;
-      if (!validateOrigin(req, res)) return;
 
       const url = new URL(req.url ?? '/', config.brokerUrl);
+
+      // Allow chrome-extension:// origin exclusively for 1-click PIN exchange & /health
+      const originHeader = req.headers.origin;
+      const isExtOrigin =
+        typeof originHeader === 'string' && originHeader.startsWith('chrome-extension://');
+
+      if (req.method === 'OPTIONS' && isExtOrigin && (url.pathname === '/pair/exchange' || url.pathname === '/health')) {
+        res.writeHead(204, {
+          'access-control-allow-origin': originHeader,
+          'access-control-allow-methods': 'GET, POST, OPTIONS',
+          'access-control-allow-headers': 'content-type',
+        });
+        res.end();
+        return;
+      }
+
+      if (!isExtOrigin && !validateOrigin(req, res)) return;
 
       // Public loopback health endpoint (never leaks token)
       if (req.method === 'GET' && url.pathname === '/health') {
         const { profiles, defaultProfileId } = await hub.listProfiles();
-        writeJson(res, 200, {
-          ok: true,
-          version: SERVER_VERSION,
-          mcpUrl: config.mcpUrl,
-          wsUrl: config.wsUrl,
-          defaultProfileId,
-          connectedProfiles: profiles.length,
-          paused: hub.isPaused(),
-          activeLeases: leases.size,
+        res.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          ...(isExtOrigin ? { 'access-control-allow-origin': originHeader } : {}),
         });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            version: SERVER_VERSION,
+            mcpUrl: config.mcpUrl,
+            wsUrl: config.wsUrl,
+            defaultProfileId,
+            connectedProfiles: profiles.length,
+            paused: hub.isPaused(),
+            activeLeases: leases.size,
+            cdpProxyEnabled: hub.getPolicy().cdpProxyEnabled,
+          }),
+        );
+        return;
+      }
+
+      // One-Click 6-digit PIN pairing helper & exchange
+      if (req.method === 'GET' && url.pathname === '/pair') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Chrome Browser MCP — Pair</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;background:#111317;color:#e6e9ef;padding:40px;max-width:560px;margin:0 auto;}code{background:#1d2129;padding:3px 7px;border-radius:6px;color:#38e4d4;}</style>
+</head><body><h1>Chrome Browser MCP — Local Pairing</h1>
+<p>Broker is running on <code>${config.brokerUrl}</code>.</p>
+<p>Open the <strong>Chrome Browser MCP</strong> Side Panel (or Welcome Tour) and enter the 6-digit PIN printed by <code>npx chrome-browser-mcp pair</code>.</p>
+</body></html>`);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/pair/exchange') {
+        const corsHeaders: Record<string, string> = {
+          'content-type': 'application/json; charset=utf-8',
+          ...(isExtOrigin ? { 'access-control-allow-origin': originHeader } : {}),
+        };
+        const body = (await readJsonBody(req)) as { pin?: string };
+        const submitted = String(body.pin ?? '').trim();
+        if (!activePin || Date.now() > activePin.expiresAt) {
+          activePin = null;
+          res.writeHead(401, corsHeaders);
+          res.end(JSON.stringify({ ok: false, error: 'No active pairing PIN (run `npx chrome-browser-mcp pair`)' }));
+          return;
+        }
+        if (activePin.attempts >= MAX_PIN_ATTEMPTS) {
+          activePin = null;
+          res.writeHead(429, corsHeaders);
+          res.end(JSON.stringify({ ok: false, error: 'Too many PIN attempts — generate a new PIN' }));
+          return;
+        }
+        activePin.attempts += 1;
+        if (submitted !== activePin.code) {
+          res.writeHead(401, corsHeaders);
+          res.end(JSON.stringify({ ok: false, error: 'Incorrect 6-digit PIN' }));
+          return;
+        }
+        activePin = null; // Single-use PIN consumed
+        res.writeHead(200, corsHeaders);
+        res.end(JSON.stringify({ ok: true, data: { token: config.token, wsUrl: config.wsUrl } }));
+        return;
+      }
+
+      // Opt-in Local CDP Proxy discovery (/json/version, /json/list)
+      if (handleCdpDiscoveryRequest(req, res, url, hub, config.brokerUrl, config.token)) {
         return;
       }
 
@@ -188,6 +275,20 @@ export async function startBrokerDaemon(options?: {
               data: await hub.deleteWorkflow(String(body.workflowId ?? '')),
             });
             return;
+          case '/internal/create-pin':
+            writeJson(res, 200, { ok: true, data: createPairingPin() });
+            return;
+          case '/internal/resolve-secret':
+            writeJson(res, 200, {
+              ok: true,
+              data: await hub.resolveSecret(String(body.secretRef ?? '')),
+            });
+            return;
+          case '/internal/audit-export': {
+            const fmt = body.format === 'html' ? 'html' : 'json';
+            writeJson(res, 200, { ok: true, data: await hub.exportAudit(fmt) });
+            return;
+          }
           default:
             writeJson(res, 404, { ok: false, error: 'Unknown internal route' });
             return;
@@ -206,8 +307,9 @@ export async function startBrokerDaemon(options?: {
     }
   });
 
-  // WebSocket server strictly on /ws for Chrome Extensions (no deflate overhead on loopback)
+  // WebSocket server on /ws for Chrome Extensions & opt-in /cdp/:tabId proxy
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+  const cdpWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   httpServer.on('upgrade', (req, socket, head) => {
     const remote = req.socket.remoteAddress;
@@ -217,14 +319,31 @@ export async function startBrokerDaemon(options?: {
     }
 
     const url = new URL(req.url ?? '/', config.brokerUrl);
-    if (url.pathname !== '/ws') {
-      socket.destroy();
+    if (url.pathname === '/ws') {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req);
+      });
       return;
     }
 
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit('connection', ws, req);
-    });
+    const cdpMatch = /^\/cdp\/(\d+)$/.exec(url.pathname);
+    if (cdpMatch && hub.getPolicy().cdpProxyEnabled) {
+      const tokenParam = url.searchParams.get('token') ?? '';
+      const headerToken = req.headers['x-broker-token'];
+      const candidate = typeof headerToken === 'string' ? headerToken : tokenParam;
+      if (!hub.verifyToken(candidate)) {
+        socket.destroy();
+        return;
+      }
+      const tabId = Number(cdpMatch[1]);
+      const profileId = url.searchParams.get('profileId') ?? undefined;
+      cdpWss.handleUpgrade(req, socket, head, (ws) => {
+        attachCdpProxySocket(ws, tabId, profileId, hub);
+      });
+      return;
+    }
+
+    socket.destroy();
   });
 
   wss.on('connection', (ws) => {
@@ -261,9 +380,13 @@ export async function startBrokerDaemon(options?: {
     for (const client of wss.clients) {
       client.close(1001, 'Broker shutting down');
     }
+    for (const client of cdpWss.clients) {
+      client.close(1001, 'Broker shutting down');
+    }
     await new Promise<void>((res) => wss.close(() => res()));
+    await new Promise<void>((res) => cdpWss.close(() => res()));
     await new Promise<void>((res) => httpServer.close(() => res()));
   };
 
-  return { config, hub, close };
+  return { config, hub, createPairingPin, close };
 }

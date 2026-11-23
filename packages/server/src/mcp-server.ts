@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/server';
@@ -6,14 +6,21 @@ import { z } from 'zod';
 import {
   ActionStepSchema,
   computeSnapshotDiff,
+  EmulationConfigSchema,
+  exportWorkflowToPlaywright,
+  extractWorkflowParamNames,
   formatFullSnapshot,
   frameUntrustedPageContent,
+  interpolateWorkflowSteps,
   PageSnapshotSchema,
   SecurityPolicySchema,
+  type ActionStep,
   type AuditResult,
   type BatchActResult,
   type ConsoleEntry,
+  type DownloadItem,
   type NetworkEntry,
+  type PendingDialog,
   type TabInfo,
   type WebMcpToolInfo,
 } from '@chrome-browser-mcp/protocol';
@@ -299,16 +306,18 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         tabId: z.number().int().optional(),
         mode: z.enum(['full', 'diff']).default('diff'),
         includeOffscreen: z.boolean().default(false),
-        useCdp: z.boolean().default(false).describe('Escalate to chrome.debugger Accessibility tree (cross-origin iframes / closed shadow DOM)'),
+        includeIframes: z.boolean().default(true).describe('Traverse cross-origin & nested iframes (prefixed f<frameId>:e1)'),
+        includeClosedShadow: z.boolean().default(false).describe('Escalate to CDP Accessibility tree to inspect closed Shadow DOM'),
+        useCdp: z.boolean().default(false).describe('Escalate to chrome.debugger Accessibility tree'),
         maxNodes: z.number().int().min(20).max(500).default(220),
         profileId: z.string().optional(),
       }),
     },
-    async ({ tabId, mode, includeOffscreen, useCdp, maxNodes, profileId }) => {
+    async ({ tabId, mode, includeOffscreen, includeIframes, includeClosedShadow, useCdp, maxNodes, profileId }) => {
       try {
         const { profileId: resolvedProfile, data } = await hub.callExtension<unknown>(
           'page.snapshot',
-          { tabId, includeOffscreen, useCdp, maxNodes },
+          { tabId, includeOffscreen, includeIframes, includeClosedShadow, useCdp, maxNodes },
           { profileId, toolLabel: 'browser_snapshot' },
         );
 
@@ -354,17 +363,18 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     {
       title: 'Read Page Markdown',
       description:
-        'Extract clean readable Markdown text from the page (or CSS selector), with chunk pagination (offset + maxChars up to 200k), interactive tab hints, and Prompt-Injection Shield.',
+        'Extract clean readable Markdown, structured HTML tables (JSON/CSV), or PDF text from the page, with chunk pagination (offset + maxChars up to 200k), interactive tab hints, and Prompt-Injection Shield.',
       inputSchema: z.object({
         tabId: z.number().int().optional(),
         selector: z.string().optional(),
+        format: z.enum(['markdown', 'tables_json', 'tables_csv']).default('markdown').describe('Output format: readable Markdown (default), or structured HTML tables as JSON/CSV'),
         offset: z.number().int().min(0).default(0).describe('Character offset for paginating long pages without reloading'),
         maxChars: z.number().int().min(500).max(200000).default(30000),
         scope: z.enum(['main', 'body']).default('main').describe('Read primary content ("main") or entire document body ("body")'),
         profileId: z.string().optional(),
       }),
     },
-    async ({ tabId, selector, offset, maxChars, scope, profileId }) => {
+    async ({ tabId, selector, format, offset, maxChars, scope, profileId }) => {
       try {
         const { data } = await hub.callExtension<{
           tabId: number;
@@ -380,9 +390,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           filteredHiddenCount: number;
           tabsSummary?: string[];
           alternateLinks?: string[];
+          tableCount?: number;
+          isPdf?: boolean;
         }>(
           'page.read',
-          { tabId, selector, offset, maxChars, scope },
+          { tabId, selector, format, offset, maxChars, scope },
           { profileId, toolLabel: 'browser_read' },
         );
 
@@ -507,7 +519,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     {
       title: 'Act on Page (Single or Batch)',
       description:
-        'Execute one action or an ordered batch of actions (click, fill, type, press, select, check, scroll, hover, drag, wait) in a single round-trip. Stops on first error and returns an automatic diff snapshot.',
+        'Execute one action or an ordered batch of actions (click, fill, type, press, select, check, scroll, hover, drag, upload, wait) in a single round-trip. Supports f<frameId>:e1 iframe refs and Zero-Secret Autofill via secretRef ("env:VAR" or "keychain:ACCOUNT"). Stops on first error or JS dialog and returns an automatic diff snapshot.',
       inputSchema: z.object({
         tabId: z.number().int().optional(),
         steps: z.array(ActionStepSchema).min(1).max(30),
@@ -521,11 +533,84 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         const resolvedProfiles = await hub.listProfiles();
         const activeProfileId = profileId || resolvedProfiles.defaultProfileId || 'default';
 
-        // Inspect previous snapshot to detect password/payment gates before dispatching
+        // Inspect previous snapshot / tab URL for read-only, password, payment, upload, and secretRef gates
         const prevSnap = tabId !== undefined ? hub.getPreviousSnapshot(activeProfileId, tabId) : undefined;
-        const origin = prevSnap?.origin ?? 'active-tab';
+        const knownUrl = prevSnap?.url ?? hub.getTabUrl(activeProfileId, tabId) ?? '';
+        const origin = prevSnap?.origin ?? (knownUrl ? new URL(knownUrl).origin : 'active-tab');
+        const policy = hub.getPolicy();
 
+        const hasMutatingStep = steps.some((s) => s.kind !== 'scroll' && s.kind !== 'wait');
+        if (knownUrl && hasMutatingStep) {
+          const roCheck = hub.checkReadOnlyPolicy(knownUrl);
+          if (roCheck.readOnly) {
+            await hub.requestApprovalIfNeeded({
+              profileId: activeProfileId,
+              tabId,
+              origin,
+              action: 'browser_act:read_only_override',
+              reason: `Mutating action requested on read-only domain (${roCheck.reason})`,
+              risk: 'high',
+              preview: `Allow ${steps.length} step(s) on read-only ${origin}`,
+              kind: 'read-only-override',
+            });
+          }
+        }
+
+        const resolvedSteps: ActionStep[] = [];
         for (const step of steps) {
+          if (step.kind === 'upload') {
+            const canonicalFiles: string[] = [];
+            for (const rawPath of step.files) {
+              const abs = resolve(rawPath);
+              if (!existsSync(abs)) {
+                return errorResult(`Upload file does not exist: ${abs}`);
+              }
+              const real = realpathSync(abs);
+              if (policy.uploadAllowedDirs.length > 0) {
+                const allowed = policy.uploadAllowedDirs.some((dir) => {
+                  const base = resolve(dir);
+                  return real === base || real.startsWith(`${base}/`) || real.startsWith(`${base}\\`);
+                });
+                if (!allowed) {
+                  return errorResult(`Upload path "${real}" is outside configured uploadAllowedDirs`);
+                }
+              }
+              canonicalFiles.push(real);
+            }
+            await hub.requestApprovalIfNeeded({
+              profileId: activeProfileId,
+              tabId,
+              origin,
+              action: 'browser_act:file_upload',
+              reason: `Uploading ${canonicalFiles.length} local file(s) to ${origin}`,
+              risk: 'high',
+              preview: `Upload ${canonicalFiles.join(', ')} to ${origin}`,
+              kind: 'upload',
+            });
+            resolvedSteps.push({ ...step, files: canonicalFiles });
+            continue;
+          }
+
+          if ((step.kind === 'fill' || step.kind === 'type') && step.secretRef) {
+            await hub.requestApprovalIfNeeded({
+              profileId: activeProfileId,
+              tabId,
+              origin,
+              action: 'browser_act:secret_autofill',
+              reason: `Filling secret "${step.secretRef}" into ${step.ref || step.selector || 'input'} on ${origin}`,
+              risk: 'high',
+              preview: `Zero-Secret autofill ${step.secretRef} on ${origin}`,
+              kind: 'password',
+            });
+            const resolved = await hub.resolveSecret(step.secretRef);
+            if (step.kind === 'fill') {
+              resolvedSteps.push({ ...step, value: resolved.value, secretRef: undefined });
+            } else {
+              resolvedSteps.push({ ...step, text: resolved.value, secretRef: undefined });
+            }
+            continue;
+          }
+
           if ((step.kind === 'fill' || step.kind === 'type') && step.ref && prevSnap) {
             const targetNode = prevSnap.nodes.find((n) => n.ref === step.ref);
             if (targetNode?.inputType === 'password') {
@@ -556,11 +641,12 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
               });
             }
           }
+          resolvedSteps.push(step);
         }
 
         const { profileId: usedProfile, data } = await hub.callExtension<BatchActResult>(
           'page.act',
-          { tabId, steps, returnSnapshot, forceCdp },
+          { tabId, steps: resolvedSteps, returnSnapshot, forceCdp },
           { profileId, timeoutMs: 45_000, toolLabel: `browser_act(${steps.length})` },
         );
 
@@ -571,6 +657,13 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
               `  ${o.index + 1}. ${o.kind} [${o.ok ? 'ok' : 'FAIL'}${o.engine ? `, ${o.engine}` : ''}, ${o.durationMs}ms]${o.detail ? ` — ${o.detail}` : ''}${o.error ? ` — ERROR: ${o.error}` : ''}`,
           ),
         ];
+
+        if (data.pendingDialog) {
+          summaryLines.push(
+            '',
+            `[PENDING_DIALOG type="${data.pendingDialog.type}" message=${JSON.stringify(data.pendingDialog.message)}] Call browser_dialog(action="accept"|"dismiss") to handle it.`,
+          );
+        }
 
         if (data.snapshot && returnSnapshot !== 'none') {
           const parsedSnap = PageSnapshotSchema.parse(data.snapshot);
@@ -646,17 +739,44 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'browser_network',
     {
       title: 'Network Requests',
-      description: 'Inspect recent XHR/Fetch/document network requests and failures (sensitive headers redacted).',
+      description:
+        'Inspect recent XHR/Fetch/document network requests and failures (sensitive headers redacted). Pass includeBodyForRequestId to inspect a specific response body with JWT/secret redaction.',
       inputSchema: z.object({
         tabId: z.number().int().optional(),
         onlyFailed: z.boolean().default(false),
         urlFilter: z.string().optional(),
+        includeBodyForRequestId: z
+          .string()
+          .optional()
+          .describe('Fetch redacted UTF-8 response body for a specific requestId'),
         limit: z.number().int().min(1).max(200).default(40),
         profileId: z.string().optional(),
       }),
     },
-    async ({ tabId, onlyFailed, urlFilter, limit, profileId }) => {
+    async ({ tabId, onlyFailed, urlFilter, includeBodyForRequestId, limit, profileId }) => {
       try {
+        if (includeBodyForRequestId) {
+          const { data: bodyData } = await hub.callExtension<{
+            requestId: string;
+            body: string;
+            base64Encoded: boolean;
+            truncated: boolean;
+            redactedCount: number;
+          }>(
+            'devtools.networkBody',
+            { tabId, requestId: includeBodyForRequestId },
+            { profileId, toolLabel: 'browser_network:body' },
+          );
+          const framed = frameUntrustedPageContent({
+            origin: 'network-response',
+            url: `request://${bodyData.requestId}`,
+            content: bodyData.body,
+            shieldEnabled: hub.getPolicy().promptInjectionShield,
+          });
+          const note = `[requestId=${bodyData.requestId} redacted=${bodyData.redactedCount}${bodyData.truncated ? ' truncated=true' : ''}]\n`;
+          return { content: [{ type: 'text', text: `${note}${framed.text}` }] };
+        }
+
         const { data } = await hub.callExtension<NetworkEntry[]>(
           'devtools.network',
           { tabId, onlyFailed, urlFilter, limit },
@@ -667,7 +787,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         }
         const lines = data.map(
           (n) =>
-            `${n.method} ${n.status ?? (n.failed ? 'FAIL' : 'PENDING')} ${n.url}${n.durationMs ? ` (${n.durationMs}ms)` : ''}${n.errorText ? ` — ${n.errorText}` : ''}${n.responsePreview ? `\n    preview: ${n.responsePreview.slice(0, 180)}` : ''}`,
+            `[${n.requestId}] ${n.method} ${n.status ?? (n.failed ? 'FAIL' : 'PENDING')} ${n.url}${n.durationMs ? ` (${n.durationMs}ms)` : ''}${n.errorText ? ` — ${n.errorText}` : ''}${n.responsePreview ? `\n    preview: ${n.responsePreview.slice(0, 180)}` : ''}`,
         );
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       } catch (err) {
@@ -698,7 +818,24 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         const { defaultProfileId } = await hub.listProfiles();
         const activeProfile = profileId || defaultProfileId || 'default';
         const prevSnap = tabId !== undefined ? hub.getPreviousSnapshot(activeProfile, tabId) : undefined;
-        const origin = prevSnap?.origin ?? 'active-tab';
+        const knownUrl = prevSnap?.url ?? hub.getTabUrl(activeProfile, tabId) ?? '';
+        const origin = prevSnap?.origin ?? (knownUrl ? new URL(knownUrl).origin : 'active-tab');
+
+        if (knownUrl) {
+          const roCheck = hub.checkReadOnlyPolicy(knownUrl);
+          if (roCheck.readOnly) {
+            await hub.requestApprovalIfNeeded({
+              profileId: activeProfile,
+              tabId,
+              origin,
+              action: 'browser_eval:read_only_override',
+              reason: `JavaScript eval requested on read-only domain (${roCheck.reason})`,
+              risk: 'high',
+              preview: expression.slice(0, 260),
+              kind: 'read-only-override',
+            });
+          }
+        }
 
         await hub.requestApprovalIfNeeded({
           profileId: activeProfile,
@@ -853,15 +990,19 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     {
       title: 'Recorded Workflows',
       description:
-        'List or replay workflows recorded by the user in the Chrome Side Panel ("show by hand"). Replaying executes the recorded batch steps on the target tab.',
+        'List, inspect, replay (with {{variable}} interpolation), export to Playwright (.spec.ts), or delete workflows recorded by the user in Chrome Side Panel.',
       inputSchema: z.object({
-        action: z.enum(['list', 'get', 'replay', 'delete']).default('list'),
+        action: z.enum(['list', 'get', 'replay', 'export_playwright', 'delete']).default('list'),
         workflowId: z.string().optional(),
+        variables: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('Variable values for {{var}} placeholders when action="replay"'),
         tabId: z.number().int().optional(),
         profileId: z.string().optional(),
       }),
     },
-    async ({ action, workflowId, tabId, profileId }) => {
+    async ({ action, workflowId, variables, tabId, profileId }) => {
       try {
         const workflows = await hub.listWorkflows();
         if (action === 'list') {
@@ -875,9 +1016,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
               ],
             };
           }
-          const lines = workflows.map(
-            (w) => `[${w.id}] "${w.name}" — ${w.steps.length} steps (start: ${w.startUrl})`,
-          );
+          const lines = workflows.map((w) => {
+            const params = extractWorkflowParamNames(w);
+            const paramStr = params.length > 0 ? ` [vars: ${params.join(', ')}]` : '';
+            return `[${w.id}] "${w.name}" — ${w.steps.length} steps${paramStr} (start: ${w.startUrl})`;
+          });
           return { content: [{ type: 'text', text: lines.join('\n') }] };
         }
 
@@ -894,8 +1037,12 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           return { content: [{ type: 'text', text: JSON.stringify(wf, null, 2) }] };
         }
 
-        // Replay recorded steps via page.act
-        const steps = wf.steps.map((s) => s.step);
+        if (action === 'export_playwright') {
+          return { content: [{ type: 'text', text: exportWorkflowToPlaywright(wf) }] };
+        }
+
+        // Replay recorded steps via page.act (with optional {{var}} interpolation)
+        const { steps } = interpolateWorkflowSteps(wf, variables ?? {});
         const { data } = await hub.callExtension<BatchActResult>(
           'page.act',
           { tabId, steps, returnSnapshot: 'diff', forceCdp: false },
@@ -910,6 +1057,171 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
               text: `Replayed workflow "${wf.name}": ${data.completedSteps}/${data.totalSteps} steps (${data.ok ? 'OK' : 'STOPPED ON ERROR'}).`,
             },
           ],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // 15. browser_dialog (Native alert / confirm / prompt / beforeunload)
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'browser_dialog',
+    {
+      title: 'Handle Browser Dialog',
+      description:
+        'Check for or respond to a native browser JavaScript dialog (alert, confirm, prompt, beforeunload) without hanging the tab.',
+      inputSchema: z.object({
+        action: z.enum(['status', 'accept', 'dismiss']).default('status'),
+        promptText: z.string().optional().describe('Text to enter when accepting a prompt() dialog'),
+        tabId: z.number().int().optional(),
+        profileId: z.string().optional(),
+      }),
+    },
+    async ({ action, promptText, tabId, profileId }) => {
+      try {
+        const { data } = await hub.callExtension<{
+          tabId?: number;
+          dialog?: PendingDialog | null;
+          handled?: boolean;
+          previous?: PendingDialog | null;
+        }>(
+          'page.dialog',
+          { action, promptText, tabId },
+          { profileId, toolLabel: `browser_dialog:${action}` },
+        );
+        if (action === 'status') {
+          if (!data.dialog) {
+            return { content: [{ type: 'text', text: 'No active JavaScript dialog on this tab.' }] };
+          }
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Pending ${data.dialog.type} dialog: ${JSON.stringify(data.dialog.message)}${data.dialog.defaultPrompt ? ` (default: ${JSON.stringify(data.dialog.defaultPrompt)})` : ''}`,
+              },
+            ],
+          };
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `${action === 'accept' ? 'Accepted' : 'Dismissed'} dialog${data.previous ? ` (${data.previous.type}: ${JSON.stringify(data.previous.message)})` : ''}.`,
+            },
+          ],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // 16. browser_downloads (Optional chrome.downloads permission)
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'browser_downloads',
+    {
+      title: 'Browser Downloads',
+      description:
+        'List recent browser downloads or wait for an in-progress download to finish (requires optional Downloads permission enabled in Side Panel -> Security -> Advanced Settings).',
+      inputSchema: z.object({
+        action: z.enum(['list', 'wait']).default('list'),
+        limit: z.number().int().min(1).max(50).default(15),
+        timeoutMs: z.number().int().min(1000).max(60000).default(15000),
+        profileId: z.string().optional(),
+      }),
+    },
+    async ({ action, limit, timeoutMs, profileId }) => {
+      try {
+        const { data } = await hub.callExtension<{
+          permissionRequired?: boolean;
+          hint?: string;
+          downloads?: DownloadItem[];
+          completed?: DownloadItem | null;
+        }>(
+          'browser.downloads',
+          { action, limit, timeoutMs },
+          { profileId, timeoutMs: timeoutMs + 5000, toolLabel: `browser_downloads:${action}` },
+        );
+        if (data.permissionRequired) {
+          return { content: [{ type: 'text', text: data.hint || 'Optional downloads permission not granted.' }] };
+        }
+        if (action === 'wait') {
+          if (!data.completed) {
+            return { content: [{ type: 'text', text: `No download completed within ${timeoutMs}ms.` }] };
+          }
+          return { content: [{ type: 'text', text: JSON.stringify(data.completed, null, 2) }] };
+        }
+        if (!data.downloads || data.downloads.length === 0) {
+          return { content: [{ type: 'text', text: 'No recent downloads found.' }] };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(data.downloads, null, 2) }] };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // 17. browser_emulate (Device, Viewport, Color Scheme, Network, Geolocation)
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'browser_emulate',
+    {
+      title: 'Emulate Device / Network / Theme',
+      description:
+        'Emulate mobile/desktop viewports (iphone-15, pixel-9, ipad, desktop, or custom width/height), prefers-color-scheme (light/dark), network throttling (fast-3g/slow-3g/offline), or geolocation via on-demand CDP. Use preset="reset" to clear.',
+      inputSchema: EmulationConfigSchema.extend({
+        tabId: z.number().int().optional(),
+        profileId: z.string().optional(),
+      }),
+    },
+    async ({ tabId, profileId, ...config }) => {
+      try {
+        const { data } = await hub.callExtension<{ tabId: number; applied: string[] }>(
+          'page.emulate',
+          { tabId, ...config },
+          { profileId, toolLabel: 'browser_emulate' },
+        );
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Emulation updated on tab ${data.tabId}: ${data.applied.join(', ') || 'no changes'}.`,
+            },
+          ],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // 18. browser_audit_export (Session Replay HTML / JSON)
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    'browser_audit_export',
+    {
+      title: 'Export Session Audit Report',
+      description: 'Export the broker session activity log as structured JSON or a self-contained HTML replay report.',
+      inputSchema: z.object({
+        format: z.enum(['json', 'html']).default('json'),
+      }),
+    },
+    async ({ format }) => {
+      try {
+        const res = await hub.exportAudit(format);
+        return {
+          content: [{ type: 'text', text: res.content }],
         };
       } catch (err) {
         return errorResult(err);
@@ -1100,6 +1412,71 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
       const state = await hub.getDeckState();
       return {
         content: [{ type: 'text', text: 'workflow deleted' }],
+        structuredContent: { state },
+      };
+    },
+  );
+
+  server.registerTool(
+    'deck_export_playwright',
+    {
+      title: 'Deck: Export Workflow to Playwright',
+      inputSchema: z.object({ workflowId: z.string() }),
+      _meta: APP_ONLY_META,
+    },
+    async ({ workflowId }) => {
+      const workflows = await hub.listWorkflows();
+      const wf = workflows.find((w) => w.id === workflowId);
+      if (!wf) return errorResult(`Workflow "${workflowId}" not found`);
+      const code = exportWorkflowToPlaywright(wf);
+      return {
+        content: [{ type: 'text', text: code }],
+        structuredContent: { filename: `${wf.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || wf.id}.spec.ts`, code },
+      };
+    },
+  );
+
+  server.registerTool(
+    'deck_export_audit',
+    {
+      title: 'Deck: Export Audit Report',
+      inputSchema: z.object({ format: z.enum(['json', 'html']).default('html') }),
+      _meta: APP_ONLY_META,
+    },
+    async ({ format }) => {
+      const res = await hub.exportAudit(format);
+      return {
+        content: [{ type: 'text', text: `Exported ${res.eventCount} event(s)` }],
+        structuredContent: {
+          filename: `chrome-browser-mcp-audit.${format}`,
+          contentType: res.contentType,
+          content: res.content,
+        },
+      };
+    },
+  );
+
+  server.registerTool(
+    'deck_handle_dialog',
+    {
+      title: 'Deck: Handle Browser Dialog',
+      inputSchema: z.object({
+        profileId: z.string(),
+        tabId: z.number().int(),
+        accept: z.boolean(),
+        promptText: z.string().optional(),
+      }),
+      _meta: APP_ONLY_META,
+    },
+    async ({ profileId, tabId, accept, promptText }) => {
+      await hub.callExtension(
+        'page.dialog',
+        { action: accept ? 'accept' : 'dismiss', tabId, promptText },
+        { profileId, skipPauseCheck: true },
+      );
+      const state = await hub.getDeckState();
+      return {
+        content: [{ type: 'text', text: accept ? 'dialog accepted' : 'dialog dismissed' }],
         structuredContent: { state },
       };
     },

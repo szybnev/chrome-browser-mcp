@@ -3,6 +3,7 @@ import type { WebSocket } from 'ws';
 import {
   APP_VERSION,
   isUrlBlocked,
+  isUrlReadOnly,
   SecurityPolicySchema,
   type ActivityEvent,
   type ApprovalRequest,
@@ -14,6 +15,7 @@ import {
   type ExtensionToBrokerMessage,
   type NetworkEntry,
   type PageSnapshot,
+  type PendingDialog,
   type RecordedWorkflow,
   type RiskLevel,
   type ScreenshotRecord,
@@ -26,9 +28,11 @@ import {
   savePersistedPolicy,
   savePersistedWorkflows,
 } from './config.js';
+import { renderAuditHtml, renderAuditJson } from './audit-exporter.js';
+import { resolveSecretRef } from './secrets.js';
 
 export const SERVER_VERSION = APP_VERSION;
-const MAX_ACTIVITY = 60;
+const MAX_ACTIVITY = 300;
 const MAX_CONSOLE = 150;
 const MAX_NETWORK = 150;
 const APPROVAL_TIMEOUT_MS = 120_000;
@@ -71,6 +75,7 @@ export interface BrowserHubInterface {
     },
   ): Promise<{ profileId: string; data: T }>;
   checkUrlPolicy(url: string): { blocked: boolean; reason?: string };
+  checkReadOnlyPolicy(url: string): { readOnly: boolean; reason?: string };
   requestApprovalIfNeeded(args: {
     profileId: string;
     tabId?: number;
@@ -79,8 +84,11 @@ export interface BrowserHubInterface {
     reason: string;
     risk: RiskLevel;
     preview: string;
-    kind: 'eval' | 'password' | 'payment';
+    kind: 'eval' | 'password' | 'payment' | 'upload' | 'read-only-override';
   }): Promise<void>;
+  resolveSecret(secretRef: string): Promise<{ value: string; maskedLabel: string }>;
+  exportAudit(format: 'json' | 'html'): Promise<{ contentType: string; content: string; eventCount: number }>;
+  getTabUrl(profileId: string, tabId?: number): string | undefined;
   getPreviousSnapshot(profileId: string, tabId: number): PageSnapshot | undefined;
   rememberSnapshot(profileId: string, snapshot: PageSnapshot): void;
   recordScreenshot(record: ScreenshotRecord): void;
@@ -104,6 +112,7 @@ export class BrowserBrokerHub implements BrowserHubInterface {
   private snapshots = new Map<string, PageSnapshot>();
   private latestScreenshot: ScreenshotRecord | null = null;
   private pendingApprovals = new Map<string, PendingApprovalEntry>();
+  private pendingDialogs = new Map<string, PendingDialog>();
   private approvedEvalOrigins = new Set<string>();
 
   constructor(
@@ -297,6 +306,16 @@ export class BrowserBrokerHub implements BrowserHubInterface {
         this.workflows = this.workflows.filter((w) => w.id !== msg.workflowId);
         savePersistedWorkflows(this.dataDir, this.workflows);
         break;
+
+      case 'event.dialog': {
+        const key = `${entry.info.profileId}:${msg.tabId}`;
+        if (msg.dialog) {
+          this.pendingDialogs.set(key, msg.dialog);
+        } else {
+          this.pendingDialogs.delete(key);
+        }
+        break;
+      }
     }
   }
 
@@ -369,6 +388,53 @@ export class BrowserBrokerHub implements BrowserHubInterface {
     return isUrlBlocked(url, this.policy.blockedDomains, this.policy.allowedDomains);
   }
 
+  checkReadOnlyPolicy(url: string): { readOnly: boolean; reason?: string } {
+    return isUrlReadOnly(url, this.policy.readOnlyDomains);
+  }
+
+  getTabUrl(profileId: string, tabId?: number): string | undefined {
+    const profile = this.profiles.get(profileId);
+    if (!profile) return undefined;
+    if (tabId !== undefined) {
+      return profile.tabs.find((t) => t.tabId === tabId)?.url;
+    }
+    return profile.tabs.find((t) => t.active && t.inAgentGroup)?.url ?? profile.tabs[0]?.url;
+  }
+
+  async resolveSecret(secretRef: string): Promise<{ value: string; maskedLabel: string }> {
+    return await resolveSecretRef(secretRef, this.dataDir);
+  }
+
+  async exportAudit(
+    format: 'json' | 'html',
+  ): Promise<{ contentType: string; content: string; eventCount: number }> {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      brokerVersion: SERVER_VERSION,
+      profiles: [...this.profiles.values()].map((p) => ({ ...p.info, paused: this.paused })),
+      policySummary: {
+        scopeMode: this.policy.scopeMode,
+        promptInjectionShield: this.policy.promptInjectionShield,
+        blockedDomainsCount: this.policy.blockedDomains.length,
+        readOnlyDomainsCount: this.policy.readOnlyDomains.length,
+        cdpProxyEnabled: this.policy.cdpProxyEnabled,
+      },
+      events: [...this.activity].reverse(),
+    };
+    if (format === 'html') {
+      return {
+        contentType: 'text/html; charset=utf-8',
+        content: renderAuditHtml(payload),
+        eventCount: payload.events.length,
+      };
+    }
+    return {
+      contentType: 'application/json; charset=utf-8',
+      content: renderAuditJson(payload),
+      eventCount: payload.events.length,
+    };
+  }
+
   async requestApprovalIfNeeded(args: {
     profileId: string;
     tabId?: number;
@@ -377,14 +443,16 @@ export class BrowserBrokerHub implements BrowserHubInterface {
     reason: string;
     risk: RiskLevel;
     preview: string;
-    kind: 'eval' | 'password' | 'payment';
+    kind: 'eval' | 'password' | 'payment' | 'upload' | 'read-only-override';
   }): Promise<void> {
     const needsApproval =
       (args.kind === 'eval' &&
         this.policy.requireApprovalForEval &&
         !this.approvedEvalOrigins.has(args.origin)) ||
       (args.kind === 'password' && this.policy.requireApprovalForPasswords) ||
-      (args.kind === 'payment' && this.policy.requireApprovalForPayments);
+      (args.kind === 'payment' && this.policy.requireApprovalForPayments) ||
+      (args.kind === 'upload' && this.policy.requireApprovalForUploads) ||
+      args.kind === 'read-only-override';
 
     if (!needsApproval) return;
 
@@ -590,6 +658,7 @@ export class BrowserBrokerHub implements BrowserHubInterface {
       tabs: tabsByProfile,
       policy: this.policy,
       pendingApprovals: [...this.pendingApprovals.values()].map((e) => e.request),
+      pendingDialogs: Object.fromEntries(this.pendingDialogs.entries()),
       recentActivity: this.activity.slice(-30).reverse(),
       recentErrors: this.consoleBuffer.filter((c) => c.level === 'error' || c.level === 'warn').slice(-20).reverse(),
       recentFailedNetwork: this.networkBuffer

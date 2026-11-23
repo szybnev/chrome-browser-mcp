@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -183,6 +183,12 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     const readTool = tools.find((t) => t.name === 'browser_read');
     expect(readTool?.inputSchema?.properties).toHaveProperty('offset');
     expect(readTool?.inputSchema?.properties).toHaveProperty('scope');
+    expect(readTool?.inputSchema?.properties).toHaveProperty('format');
+
+    expect(toolNames).toContain('browser_dialog');
+    expect(toolNames).toContain('browser_downloads');
+    expect(toolNames).toContain('browser_emulate');
+    expect(toolNames).toContain('browser_audit_export');
 
     const resRead = await mcpPost({
       jsonrpc: '2.0',
@@ -193,5 +199,66 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     const contents = resRead.result.contents as Array<{ mimeType: string; text: string }>;
     expect(contents[0]?.mimeType).toBe('text/html;profile=mcp-app');
     expect(contents[0]?.text).toContain('Browser Control Deck');
+  });
+
+  it('supports 6-digit single-use PIN pairing, Zero-Secret env resolution, opt-in CDP proxy & audit export', async () => {
+    const port = 47000 + Math.floor(Math.random() * 1000);
+    const dataDir = createTempDataDir();
+    writeFileSync(join(dataDir, 'secrets.env'), 'STAGING_PASS="s3cr3t-v2-pass"\n', 'utf8');
+    activeBroker = await startBrokerDaemon({ port, dataDir });
+
+    // 1. 6-digit PIN pairing flow
+    const { pin } = activeBroker.createPairingPin();
+    expect(pin).toMatch(/^\d{6}$/);
+
+    const badPin = await fetch(`${activeBroker.config.brokerUrl}/pair/exchange`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pin: '000000' }),
+    });
+    expect(badPin.status).toBe(401);
+
+    const goodPin = await fetch(`${activeBroker.config.brokerUrl}/pair/exchange`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    expect(goodPin.status).toBe(200);
+    const pairJson = (await goodPin.json()) as { ok: boolean; data: { token: string } };
+    expect(pairJson.data.token).toBe(activeBroker.config.token);
+
+    // Single-use PIN cannot be reused
+    const reusePin = await fetch(`${activeBroker.config.brokerUrl}/pair/exchange`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    expect(reusePin.status).toBe(401);
+
+    // 2. Zero-Secret resolution
+    const secret = await activeBroker.hub.resolveSecret('env:STAGING_PASS');
+    expect(secret.value).toBe('s3cr3t-v2-pass');
+    expect(secret.maskedLabel).toBe('[SECRET:env:STAGING_PASS]');
+
+    // 3. Opt-in CDP Proxy (disabled by default -> 403, enabled -> 200)
+    const cdpOff = await fetch(`${activeBroker.config.brokerUrl}/json/version`);
+    expect(cdpOff.status).toBe(403);
+
+    await activeBroker.hub.updatePolicy({ cdpProxyEnabled: true });
+    const cdpOn = await fetch(
+      `${activeBroker.config.brokerUrl}/json/version?token=${encodeURIComponent(activeBroker.config.token)}`,
+    );
+    expect(cdpOn.status).toBe(200);
+    const cdpMeta = (await cdpOn.json()) as { Browser: string; webSocketDebuggerUrl: string };
+    expect(cdpMeta.Browser).toContain('Chrome-Browser-MCP');
+
+    // 4. Audit Export (JSON + standalone HTML)
+    const auditJson = await activeBroker.hub.exportAudit('json');
+    expect(auditJson.contentType).toContain('application/json');
+    expect(JSON.parse(auditJson.content).policySummary.cdpProxyEnabled).toBe(true);
+
+    const auditHtml = await activeBroker.hub.exportAudit('html');
+    expect(auditHtml.contentType).toContain('text/html');
+    expect(auditHtml.content).toContain('Session Audit Report');
   });
 });
