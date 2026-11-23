@@ -168,11 +168,13 @@ export function App() {
         <button
           type="button"
           className="btn small"
-          onClick={() =>
+          title="Switch tab in background (Shift+Click to bring Chrome to front)"
+          onClick={(e) =>
             void callDeckTool('deck_tab_action', {
               profileId: activeProfileId,
               tabId: t.tabId,
               action: 'focus',
+              bringToFront: e.shiftKey,
             })
           }
         >

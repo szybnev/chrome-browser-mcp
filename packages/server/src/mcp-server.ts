@@ -175,10 +175,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         tabId: z.number().int().optional(),
         url: z.string().url().optional().describe('URL to open when action is "open"'),
         active: z.boolean().default(true).describe('Focus newly opened tab'),
+        bringToFront: z.boolean().default(false).describe('Also raise the browser window to foreground when focusing a tab'),
         profileId: z.string().optional(),
       }),
     },
-    async ({ action, tabId, url, active, profileId }) => {
+    async ({ action, tabId, url, active, bringToFront, profileId }) => {
       try {
         if (action === 'open' && url) {
           const check = hub.checkUrlPolicy(url);
@@ -198,7 +199,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
 
         const { data } = await hub.callExtension<TabInfo | TabInfo[] | { closed: boolean }>(
           methodMap[action],
-          { tabId, url, active },
+          { tabId, url, active, bringToFront },
           { profileId, toolLabel: `browser_tabs:${action}` },
         );
 
@@ -1019,10 +1020,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         profileId: z.string(),
         tabId: z.number().int(),
         action: z.enum(['attach', 'detach', 'focus', 'close']),
+        bringToFront: z.boolean().optional(),
       }),
       _meta: APP_ONLY_META,
     },
-    async ({ profileId, tabId, action }) => {
+    async ({ profileId, tabId, action, bringToFront }) => {
       const map = {
         attach: 'tabs.attach',
         detach: 'tabs.detach',
@@ -1031,7 +1033,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
       } as const;
       await hub.callExtension(
         map[action],
-        { tabId, userInitiated: true },
+        { tabId, userInitiated: true, bringToFront: Boolean(bringToFront) },
         { profileId, skipPauseCheck: true },
       );
       const state = await hub.getDeckState();
