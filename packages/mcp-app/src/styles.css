@@ -77,48 +77,8 @@
   --scrollbar-track: transparent;
 }
 
-/* Reflect <meta name="color-scheme"> override back into CSS color-scheme */
-:root:has(> head > meta[name='color-scheme'][content='dark']) {
-  color-scheme: dark;
-  --fb-bg: var(--fallback-bg-dark);
-  --fb-surface: var(--fallback-surface-dark);
-  --fb-surface-2: var(--fallback-surface-2-dark);
-  --fb-surface-hover: var(--fallback-surface-hover-dark);
-  --fb-border: var(--fallback-border-dark);
-  --fb-control-border: var(--fallback-control-border-dark);
-  --fb-agent-border: var(--fallback-agent-border-dark);
-  --fb-text: var(--fallback-text-dark);
-  --fb-muted: var(--fallback-muted-dark);
-  --fb-accent-fill: var(--fallback-accent-fill-dark);
-  --fb-accent-fill-hover: var(--fallback-accent-fill-hover-dark);
-  --fb-accent-text: var(--fallback-accent-text-dark);
-  --fb-danger-fill: var(--fallback-danger-fill-dark);
-  --fb-danger-fill-hover: var(--fallback-danger-fill-hover-dark);
-  --fb-danger-text: var(--fallback-danger-text-dark);
-  --fb-warn: var(--fallback-warn-dark);
-  --fb-scroll-thumb: var(--fallback-scroll-thumb-dark);
-}
-
-:root:has(> head > meta[name='color-scheme'][content='light']) {
-  color-scheme: light;
-}
-
-/* When explicitly overridden via toggle, bypass host inline --color-* tokens */
-:root:has(> head > meta[name='color-scheme'][content='dark']),
-:root:has(> head > meta[name='color-scheme'][content='light']) {
-  --bg: var(--fb-bg);
-  --surface: var(--fb-surface);
-  --surface-2: var(--fb-surface-2);
-  --border: var(--fb-border);
-  --text: var(--fb-text);
-  --muted: var(--fb-muted);
-  --accent-text: var(--fb-accent-text);
-  --danger: var(--fb-danger-text);
-  --warn: var(--fb-warn);
-}
-
 @media (prefers-color-scheme: dark) {
-  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) {
+  :root:not([data-theme='light']):not(:has(> head > meta[name='color-scheme'][content='light'])) {
     --fb-bg: var(--fallback-bg-dark);
     --fb-surface: var(--fallback-surface-dark);
     --fb-surface-2: var(--fallback-surface-2-dark);
@@ -191,6 +151,69 @@
   }
 }
 
+/* Explicit user toggle overrides MUST come after @supports(light-dark) and beat host inline color-scheme */
+:root[data-theme='light'],
+:root:has(> head > meta[name='color-scheme'][content='light']) {
+  color-scheme: light !important;
+  --fb-bg: var(--fallback-bg-light);
+  --fb-surface: var(--fallback-surface-light);
+  --fb-surface-2: var(--fallback-surface-2-light);
+  --fb-surface-hover: var(--fallback-surface-hover-light);
+  --fb-border: var(--fallback-border-light);
+  --fb-control-border: var(--fallback-control-border-light);
+  --fb-agent-border: var(--fallback-agent-border-light);
+  --fb-text: var(--fallback-text-light);
+  --fb-muted: var(--fallback-muted-light);
+  --fb-accent-fill: var(--fallback-accent-fill-light);
+  --fb-accent-fill-hover: var(--fallback-accent-fill-hover-light);
+  --fb-accent-text: var(--fallback-accent-text-light);
+  --fb-danger-fill: var(--fallback-danger-fill-light);
+  --fb-danger-fill-hover: var(--fallback-danger-fill-hover-light);
+  --fb-danger-text: var(--fallback-danger-text-light);
+  --fb-warn: var(--fallback-warn-light);
+  --fb-scroll-thumb: var(--fallback-scroll-thumb-light);
+  --bg: var(--fallback-bg-light);
+  --surface: var(--fallback-surface-light);
+  --surface-2: var(--fallback-surface-2-light);
+  --border: var(--fallback-border-light);
+  --text: var(--fallback-text-light);
+  --muted: var(--fallback-muted-light);
+  --accent-text: var(--fallback-accent-text-light);
+  --danger: var(--fallback-danger-text-light);
+  --warn: var(--fallback-warn-light);
+}
+
+:root[data-theme='dark'],
+:root:has(> head > meta[name='color-scheme'][content='dark']) {
+  color-scheme: dark !important;
+  --fb-bg: var(--fallback-bg-dark);
+  --fb-surface: var(--fallback-surface-dark);
+  --fb-surface-2: var(--fallback-surface-2-dark);
+  --fb-surface-hover: var(--fallback-surface-hover-dark);
+  --fb-border: var(--fallback-border-dark);
+  --fb-control-border: var(--fallback-control-border-dark);
+  --fb-agent-border: var(--fallback-agent-border-dark);
+  --fb-text: var(--fallback-text-dark);
+  --fb-muted: var(--fallback-muted-dark);
+  --fb-accent-fill: var(--fallback-accent-fill-dark);
+  --fb-accent-fill-hover: var(--fallback-accent-fill-hover-dark);
+  --fb-accent-text: var(--fallback-accent-text-dark);
+  --fb-danger-fill: var(--fallback-danger-fill-dark);
+  --fb-danger-fill-hover: var(--fallback-danger-fill-hover-dark);
+  --fb-danger-text: var(--fallback-danger-text-dark);
+  --fb-warn: var(--fallback-warn-dark);
+  --fb-scroll-thumb: var(--fallback-scroll-thumb-dark);
+  --bg: var(--fallback-bg-dark);
+  --surface: var(--fallback-surface-dark);
+  --surface-2: var(--fallback-surface-2-dark);
+  --border: var(--fallback-border-dark);
+  --text: var(--fallback-text-dark);
+  --muted: var(--fallback-muted-dark);
+  --accent-text: var(--fallback-accent-text-dark);
+  --danger: var(--fallback-danger-text-dark);
+  --warn: var(--fallback-warn-dark);
+}
+
 @media (forced-colors: active) {
   :root {
     --bg: Canvas;
@@ -256,20 +279,34 @@ body {
   display: inline-flex;
 }
 
+:root[data-theme='dark'] .theme-opt-to-light,
 :root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-light {
   display: inline-flex;
 }
 
+:root[data-theme='dark'] .theme-opt-to-dark,
 :root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-dark {
   display: none;
 }
 
+:root[data-theme='light'] .theme-opt-to-light,
+:root:has(> head > meta[name='color-scheme'][content='light']) .theme-opt-to-light {
+  display: none;
+}
+
+:root[data-theme='light'] .theme-opt-to-dark,
+:root:has(> head > meta[name='color-scheme'][content='light']) .theme-opt-to-dark {
+  display: inline-flex;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) .theme-opt-to-light {
+  :root:not([data-theme='light']):not(:has(> head > meta[name='color-scheme'][content='light']))
+    .theme-opt-to-light {
     display: inline-flex;
   }
 
-  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) .theme-opt-to-dark {
+  :root:not([data-theme='light']):not(:has(> head > meta[name='color-scheme'][content='light']))
+    .theme-opt-to-dark {
     display: none;
   }
 }

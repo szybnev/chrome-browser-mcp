@@ -25,6 +25,14 @@ function applyColorSchemeMeta(override: ThemeOverride): void {
   if (meta) {
     meta.content = override ?? 'light dark';
   }
+  const root = document.documentElement;
+  if (override) {
+    root.dataset.theme = override;
+    root.style.colorScheme = override;
+  } else {
+    delete root.dataset.theme;
+    root.style.removeProperty('color-scheme');
+  }
 }
 
 function writeStoredOverride(override: ThemeOverride): void {
@@ -41,6 +49,9 @@ function writeStoredOverride(override: ThemeOverride): void {
 
 export function ThemeToggle() {
   useEffect(() => {
+    const stored = readStoredOverride();
+    if (stored) applyColorSchemeMeta(stored);
+
     const onStorage = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY) return;
       const next: ThemeOverride =
@@ -52,17 +63,23 @@ export function ThemeToggle() {
   }, []);
 
   const handleToggle = () => {
-    const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
-    const metaVal = meta?.content;
+    const root = document.documentElement;
+    const dataTheme = root.dataset.theme;
+    const metaVal = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]')?.content;
     const currentOverride: ThemeOverride =
-      metaVal === 'light' || metaVal === 'dark' ? metaVal : readStoredOverride();
-    const system = getSystemScheme();
-    const rendered = currentOverride ?? system;
-    const target: 'light' | 'dark' = rendered === 'dark' ? 'light' : 'dark';
-    const nextStored: ThemeOverride = target !== system ? target : null;
+      dataTheme === 'light' || dataTheme === 'dark'
+        ? dataTheme
+        : metaVal === 'light' || metaVal === 'dark'
+          ? metaVal
+          : readStoredOverride();
+    const inlineScheme = root.style.colorScheme;
+    const effectiveCurrent: 'light' | 'dark' =
+      currentOverride ??
+      (inlineScheme === 'light' || inlineScheme === 'dark' ? inlineScheme : getSystemScheme());
+    const target: 'light' | 'dark' = effectiveCurrent === 'dark' ? 'light' : 'dark';
 
-    applyColorSchemeMeta(nextStored);
-    writeStoredOverride(nextStored);
+    applyColorSchemeMeta(target);
+    writeStoredOverride(target);
   };
 
   return (
