@@ -812,3 +812,35 @@ body {
   border-color: var(--accent-text);
   color: var(--accent-text);
 }
+
+.toast-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--accent-border, var(--accent-text));
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.toast-text {
+  min-width: 0;
+  word-break: break-all;
+}
+
+.toast-close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 600 15px/1 inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  flex: none;
+}
+
+.toast-close:hover {
+  color: var(--text);
+}

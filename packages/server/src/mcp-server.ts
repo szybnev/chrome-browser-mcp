@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
@@ -68,6 +69,28 @@ function errorResult(err: unknown) {
     isError: true as const,
     content: [{ type: 'text' as const, text: `Error: ${message}` }],
   };
+}
+
+function saveExportToDownloads(rawFilename: string, content: string): { savedPath: string; displayPath: string } {
+  const safeBase = basename(rawFilename).replace(/[^a-zA-Z0-9._-]/g, '-') || 'export.json';
+  const ext = extname(safeBase);
+  const stem = ext ? safeBase.slice(0, -ext.length) : safeBase;
+
+  const home = homedir();
+  const downloadsDir = join(home, 'Downloads');
+  const targetDir = existsSync(downloadsDir) ? downloadsDir : join(home, '.chrome-browser-mcp', 'exports');
+  mkdirSync(targetDir, { recursive: true, mode: 0o700 });
+
+  let candidate = join(targetDir, safeBase);
+  let counter = 1;
+  while (existsSync(candidate) && counter < 1000) {
+    candidate = join(targetDir, `${stem} (${counter})${ext}`);
+    counter += 1;
+  }
+
+  writeFileSync(candidate, content, { encoding: 'utf8', mode: 0o600 });
+  const displayPath = candidate.startsWith(home) ? `~${candidate.slice(home.length)}` : candidate;
+  return { savedPath: candidate, displayPath };
 }
 
 export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
@@ -1429,9 +1452,12 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
       const wf = workflows.find((w) => w.id === workflowId);
       if (!wf) return errorResult(`Workflow "${workflowId}" not found`);
       const code = exportWorkflowToPlaywright(wf);
+      const slug = wf.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || wf.id;
+      const filename = `${slug}.spec.ts`;
+      const { savedPath, displayPath } = saveExportToDownloads(filename, code);
       return {
-        content: [{ type: 'text', text: code }],
-        structuredContent: { filename: `${wf.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || wf.id}.spec.ts`, code },
+        content: [{ type: 'text', text: `Saved to ${displayPath}` }],
+        structuredContent: { filename, savedPath, displayPath, code },
       };
     },
   );
@@ -1440,17 +1466,22 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'deck_export_audit',
     {
       title: 'Deck: Export Audit Report',
-      inputSchema: z.object({ format: z.enum(['json', 'html']).default('html') }),
+      inputSchema: z.object({ format: z.enum(['json', 'html']).default('json') }),
       _meta: APP_ONLY_META,
     },
     async ({ format }) => {
       const res = await hub.exportAudit(format);
+      const filename = `chrome-browser-mcp-timeline.${format}`;
+      const { savedPath, displayPath } = saveExportToDownloads(filename, res.content);
       return {
-        content: [{ type: 'text', text: `Exported ${res.eventCount} event(s)` }],
+        content: [{ type: 'text', text: `Exported ${res.eventCount} event(s) to ${displayPath}` }],
         structuredContent: {
-          filename: `chrome-browser-mcp-audit.${format}`,
+          filename,
+          savedPath,
+          displayPath,
           contentType: res.contentType,
           content: res.content,
+          eventCount: res.eventCount,
         },
       };
     },

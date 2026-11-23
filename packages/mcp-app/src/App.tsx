@@ -39,6 +39,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState<DeckTab>('overview');
   const [tabQuery, setTabQuery] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
+  const [exportedKey, setExportedKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [localePref, setLocalePref] = useState<LocalePreference>(() => {
     try {
@@ -50,7 +51,22 @@ export function App() {
   });
   const [localeDirty, setLocaleDirty] = useState(false);
   const locale = resolveLocale(localePref);
-  const tr = (key: I18nKey) => translate(locale, key);
+  const tr = (key: I18nKey, vars?: Record<string, string | number>) => translate(locale, key, vars);
+
+  const showNotice = useCallback((msg: string) => {
+    setNotice(msg);
+  }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(id);
+  }, [notice]);
+
+  const flashExported = useCallback((key: string) => {
+    setExportedKey(key);
+    setTimeout(() => setExportedKey((cur) => (cur === key ? null : cur)), 2500);
+  }, []);
 
   const { app, isConnected, error } = useApp({
     appInfo: { name: 'Browser Control Deck', version: APP_VERSION },
@@ -347,6 +363,20 @@ export function App() {
         ))}
       </div>
 
+      {notice && (
+        <div className="toast-banner" role="status" aria-live="polite">
+          <span className="toast-text">{notice}</span>
+          <button
+            type="button"
+            className="toast-close"
+            aria-label={tr('btn.dismiss')}
+            onClick={() => setNotice(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <main className="scroller deck-main">
         {/* OVERVIEW */}
         <section
@@ -355,8 +385,6 @@ export function App() {
           hidden={activeTab !== 'overview'}
         >
           <div className="panel-inner panel-fill">
-            {notice && <div className="card">{notice}</div>}
-
             {deckState.paused && (
               <div className="card danger">
                 <strong>{tr('status.paused')}</strong>
@@ -485,49 +513,46 @@ export function App() {
                 <div className="row">
                   <button
                     type="button"
-                    className="btn small"
+                    className={`btn small ${exportedKey === 'audit-json' ? 'primary' : ''}`}
+                    disabled={busy}
                     onClick={async () => {
                       if (!app) return;
-                      const res = await app.callServerTool({
-                        name: 'deck_export_audit',
-                        arguments: { format: 'json' },
-                      });
-                      const payload = res.structuredContent as
-                        | { filename?: string; content?: string; contentType?: string }
-                        | undefined;
-                      if (payload?.content) {
-                        downloadText(
-                          payload.filename || 'chrome-browser-mcp-audit.json',
-                          payload.content,
-                          payload.contentType || 'application/json',
-                        );
+                      try {
+                        const res = await app.callServerTool({
+                          name: 'deck_export_audit',
+                          arguments: { format: 'json' },
+                        });
+                        const payload = res.structuredContent as
+                          | {
+                              filename?: string;
+                              savedPath?: string;
+                              displayPath?: string;
+                              content?: string;
+                              contentType?: string;
+                            }
+                          | undefined;
+                        if (payload?.displayPath || payload?.savedPath) {
+                          flashExported('audit-json');
+                          showNotice(
+                            tr('status.savedTo', {
+                              path: payload.displayPath || payload.savedPath || '',
+                            }),
+                          );
+                        } else if (payload?.content) {
+                          downloadText(
+                            payload.filename || 'chrome-browser-mcp-timeline.json',
+                            payload.content,
+                            payload.contentType || 'application/json',
+                          );
+                          flashExported('audit-json');
+                          showNotice(tr('status.saved'));
+                        }
+                      } catch (err) {
+                        showNotice(err instanceof Error ? err.message : String(err));
                       }
                     }}
                   >
-                    {tr('btn.exportJson')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn small"
-                    onClick={async () => {
-                      if (!app) return;
-                      const res = await app.callServerTool({
-                        name: 'deck_export_audit',
-                        arguments: { format: 'html' },
-                      });
-                      const payload = res.structuredContent as
-                        | { filename?: string; content?: string; contentType?: string }
-                        | undefined;
-                      if (payload?.content) {
-                        downloadText(
-                          payload.filename || 'chrome-browser-mcp-audit.html',
-                          payload.content,
-                          payload.contentType || 'text/html',
-                        );
-                      }
-                    }}
-                  >
-                    {tr('btn.exportHtml')}
+                    {exportedKey === 'audit-json' ? `✓ ${tr('status.saved')}` : tr('btn.exportJson')}
                   </button>
                 </div>
               </div>
@@ -686,26 +711,46 @@ export function App() {
                       )}
                       <button
                         type="button"
-                        className="btn small"
+                        className={`btn small ${exportedKey === `wf:${wf.id}` ? 'primary' : ''}`}
                         onClick={async () => {
                           if (!app) return;
-                          const res = await app.callServerTool({
-                            name: 'deck_export_playwright',
-                            arguments: { workflowId: wf.id },
-                          });
-                          const payload = res.structuredContent as
-                            | { filename?: string; code?: string }
-                            | undefined;
-                          if (payload?.code) {
-                            downloadText(
-                              payload.filename || `${wf.id}.spec.ts`,
-                              payload.code,
-                              'text/typescript;charset=utf-8',
-                            );
+                          try {
+                            const res = await app.callServerTool({
+                              name: 'deck_export_playwright',
+                              arguments: { workflowId: wf.id },
+                            });
+                            const payload = res.structuredContent as
+                              | {
+                                  filename?: string;
+                                  savedPath?: string;
+                                  displayPath?: string;
+                                  code?: string;
+                                }
+                              | undefined;
+                            if (payload?.displayPath || payload?.savedPath) {
+                              flashExported(`wf:${wf.id}`);
+                              showNotice(
+                                tr('status.savedTo', {
+                                  path: payload.displayPath || payload.savedPath || '',
+                                }),
+                              );
+                            } else if (payload?.code) {
+                              downloadText(
+                                payload.filename || `${wf.id}.spec.ts`,
+                                payload.code,
+                                'text/typescript;charset=utf-8',
+                              );
+                              flashExported(`wf:${wf.id}`);
+                              showNotice(tr('status.saved'));
+                            }
+                          } catch (err) {
+                            showNotice(err instanceof Error ? err.message : String(err));
                           }
                         }}
                       >
-                        {tr('btn.exportPlaywright')}
+                        {exportedKey === `wf:${wf.id}`
+                          ? `✓ ${tr('status.saved')}`
+                          : tr('btn.exportPlaywright')}
                       </button>
                       <button
                         type="button"

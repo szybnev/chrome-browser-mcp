@@ -77,6 +77,7 @@ export function App() {
   const [pinError, setPinError] = useState<string | null>(null);
   const [connError, setConnError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [timelineExported, setTimelineExported] = useState(false);
   const [tourStep, setTourStep] = useState<number | null>(null);
   const [hasDownloadsPerm, setHasDownloadsPerm] = useState(false);
   const [hasNativePerm, setHasNativePerm] = useState(false);
@@ -452,29 +453,15 @@ export function App() {
     downloadTextFile(`${slug}.spec.ts`, code, 'text/typescript;charset=utf-8');
   };
 
-  const handleExportTimeline = (format: 'json' | 'html') => {
+  const handleExportTimeline = () => {
     const exportedAt = new Date().toISOString();
-    if (format === 'json') {
-      downloadTextFile(
-        `chrome-browser-mcp-timeline.json`,
-        JSON.stringify({ exportedAt, profile: settings.profileLabel, events: runtime.recentActivity }, null, 2),
-        'application/json;charset=utf-8',
-      );
-      return;
-    }
-    const esc = (s: string) =>
-      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const items = runtime.recentActivity
-      .map(
-        (ev) =>
-          `<div style="border:1px solid #2a2f3a;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
-            <strong>${esc(ev.tool)}</strong> <span>[${esc(ev.status)}]</span>
-            <div style="color:#9aa3b2;font-size:12px;">${esc(ev.summary)}${ev.durationMs !== undefined ? ` · ${ev.durationMs}ms` : ''}</div>
-          </div>`,
-      )
-      .join('\n');
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Chrome Browser MCP Audit</title></head><body style="background:#111317;color:#e6e9ef;font:14px/1.5 system-ui,sans-serif;padding:24px;"><h2>Chrome Browser MCP — Session Audit (${esc(exportedAt)})</h2>${items || '<p>No events recorded.</p>'}</body></html>`;
-    downloadTextFile('chrome-browser-mcp-timeline.html', html, 'text/html;charset=utf-8');
+    downloadTextFile(
+      'chrome-browser-mcp-timeline.json',
+      JSON.stringify({ exportedAt, profile: settings.profileLabel, events: runtime.recentActivity }, null, 2),
+      'application/json;charset=utf-8',
+    );
+    setTimelineExported(true);
+    setTimeout(() => setTimelineExported(false), 2000);
   };
 
   const handleTourStepChange = (nextIdx: number) => {
@@ -739,17 +726,10 @@ export function App() {
                 <div className="row">
                   <button
                     type="button"
-                    className="btn small"
-                    onClick={() => handleExportTimeline('json')}
+                    className={`btn small ${timelineExported ? 'primary' : ''}`}
+                    onClick={handleExportTimeline}
                   >
-                    {t('btn.exportJson')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn small"
-                    onClick={() => handleExportTimeline('html')}
-                  >
-                    {t('btn.exportHtml')}
+                    {timelineExported ? `✓ ${t('status.saved')}` : t('btn.exportJson')}
                   </button>
                 </div>
               </div>
