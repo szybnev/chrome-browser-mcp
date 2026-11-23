@@ -1,9 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp, useHostStyles } from '@modelcontextprotocol/ext-apps/react';
-import { APP_VERSION, type DeckState, type RecordedWorkflow, type TabInfo } from '@chrome-browser-mcp/protocol';
+import {
+  APP_VERSION,
+  READ_ONLY_DOMAIN_PRESETS,
+  resolveLocale,
+  translate,
+  type DeckState,
+  type I18nKey,
+  type LocalePreference,
+  type RecordedWorkflow,
+  type TabInfo,
+} from '@chrome-browser-mcp/protocol';
 import { VirtualList } from './VirtualList.js';
 import { InfoTip } from './InfoTip.js';
 import { ThemeToggle } from './ThemeToggle.js';
+
+function downloadText(filename: string, content: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 type DeckTab = 'overview' | 'timeline' | 'devtools' | 'workflows' | 'security';
 
@@ -18,6 +40,26 @@ export function App() {
   const [tabQuery, setTabQuery] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [localePref, setLocalePref] = useState<LocalePreference>(() => {
+    try {
+      const saved = localStorage.getItem('cbmcp-deck-locale');
+      if (saved === 'en' || saved === 'ru' || saved === 'zh-CN' || saved === 'auto') return saved;
+    } catch {
+      // ignore
+    }
+    return 'auto';
+  });
+  const locale = resolveLocale(localePref);
+  const tr = (key: I18nKey) => translate(locale, key);
+
+  const handleLocaleChange = (next: LocalePreference) => {
+    setLocalePref(next);
+    try {
+      localStorage.setItem('cbmcp-deck-locale', next);
+    } catch {
+      // ignore
+    }
+  };
 
   const { app, isConnected, error } = useApp({
     appInfo: { name: 'Browser Control Deck', version: APP_VERSION },
@@ -226,7 +268,21 @@ export function App() {
               </div>
             </div>
           </div>
-          <ThemeToggle />
+            <div className="row" style={{ gap: 6 }}>
+              <select
+                className="select"
+                aria-label={tr('setting.language')}
+                style={{ width: 'auto', minWidth: 64, padding: '2px 6px', fontSize: 11 }}
+                value={localePref}
+                onChange={(e) => handleLocaleChange(e.target.value as LocalePreference)}
+              >
+                <option value="auto">Auto</option>
+                <option value="en">EN</option>
+                <option value="ru">RU</option>
+                <option value="zh-CN">中文</option>
+              </select>
+              <ThemeToggle />
+            </div>
         </div>
 
         <div className="row">
@@ -417,8 +473,57 @@ export function App() {
           <div className="panel-inner panel-fill">
             <div className={`card ${deckState.recentActivity.length > 0 ? 'fill-card' : ''}`}>
               <div className="row-between">
-                <strong>Live Action Timeline ({deckState.recentActivity.length})</strong>
-                <span className="muted">Most recent first</span>
+                <strong>
+                  {tr('tab.timeline')} ({deckState.recentActivity.length})
+                </strong>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={async () => {
+                      if (!app) return;
+                      const res = await app.callServerTool({
+                        name: 'deck_export_audit',
+                        arguments: { format: 'json' },
+                      });
+                      const payload = res.structuredContent as
+                        | { filename?: string; content?: string; contentType?: string }
+                        | undefined;
+                      if (payload?.content) {
+                        downloadText(
+                          payload.filename || 'chrome-browser-mcp-audit.json',
+                          payload.content,
+                          payload.contentType || 'application/json',
+                        );
+                      }
+                    }}
+                  >
+                    {tr('btn.exportJson')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={async () => {
+                      if (!app) return;
+                      const res = await app.callServerTool({
+                        name: 'deck_export_audit',
+                        arguments: { format: 'html' },
+                      });
+                      const payload = res.structuredContent as
+                        | { filename?: string; content?: string; contentType?: string }
+                        | undefined;
+                      if (payload?.content) {
+                        downloadText(
+                          payload.filename || 'chrome-browser-mcp-audit.html',
+                          payload.content,
+                          payload.contentType || 'text/html',
+                        );
+                      }
+                    }}
+                  >
+                    {tr('btn.exportHtml')}
+                  </button>
+                </div>
               </div>
               {deckState.recentActivity.length === 0 ? (
                 <div className="muted">Waiting for agent browser actions…</div>
@@ -579,11 +684,34 @@ export function App() {
                       <button
                         type="button"
                         className="btn small"
+                        onClick={async () => {
+                          if (!app) return;
+                          const res = await app.callServerTool({
+                            name: 'deck_export_playwright',
+                            arguments: { workflowId: wf.id },
+                          });
+                          const payload = res.structuredContent as
+                            | { filename?: string; code?: string }
+                            | undefined;
+                          if (payload?.code) {
+                            downloadText(
+                              payload.filename || `${wf.id}.spec.ts`,
+                              payload.code,
+                              'text/typescript;charset=utf-8',
+                            );
+                          }
+                        }}
+                      >
+                        {tr('btn.exportPlaywright')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn small"
                         onClick={() =>
                           void callDeckTool('deck_delete_workflow', { workflowId: wf.id })
                         }
                       >
-                        Delete
+                        {tr('btn.delete')}
                       </button>
                     </div>
                   </div>
@@ -704,18 +832,105 @@ export function App() {
                 />
               </div>
 
-              <div className="security-row" style={{ alignItems: 'flex-start' }}>
-                <div className="muted">
-                  Blocked domains ({deckState.policy.blockedDomains.length}):{' '}
-                  {deckState.policy.blockedDomains.slice(0, 6).join(', ')}
-                  {deckState.policy.blockedDomains.length > 6 ? '…' : ''}
-                </div>
-                <InfoTip
-                  label="Blocked domains"
-                  text="Hard-blocked URLs and wildcard patterns (e.g. chrome://*, *.paypal.com, banking & password managers). Agents cannot navigate, read, or act on these domains even if “Allow all tabs” is enabled. Edit the full list in Chrome Side Panel → Security."
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sec-upload">{tr('setting.approvalUploads')}</label>
+                </span>
+                <input
+                  id="sec-upload"
+                  type="checkbox"
+                  checked={deckState.policy.requireApprovalForUploads}
+                  onChange={(e) =>
+                    void callDeckTool('deck_update_policy', {
+                      requireApprovalForUploads: e.target.checked,
+                    })
+                  }
                 />
               </div>
             </div>
+
+            {/* COLLAPSIBLE ADVANCED SETTINGS */}
+            <details className="advanced-box">
+              <summary>{tr('section.advancedSettings')}</summary>
+              <div className="advanced-body">
+                <div>
+                  <strong>{tr('setting.readOnlyDomains')}</strong>
+                  <div className="muted" style={{ marginBottom: 6 }}>
+                    {tr('setting.readOnlyHint')}
+                  </div>
+                  <div className="preset-chips">
+                    {READ_ONLY_DOMAIN_PRESETS.map((domain) => {
+                      const active = deckState.policy.readOnlyDomains.includes(domain);
+                      return (
+                        <button
+                          key={domain}
+                          type="button"
+                          className={`preset-chip ${active ? 'active' : ''}`}
+                          onClick={() => {
+                            const cur = deckState.policy.readOnlyDomains;
+                            const next = active
+                              ? cur.filter((d) => d !== domain)
+                              : [...cur, domain];
+                            void callDeckTool('deck_update_policy', { readOnlyDomains: next });
+                          }}
+                        >
+                          {active ? '✓ ' : '+ '}
+                          {domain}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="security-row">
+                  <label htmlFor="sec-dialog">{tr('setting.dialogPolicy')}</label>
+                  <select
+                    id="sec-dialog"
+                    className="select"
+                    style={{ width: 'auto' }}
+                    value={deckState.policy.dialogPolicy}
+                    onChange={(e) =>
+                      void callDeckTool('deck_update_policy', {
+                        dialogPolicy: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="ask-agent">ask-agent</option>
+                    <option value="auto-dismiss">auto-dismiss</option>
+                    <option value="approval">approval</option>
+                  </select>
+                </div>
+
+                <div className="security-row">
+                  <span className="security-label-group">
+                    <label htmlFor="sec-cdp-proxy">{tr('setting.cdpProxy')}</label>
+                    <InfoTip label={tr('setting.cdpProxy')} text={tr('setting.cdpProxyDesc')} />
+                  </span>
+                  <input
+                    id="sec-cdp-proxy"
+                    type="checkbox"
+                    checked={deckState.policy.cdpProxyEnabled}
+                    onChange={(e) =>
+                      void callDeckTool('deck_update_policy', {
+                        cdpProxyEnabled: e.target.checked,
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="security-row" style={{ alignItems: 'flex-start' }}>
+                  <div className="muted">
+                    Blocked domains ({deckState.policy.blockedDomains.length}):{' '}
+                    {deckState.policy.blockedDomains.slice(0, 6).join(', ')}
+                    {deckState.policy.blockedDomains.length > 6 ? '…' : ''}
+                  </div>
+                  <InfoTip
+                    label="Blocked domains"
+                    text="Hard-blocked URLs and wildcard patterns (e.g. chrome://*, *.paypal.com, banking & password managers). Edit the full list in Chrome Side Panel → Security → Advanced Settings."
+                  />
+                </div>
+              </div>
+            </details>
           </div>
         </section>
       </main>

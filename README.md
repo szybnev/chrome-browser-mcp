@@ -122,12 +122,12 @@ pnpm build
 2. Click **Load unpacked** and select `packages/extension/dist`.
 3. Click the **Chrome Browser MCP** icon in Chrome's toolbar to open the **Control HUD** Side Panel.
 
-### 3. Pair with your local Broker
-Generate or view your local loopback pairing token:
+### 3. Pair with your local Broker (1-Click PIN or Token)
+Generate a 2-minute 6-digit pairing PIN (recommended for the post-install Welcome Wizard & Side Panel):
 ```bash
-node packages/server/dist/cli.js token
+node packages/server/dist/cli.js pair
 ```
-Open the **Pair** tab in the Chrome Side Panel, paste the token, give the profile a label (e.g. `work`), and click **Save & Connect**.
+Enter the 6-digit PIN in the **Welcome Tour** or **Pair** tab of the Chrome Side Panel (or expand **Advanced Connection** to paste a static token from `cli.js token`).
 
 ### 4. Connect your AI Agent
 
@@ -171,17 +171,20 @@ Connect any Streamable HTTP MCP client to `http://127.0.0.1:43179/mcp`.
 | `browser_profiles` | List connected Chrome/Arc/Brave/Edge profiles and switch the active default profile |
 | `browser_tabs` | List, open, focus, close, attach, or detach tabs in the **AI Agent** tab group |
 | `browser_navigate` | Go to URL, back/forward, reload, or wait for selector/text |
-| `browser_snapshot` | Compact a11y/DOM snapshot with short refs (`e1`, `e2`…), incremental **diff** mode, and **Prompt-Injection Shield** |
-| `browser_read` | Clean readable Markdown extraction with hidden-DOM filtering |
-| `browser_screenshot` | Compressed WebP/JPEG/PNG screenshot with optional **Set-of-Mark** ref badges |
-| `browser_act` | Execute 1 action or a **batch sequence** (`click`, `fill`, `type`, `press`, `select`, `check`, `scroll`, `hover`, `drag`, `wait`) in one call with post-action diff snapshot |
+| `browser_snapshot` | Compact a11y/DOM snapshot across top frame, cross-origin `iframe`s (`f<id>:e1`), and Shadow DOM, with incremental **diff** mode and **Prompt-Injection Shield** |
+| `browser_read` | Clean readable Markdown, structured HTML tables (`tables_csv` / `tables_json`), or PDF text extraction with pagination and hidden-DOM filtering |
+| `browser_screenshot` | Compressed WebP/JPEG/PNG screenshot with optional **Set-of-Mark** ref badges and `maxWidth` resizing |
+| `browser_act` | Execute 1 action or a **batch sequence** (`click`, `fill`, `type`, `press`, `select`, `check`, `scroll`, `hover`, `drag`, `upload`, `wait`) with **Zero-Secret `secretRef`**, optional in-page **Visual Agent Cursor**, and post-action diff snapshot |
+| `browser_dialog` | Inspect, accept, or dismiss native JS `alert` / `confirm` / `prompt` / `beforeunload` dialogs without hanging |
+| `browser_downloads` | List recent downloads or wait for completion (opt-in `downloads` permission) |
+| `browser_emulate` | Emulate mobile/desktop viewports (`iphone-15`, `pixel-9`, `ipad`, `reset`), `light`/`dark` scheme, network throttling (`slow-3g`/`offline`), or geolocation |
 | `browser_console` | Read captured browser console logs, warnings, and uncaught exceptions |
-| `browser_network` | Inspect XHR/fetch requests & failures (sensitive headers redacted) |
-| `browser_eval` | Evaluate JavaScript in page context via CDP (approval-gated on new origins) |
-| `browser_audit` | Quick accessibility, Core Web Vitals (LCP/CLS), and storage key audit |
+| `browser_network` | Inspect XHR/fetch requests & failures, plus redacted response body inspection (`includeBodyForRequestId`) |
+| `browser_eval` | Evaluate JavaScript in page context via CDP (approval-gated on new origins & read-only domains) |
+| `browser_audit` / `browser_audit_export` | Quick a11y/CWV/storage audit and self-contained **JSON / HTML Session Replay** audit export |
 | `browser_webmcp_list` / `browser_webmcp_call` | Discover and invoke native client-side WebMCP tools (`navigator.modelContext`) |
-| `browser_workflows` | List, inspect, and replay workflows recorded by hand in the Chrome Side Panel |
-| `browser_deck` | Open or refresh the **Browser Control Deck** interactive MCP App |
+| `browser_workflows` | List, inspect, replay with `{{variables}}`, or export recorded flows to **Playwright `.spec.ts`** |
+| `browser_deck` | Open or refresh the **Browser Control Deck** interactive MCP App (EN / RU / 中文, Dark / Light) |
 
 ---
 
@@ -227,9 +230,9 @@ pnpm pack:cws        # Package clean Chrome Web Store ZIP in release/
 ---
 
 ## Roadmap
-- Optional local `/json/version` CDP proxy endpoint for external Playwright/Puppeteer attachment
-- Optional Chrome Native Messaging Host installer for locked-down environments
-- Export Workflow Recorder sessions as standalone Playwright tests
+- Firefox & Safari WebExtension parity
+- Multi-step visual diff assertions for exported Playwright tests
+- Team-shareable signed security policy bundles
 
 ## License
 MIT — see [LICENSE](./LICENSE).

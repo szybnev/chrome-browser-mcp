@@ -122,12 +122,12 @@ pnpm build
 2. 点击 **加载已解压的扩展程序 (Load unpacked)**，选择 `packages/extension/dist`。
 3. 点击浏览器工具栏中的 **Chrome Browser MCP** 图标打开 **Control HUD** 侧边栏。
 
-### 3. 与本地 Broker 配对
-查看或生成本地回环配对令牌：
+### 3. 与本地 Broker 配对（6 位 PIN 码一键配对或手动令牌）
+生成有效期 2 分钟的 6 位一次性配对 PIN 码（推荐用于首次安装引导向导和侧边栏）：
 ```bash
-node packages/server/dist/cli.js token
+node packages/server/dist/cli.js pair
 ```
-在 Chrome 侧边栏切换到 **Pair** 标签页，粘贴令牌，设置配置文件名称（例如 `work`），点击 **Save & Connect**。
+在 **Welcome Tour** 或 Chrome 侧边栏 **配对 (Pair)** 标签页中输入 6 位 PIN 码（也可展开 **高级连接选项** 手动粘贴 `cli.js token` 的静态令牌）。
 
 ### 4. 连接你的 AI Agent
 
@@ -171,17 +171,20 @@ node packages/server/dist/cli.js daemon
 | `browser_profiles` | 列出已连接的 Chrome/Arc/Brave/Edge 配置文件并切换默认配置 |
 | `browser_tabs` | 列出、打开、聚焦、关闭，或将标签页加入/移出 **AI Agent** 标签组 |
 | `browser_navigate` | 打开 URL、前进/后退、刷新，或等待选择器/文本出现 |
-| `browser_snapshot` | 生成带短引用（`e1`, `e2`…）的精简无障碍/DOM 快照，支持增量 **diff** 模式与 **Prompt-Injection Shield** |
-| `browser_read` | 过滤隐藏 DOM 并提取干净可读的 Markdown 内容 |
-| `browser_screenshot` | 捕获压缩 WebP/JPEG/PNG 截图，可选叠加 **Set-of-Mark** 元素编号标签 |
-| `browser_act` | 单次调用执行单个操作或**批量操作序列**（`click`/`fill`/`type`/`press`/`select`/`check`/`scroll`/`hover`/`drag`/`wait`）并返回最新 diff 快照 |
+| `browser_snapshot` | 跨主框架、跨域 `iframe`（`f<id>:e1`）与 Shadow DOM 的精简无障碍/DOM 快照，支持增量 **diff** 与 **Prompt-Injection Shield** |
+| `browser_read` | 过滤隐藏 DOM，提取干净可读的 Markdown、结构化 HTML 表格（`tables_csv` / `tables_json`）或 PDF 文本，支持分页 |
+| `browser_screenshot` | 捕获压缩 WebP/JPEG/PNG 截图，可选叠加 **Set-of-Mark** 元素编号与 `maxWidth` 缩放 |
+| `browser_act` | 单次调用执行单个或**批量操作**（`click`/`fill`/`type`/`press`/`select`/`check`/`scroll`/`hover`/`drag`/`upload`/`wait`），支持 **Zero-Secret `secretRef`** 与可选页面可视化光标 |
+| `browser_dialog` | 非阻塞查看、批准或取消原生 JS `alert` / `confirm` / `prompt` / `beforeunload` 弹窗 |
+| `browser_downloads` | 列出最近下载或等待下载完成（需按需授予可选 `downloads` 权限） |
+| `browser_emulate` | 模拟移动端/桌面视口（`iphone-15` / `pixel-9` / `ipad` / `reset`）、明暗主题、弱网（`slow-3g` / `offline`）与地理位置 |
 | `browser_console` | 获取浏览器控制台日志、警告及未捕获异常 |
-| `browser_network` | 检查 XHR/Fetch 网络请求与失败详情（自动脱敏敏感请求头） |
-| `browser_eval` | 通过 CDP 在页面上下文执行 JavaScript（新域名默认触发人工审批） |
-| `browser_audit` | 快速执行无障碍（a11y）、Core Web Vitals（LCP/CLS）及存储键审计 |
+| `browser_network` | 检查 XHR/Fetch 网络请求与失败详情，并支持脱敏读取响应正文（`includeBodyForRequestId`） |
+| `browser_eval` | 通过 CDP 在页面上下文执行 JavaScript（新域名与只读域名默认触发人工审批） |
+| `browser_audit` / `browser_audit_export` | 执行 a11y/CWV/存储审计，并导出自包含 **JSON / HTML 会话回放**审计报告 |
 | `browser_webmcp_list` / `browser_webmcp_call` | 发现并调用页面暴露的客户端 WebMCP 工具（`navigator.modelContext`） |
-| `browser_workflows` | 列出、查看并回放在侧边栏手动录制的工作流 |
-| `browser_deck` | 打开或刷新交互式 **Browser Control Deck** MCP App |
+| `browser_workflows` | 列出、查看、使用 `{{variables}}` 动态回放或导出为 **Playwright `.spec.ts`** 测试脚本 |
+| `browser_deck` | 打开或刷新交互式 **Browser Control Deck** MCP App（支持 EN / RU / 中文与深浅主题） |
 
 ---
 

@@ -64,6 +64,8 @@ English
 | `scripting` | permissions | Required to inspect page structure, extract readable text, render the visual highlight border on active agent tabs, and record user-initiated workflows on tabs the user shares. |
 | `debugger` | permissions | Required on demand for tabs the user shares with the assistant in order to send reliable clicks and keystrokes, capture screenshots, read accessibility trees across iframes, and inspect console and network errors for debugging. Automatically detaches after idle timeout. |
 | `contextMenus` | permissions | Required to provide a right-click menu action to attach or detach the current tab to the AI Agent group with immediate feedback. |
+| `downloads` | optional_permissions | Requested only if the user opts in under Security → Advanced Settings to let local assistants list or wait for completed browser downloads (`browser_downloads`). |
+| `nativeMessaging` | optional_permissions | Requested only if the user opts in under Security → Advanced Settings to connect via a locally installed Chrome Native Messaging Host instead of loopback WebSocket. |
 | `<all_urls>` | host_permissions | Required because users can choose to attach any website they are developing or automating into the AI Agent tab group. Sensitive domains are blocked by default via the built-in domain blocklist. |
 
 ## Privacy & Data Use

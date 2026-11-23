@@ -122,12 +122,12 @@ pnpm build
 2. Нажмите **Загрузить распакованное расширение (Load unpacked)** и выберите `packages/extension/dist`.
 3. Кликните по иконке **Chrome Browser MCP** на панели браузера, чтобы открыть **Control HUD** в боковой панели.
 
-### 3. Подключение к локальному брокеру
-Получите локальный токен спаривания:
+### 3. Подключение к локальному брокеру (PIN в 1 клик или токен)
+Сгенерируйте одноразовый 6-значный PIN на 2 минуты (используется в стартовом мастере настройки и вкладке Pair):
 ```bash
-node packages/server/dist/cli.js token
+node packages/server/dist/cli.js pair
 ```
-Откройте вкладку **Pair** в Chrome Side Panel, вставьте токен, задайте метку профиля (например, `work`) и нажмите **Save & Connect**.
+Введите 6-значный PIN в **Welcome Tour** или вкладке **Связь (Pair)** боковой панели Chrome (либо раскройте **Расширенное подключение**, чтобы вставить статический токен из `cli.js token`).
 
 ### 4. Подключение AI-агента
 
@@ -171,17 +171,20 @@ node packages/server/dist/cli.js daemon
 | `browser_profiles` | Список подключённых браузеров/профилей (Chrome/Arc/Brave/Edge) и выбор профиля по умолчанию |
 | `browser_tabs` | Список, открытие, фокус, закрытие, подключение/отключение вкладок группы **AI Agent** |
 | `browser_navigate` | Переход по URL, назад/вперёд, обновление, ожидание селектора или текста |
-| `browser_snapshot` | Компактный a11y/DOM-снапшот с короткими `ref` (`e1`, `e2`…), режимом **diff** и **Prompt-Injection Shield** |
-| `browser_read` | Извлечение чистого Markdown со страницы с фильтрацией скрытого DOM |
-| `browser_screenshot` | Сжатый WebP/JPEG/PNG скриншот с опциональной разметкой **Set-of-Mark** |
-| `browser_act` | Выполнение одного действия или **batch-цепочки** (`click`, `fill`, `type`, `press`, `select`, `check`, `scroll`, `hover`, `drag`, `wait`) за 1 вызов с авто-диффом |
+| `browser_snapshot` | Компактный a11y/DOM-снапшот по основному фрейму, cross-origin `iframe` (`f<id>:e1`) и Shadow DOM, режим **diff** и **Prompt-Injection Shield** |
+| `browser_read` | Извлечение чистого Markdown, структурированных HTML-таблиц (`tables_csv` / `tables_json`) или текста PDF с пагинацией и фильтрацией скрытого DOM |
+| `browser_screenshot` | Сжатый WebP/JPEG/PNG скриншот с опциональной разметкой **Set-of-Mark** и параметром `maxWidth` |
+| `browser_act` | Выполнение одного действия или **batch-цепочки** (`click`, `fill`, `type`, `press`, `select`, `check`, `scroll`, `hover`, `drag`, `upload`, `wait`) с **Zero-Secret `secretRef`**, опциональным визуальным курсором и авто-диффом |
+| `browser_dialog` | Проверка, подтверждение или отклонение нативных JS-диалогов `alert` / `confirm` / `prompt` / `beforeunload` без зависания вкладки |
+| `browser_downloads` | Список последних загрузок или ожидание завершения скачивания (опциональное право `downloads`) |
+| `browser_emulate` | Эмуляция мобильных/десктопных экранов (`iphone-15`, `pixel-9`, `ipad`, `reset`), темы `light`/`dark`, сети (`slow-3g`/`offline`) и геолокации |
 | `browser_console` | Чтение логов консоли, предупреждений и необработанных исключений |
-| `browser_network` | Инспекция XHR/Fetch-запросов и сетевых ошибок (секретные заголовки скрываются) |
-| `browser_eval` | Выполнение JS в контексте страницы через CDP (с подтверждением на новых доменах) |
-| `browser_audit` | Быстрый аудит доступности (a11y), Core Web Vitals (LCP/CLS) и ключей storage |
+| `browser_network` | Инспекция XHR/Fetch-запросов и ошибок, а также чтение тела ответа с редакцией секретов (`includeBodyForRequestId`) |
+| `browser_eval` | Выполнение JS в контексте страницы через CDP (с подтверждением на новых и Read-Only доменах) |
+| `browser_audit` / `browser_audit_export` | Аудит a11y/CWV/storage и экспорт самодостаточного **JSON / HTML Session Replay** отчёта |
 | `browser_webmcp_list` / `browser_webmcp_call` | Обнаружение и вызов клиентских WebMCP-инструментов (`navigator.modelContext`) |
-| `browser_workflows` | Просмотр и воспроизведение сценариев, записанных руками в Side Panel |
-| `browser_deck` | Открытие или обновление интерактивного MCP App **Browser Control Deck** |
+| `browser_workflows` | Просмотр, параметризованный запуск (`{{variables}}`) и экспорт записанных сценариев в **Playwright `.spec.ts`** |
+| `browser_deck` | Открытие или обновление интерактивного MCP App **Browser Control Deck** (EN / RU / 中文, Dark / Light) |
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "name": "chrome-browser-mcp-monorepo",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Next-gen Chrome Extension & MCP Server for AI browser use — real-session control, a11y/DOM/CDP inspection, and MCP Apps UI.",
   "license": "MIT",
   "packageManager": "pnpm@11.24.0",

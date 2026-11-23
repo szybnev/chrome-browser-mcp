@@ -737,3 +737,68 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* v2.0 Progressive Disclosure & Presets */
+.advanced-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.advanced-box > summary {
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.advanced-box > summary::after {
+  content: '▸';
+  font-size: 11px;
+  transition: transform 140ms ease;
+}
+
+.advanced-box[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.advanced-box > summary:hover {
+  color: var(--text);
+}
+
+.advanced-body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preset-chip {
+  appearance: none;
+  border: 1px solid var(--control-border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font: 500 11px/1.3 inherit;
+  cursor: pointer;
+}
+
+.preset-chip.active {
+  border-color: var(--accent-text);
+  color: var(--accent-text);
+}
