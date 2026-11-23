@@ -25,12 +25,14 @@ import {
 } from '../shared/storage.js';
 import { CdpManager } from './cdp-manager.js';
 
-const EXTENSION_VERSION = '0.1.0';
+const EXTENSION_VERSION = '0.2.0';
 const ALARM_WATCHDOG = 'chrome-browser-mcp-watchdog';
 const CONTEXT_MENU_TOGGLE_TAB = 'chrome-browser-mcp-toggle-tab';
+const AGENT_GROUP_TITLE = 'AI Agent';
 
 let socket: WebSocket | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+let tabSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let activeRecordingSteps: RecordedStep[] = [];
 let activeRecordingStartUrl = '';
 
@@ -88,8 +90,11 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== CONTEXT_MENU_TOGGLE_TAB || !tab?.id) return;
-  const runtime = await loadRuntimeState();
-  const inGroup = runtime.agentGroupId !== null && tab.groupId === runtime.agentGroupId;
+  const groupIds = await getAgentGroupIds();
+  const inGroup =
+    tab.groupId !== undefined &&
+    tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE &&
+    groupIds.has(tab.groupId);
   if (inGroup) {
     await detachTabFromAgentGroup(tab.id);
     await sendToastToTab(tab.id, 'Detached from AI Agent group');
@@ -121,13 +126,34 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
-  if (changeInfo.status === 'complete' || changeInfo.title || changeInfo.url) {
+function scheduleTabSync(): void {
+  if (tabSyncTimer) clearTimeout(tabSyncTimer);
+  tabSyncTimer = setTimeout(() => {
+    tabSyncTimer = null;
     void pushTabsSnapshotToBroker();
+    void notifySidePanel();
+  }, 150);
+}
+
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  if (
+    changeInfo.status === 'complete' ||
+    changeInfo.title !== undefined ||
+    changeInfo.url !== undefined ||
+    changeInfo.groupId !== undefined
+  ) {
+    scheduleTabSync();
   }
 });
-chrome.tabs.onRemoved.addListener(() => void pushTabsSnapshotToBroker());
-chrome.tabs.onActivated.addListener(() => void pushTabsSnapshotToBroker());
+chrome.tabs.onCreated.addListener(() => scheduleTabSync());
+chrome.tabs.onRemoved.addListener(() => scheduleTabSync());
+chrome.tabs.onActivated.addListener(() => scheduleTabSync());
+chrome.tabs.onAttached.addListener(() => scheduleTabSync());
+chrome.tabs.onDetached.addListener(() => scheduleTabSync());
+chrome.tabs.onMoved.addListener(() => scheduleTabSync());
+chrome.tabGroups.onCreated.addListener(() => scheduleTabSync());
+chrome.tabGroups.onUpdated.addListener(() => scheduleTabSync());
+chrome.tabGroups.onRemoved.addListener(() => scheduleTabSync());
 
 // ---------------------------------------------------------------------------
 // Badge & Visual Feedback
@@ -324,20 +350,56 @@ async function handleBrokerMessage(
 // Agent Tab Group & Content Script Injection Helpers
 // ---------------------------------------------------------------------------
 
-async function getValidAgentGroupId(): Promise<number | null> {
-  const runtime = await loadRuntimeState();
-  if (runtime.agentGroupId === null) return null;
+async function getAgentGroupIds(): Promise<Set<number>> {
+  const ids = new Set<number>();
   try {
-    await chrome.tabGroups.get(runtime.agentGroupId);
-    return runtime.agentGroupId;
+    const namedGroups = await chrome.tabGroups.query({ title: AGENT_GROUP_TITLE });
+    for (const g of namedGroups) {
+      ids.add(g.id);
+    }
   } catch {
-    await saveRuntimeState({ agentGroupId: null });
-    return null;
+    // ignore if tabGroups query fails
   }
+
+  const runtime = await loadRuntimeState();
+  if (runtime.agentGroupId !== null) {
+    try {
+      const g = await chrome.tabGroups.get(runtime.agentGroupId);
+      // Keep tracking stored group unless renamed away from AI Agent while another AI Agent group exists
+      if (!g.title || g.title === AGENT_GROUP_TITLE || ids.size === 0) {
+        ids.add(g.id);
+      }
+    } catch {
+      // Group no longer exists
+    }
+  }
+
+  const primaryId = ids.values().next().value ?? null;
+  if (primaryId !== runtime.agentGroupId) {
+    await saveRuntimeState({ agentGroupId: primaryId });
+  }
+  return ids;
+}
+
+async function getValidAgentGroupId(windowId?: number): Promise<number | null> {
+  try {
+    const query: chrome.tabGroups.QueryInfo = { title: AGENT_GROUP_TITLE };
+    if (windowId !== undefined) query.windowId = windowId;
+    const groups = await chrome.tabGroups.query(query);
+    if (groups[0]) {
+      await saveRuntimeState({ agentGroupId: groups[0].id });
+      return groups[0].id;
+    }
+  } catch {
+    // ignore
+  }
+  const allIds = await getAgentGroupIds();
+  return allIds.values().next().value ?? null;
 }
 
 async function attachTabToAgentGroup(tabId: number): Promise<number> {
-  const existingGroupId = await getValidAgentGroupId();
+  const tab = await chrome.tabs.get(tabId);
+  const existingGroupId = await getValidAgentGroupId(tab.windowId);
   let groupId: number;
   if (existingGroupId !== null) {
     try {
@@ -348,7 +410,7 @@ async function attachTabToAgentGroup(tabId: number): Promise<number> {
   } else {
     groupId = await chrome.tabs.group({ tabIds: [tabId] });
   }
-  await chrome.tabGroups.update(groupId, { title: 'AI Agent', color: 'cyan' });
+  await chrome.tabGroups.update(groupId, { title: AGENT_GROUP_TITLE, color: 'cyan' });
   await saveRuntimeState({ agentGroupId: groupId });
   return groupId;
 }
@@ -364,7 +426,7 @@ async function detachTabFromAgentGroup(tabId: number): Promise<void> {
 
 async function listScopedTabs(includeUnattached = false): Promise<TabInfo[]> {
   const settings = await loadSettings();
-  const groupId = await getValidAgentGroupId();
+  const groupIds = await getAgentGroupIds();
   const allTabs = await chrome.tabs.query({});
   const allowAll = settings.policy.scopeMode === 'all-tabs';
 
@@ -373,13 +435,12 @@ async function listScopedTabs(includeUnattached = false): Promise<TabInfo[]> {
     .map((t) => ({
       tabId: t.id,
       windowId: t.windowId,
-      url: t.url ?? '',
-      title: t.title ?? '',
+      url: (t.url ?? '').slice(0, 512),
+      title: (t.title ?? '').slice(0, 180),
       active: Boolean(t.active),
-      inAgentGroup: groupId !== null && t.groupId === groupId,
+      inAgentGroup: t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE && groupIds.has(t.groupId),
       cdpAttached: cdp.isAttached(t.id),
       status: t.status === 'loading' ? 'loading' : 'complete',
-      favIconUrl: t.favIconUrl,
     }));
 
   if (includeUnattached || allowAll) return mapped;
@@ -401,7 +462,7 @@ async function pushTabsSnapshotToBroker(): Promise<void> {
 
 async function resolveAccessibleTab(explicitTabId?: number): Promise<chrome.tabs.Tab & { id: number }> {
   const settings = await loadSettings();
-  const groupId = await getValidAgentGroupId();
+  const groupIds = await getAgentGroupIds();
   const allowAll = settings.policy.scopeMode === 'all-tabs';
 
   let tab: chrome.tabs.Tab | undefined;
@@ -421,7 +482,11 @@ async function resolveAccessibleTab(explicitTabId?: number): Promise<chrome.tabs
     );
   }
 
-  if (!allowAll && (groupId === null || tab.groupId !== groupId)) {
+  const isInGroup =
+    tab.groupId !== undefined &&
+    tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE &&
+    groupIds.has(tab.groupId);
+  if (!allowAll && !isInGroup) {
     throw new Error(
       `Tab ${tab.id} is outside the AI Agent tab group. Attach it in Chrome Side Panel or enable "All tabs" scope.`,
     );

@@ -218,6 +218,15 @@ body {
   border-color: var(--danger);
 }
 
+.card.agent-box {
+  border-color: var(--accent);
+}
+
+.virtual-list {
+  width: 100%;
+  padding-right: 2px;
+}
+
 .card-header {
   display: flex;
   align-items: center;

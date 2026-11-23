@@ -205,6 +205,34 @@ body {
   border-color: var(--danger);
 }
 
+.card.agent-box {
+  border-color: var(--accent);
+}
+
+.search-input {
+  width: 100%;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font: 400 12px/1.3 inherit;
+}
+
+.search-input:focus {
+  outline: 1.5px solid var(--accent);
+  border-color: var(--accent);
+}
+
+.virtual-list {
+  width: 100%;
+  padding-right: 2px;
+}
+
+.item-row.agent-row {
+  border: 1px solid var(--accent);
+}
+
 .row {
   display: flex;
   align-items: center;

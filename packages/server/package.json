@@ -1,6 +1,6 @@
 {
   "name": "chrome-browser-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local Broker Daemon & MCP Server (Streamable HTTP + stdio + MCP Apps) for Chrome Browser MCP extension.",
   "license": "MIT",
   "type": "module",

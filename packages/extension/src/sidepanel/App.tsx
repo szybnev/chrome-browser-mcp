@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   RecordedStep,
   RecordedWorkflow,
   TabInfo,
 } from '@chrome-browser-mcp/protocol';
 import type { ExtensionRuntimeState, ExtensionSettings } from '../shared/storage.js';
+import { VirtualList } from './VirtualList.js';
 
 interface SidePanelPayload {
   settings: ExtensionSettings;
@@ -14,7 +15,7 @@ interface SidePanelPayload {
   recordingSteps: RecordedStep[];
 }
 
-type PanelTab = 'control' | 'workflows' | 'security' | 'connect';
+type PanelTab = 'control' | 'timeline' | 'workflows' | 'security' | 'connect';
 
 async function sendSw<T = unknown>(message: Record<string, unknown>): Promise<T> {
   const res = (await chrome.runtime.sendMessage(message)) as {
@@ -29,6 +30,7 @@ async function sendSw<T = unknown>(message: Record<string, unknown>): Promise<T>
 export function App() {
   const [data, setData] = useState<SidePanelPayload | null>(null);
   const [activeTab, setActiveTab] = useState<PanelTab>('control');
+  const [tabQuery, setTabQuery] = useState('');
   const [workflowName, setWorkflowName] = useState('');
   const [wsUrlDraft, setWsUrlDraft] = useState('');
   const [tokenDraft, setTokenDraft] = useState('');
@@ -67,6 +69,24 @@ export function App() {
     };
   }, [refresh]);
 
+  const attachedTabs = useMemo(
+    () => (data ? data.tabs.filter((t) => t.inAgentGroup) : []),
+    [data],
+  );
+
+  const otherTabs = useMemo(() => {
+    if (!data) return [];
+    const q = tabQuery.trim().toLowerCase();
+    const list = data.tabs.filter((t) => !t.inAgentGroup);
+    if (!q) return list;
+    return list.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.url.toLowerCase().includes(q) ||
+        String(t.tabId).includes(q),
+    );
+  }, [data, tabQuery]);
+
   if (!data) {
     return (
       <div className="app-shell">
@@ -79,7 +99,6 @@ export function App() {
 
   const { settings, runtime, tabs, workflows, recordingSteps } = data;
   const isRecording = runtime.recordingTabId !== null;
-  const attachedTabs = tabs.filter((t) => t.inAgentGroup);
 
   const handleTogglePause = async () => {
     await sendSw({ type: 'sp.setPaused', paused: !runtime.paused });
@@ -155,10 +174,30 @@ export function App() {
 
   const tabItems: Array<{ id: PanelTab; label: string }> = [
     { id: 'control', label: `Control (${attachedTabs.length})` },
+    { id: 'timeline', label: `Timeline (${runtime.recentActivity.length})` },
     { id: 'workflows', label: `Recorder (${workflows.length})` },
     { id: 'security', label: 'Security' },
     { id: 'connect', label: runtime.connected ? 'Connected' : 'Pair' },
   ];
+
+  const renderTabRow = (t: TabInfo) => (
+    <div key={t.tabId} className={`tab-row ${t.inAgentGroup ? 'attached' : ''}`}>
+      <div className="tab-meta">
+        <div className="tab-title">
+          {t.title || '(untitled)'}{' '}
+          {t.cdpAttached && <span className="pill accent">CDP</span>}
+        </div>
+        <div className="tab-url">{t.url}</div>
+      </div>
+      <button
+        type="button"
+        className={`btn small ${t.inAgentGroup ? '' : 'primary'}`}
+        onClick={() => void handleToggleTab(t.tabId, !t.inAgentGroup)}
+      >
+        {t.inAgentGroup ? 'Detach' : 'Attach'}
+      </button>
+    </div>
+  );
 
   return (
     <div className="app-shell">
@@ -168,7 +207,7 @@ export function App() {
           <div>
             <div className="brand-title">Chrome Browser MCP</div>
             <div className="brand-sub">
-              {settings.browserName} · {settings.profileLabel}
+              {settings.browserName} · {settings.profileLabel} · {tabs.length} tabs
             </div>
           </div>
         </div>
@@ -264,11 +303,12 @@ export function App() {
               </div>
             ))}
 
-            <div className="card">
+            {/* DEDICATED AI AGENT TABS BLOCK */}
+            <div className="card agent-box">
               <div className="card-header">
-                <span className="card-title">AI Agent Tab Group</span>
+                <span className="card-title">AI Agent Tabs ({attachedTabs.length})</span>
                 <button type="button" className="btn primary small" onClick={handleAttachCurrent}>
-                  + Attach Active Tab
+                  + Attach Active
                 </button>
               </div>
               <label className="toggle-label">
@@ -284,46 +324,79 @@ export function App() {
                 />
               </label>
 
-              <div className="list">
-                {tabs.slice(0, 14).map((t) => (
-                  <div key={t.tabId} className={`tab-row ${t.inAgentGroup ? 'attached' : ''}`}>
-                    <div className="tab-meta">
-                      <div className="tab-title">
-                        {t.title || '(untitled)'}{' '}
-                        {t.cdpAttached && <span className="pill accent">CDP</span>}
-                      </div>
-                      <div className="tab-url">{t.url}</div>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => void handleToggleTab(t.tabId, !t.inAgentGroup)}
-                    >
-                      {t.inAgentGroup ? 'Detach' : 'Attach'}
-                    </button>
-                  </div>
-                ))}
-              </div>
+              {attachedTabs.length === 0 ? (
+                <div className="muted">
+                  No tabs in the AI Agent group. Drag a tab into the cyan &ldquo;AI Agent&rdquo;
+                  group or click <strong>Attach</strong> below.
+                </div>
+              ) : (
+                <div className="list">{attachedTabs.map((t) => renderTabRow(t))}</div>
+              )}
             </div>
 
+            {/* ALL OTHER BROWSER TABS (VIRTUALIZED) */}
             <div className="card">
-              <div className="card-title">Recent Agent Activity</div>
+              <div className="card-header">
+                <span className="card-title">
+                  All Browser Tabs ({otherTabs.length}
+                  {tabQuery ? ` / ${tabs.length - attachedTabs.length}` : ''})
+                </span>
+                <span className="muted">Virtualized</span>
+              </div>
+              <input
+                type="search"
+                className="input"
+                placeholder={`Filter ${tabs.length - attachedTabs.length} tabs…`}
+                value={tabQuery}
+                onChange={(e) => setTabQuery(e.target.value)}
+              />
+              <VirtualList
+                items={otherTabs}
+                rowHeight={52}
+                maxHeight={340}
+                getKey={(t) => t.tabId}
+                renderRow={(t) => renderTabRow(t)}
+                emptyState={<div className="muted">No matching tabs.</div>}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* TIMELINE TAB */}
+        <section
+          role="tabpanel"
+          aria-labelledby="tab-timeline"
+          hidden={activeTab !== 'timeline'}
+        >
+          <div className="tab-panel-inner">
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">Live Action Timeline</span>
+                <span className="muted">{runtime.recentActivity.length} events</span>
+              </div>
               {runtime.recentActivity.length === 0 ? (
                 <div className="muted">No actions recorded in this session yet.</div>
               ) : (
-                <div className="list">
-                  {runtime.recentActivity.slice(0, 12).map((ev) => (
-                    <div key={ev.id} className="row-between">
+                <VirtualList
+                  items={runtime.recentActivity}
+                  rowHeight={48}
+                  maxHeight={460}
+                  getKey={(ev) => ev.id}
+                  renderRow={(ev) => (
+                    <div className="tab-row">
                       <div className="tab-meta">
                         <div className="tab-title">{ev.tool}</div>
-                        <div className="tab-url">{ev.summary}</div>
+                        <div className="tab-url">
+                          {ev.summary}
+                          {ev.durationMs !== undefined ? ` · ${ev.durationMs}ms` : ''}
+                        </div>
                       </div>
                       <span className={`pill ${ev.status === 'ok' ? 'accent' : 'warn'}`}>
                         {ev.status}
                       </span>
                     </div>
-                  ))}
-                </div>
+                  )}
+                />
               )}
             </div>
           </div>

@@ -920,7 +920,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
       description:
         'Open or refresh the interactive Browser Control Deck UI showing connected browser profiles, AI Agent tab group, live action timeline, screenshots, DevTools errors, approvals, and recorded workflows.',
       inputSchema: z.object({
-        focusTab: z.enum(['overview', 'devtools', 'workflows', 'security']).optional(),
+        focusTab: z.enum(['overview', 'timeline', 'devtools', 'workflows', 'security']).optional(),
       }),
       _meta: {
         ui: {

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp, useHostStyles } from '@modelcontextprotocol/ext-apps/react';
-import type { DeckState, RecordedWorkflow } from '@chrome-browser-mcp/protocol';
+import type { DeckState, RecordedWorkflow, TabInfo } from '@chrome-browser-mcp/protocol';
+import { VirtualList } from './VirtualList.js';
 
-type DeckTab = 'overview' | 'devtools' | 'workflows' | 'security';
+type DeckTab = 'overview' | 'timeline' | 'devtools' | 'workflows' | 'security';
 
 interface ToolStructuredPayload {
   focusTab?: DeckTab;
@@ -12,11 +13,12 @@ interface ToolStructuredPayload {
 export function App() {
   const [deckState, setDeckState] = useState<DeckState | null>(null);
   const [activeTab, setActiveTab] = useState<DeckTab>('overview');
+  const [tabQuery, setTabQuery] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const { app, isConnected, error } = useApp({
-    appInfo: { name: 'Browser Control Deck', version: '0.1.0' },
+    appInfo: { name: 'Browser Control Deck', version: '0.2.0' },
     capabilities: {},
     onAppCreated: (instance) => {
       instance.ontoolresult = (result) => {
@@ -49,9 +51,32 @@ export function App() {
   useEffect(() => {
     if (!isConnected || !app) return;
     void callDeckTool('deck_get_state');
-    const timer = setInterval(() => void callDeckTool('deck_get_state'), 4000);
+    const timer = setInterval(() => void callDeckTool('deck_get_state'), 3000);
     return () => clearInterval(timer);
   }, [isConnected, app, callDeckTool]);
+
+  const activeProfileId = deckState?.defaultProfileId ?? deckState?.profiles[0]?.profileId ?? '';
+  const profileTabs = useMemo(
+    () => (activeProfileId && deckState ? deckState.tabs[activeProfileId] ?? [] : []),
+    [activeProfileId, deckState],
+  );
+
+  const agentTabs = useMemo(
+    () => profileTabs.filter((t) => t.inAgentGroup),
+    [profileTabs],
+  );
+
+  const otherTabs = useMemo(() => {
+    const q = tabQuery.trim().toLowerCase();
+    const list = profileTabs.filter((t) => !t.inAgentGroup);
+    if (!q) return list;
+    return list.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.url.toLowerCase().includes(q) ||
+        String(t.tabId).includes(q),
+    );
+  }, [profileTabs, tabQuery]);
 
   if (error) {
     return (
@@ -74,9 +99,6 @@ export function App() {
   const hostCaps = app?.getHostCapabilities();
   const canSendMessage = Boolean(hostCaps?.message);
   const canUpdateContext = Boolean(hostCaps?.updateModelContext);
-
-  const activeProfileId = deckState.defaultProfileId ?? deckState.profiles[0]?.profileId ?? '';
-  const profileTabs = activeProfileId ? deckState.tabs[activeProfileId] ?? [] : [];
 
   const handleSendDiagnosticsToAgent = async (summary: string) => {
     if (!app || !canSendMessage) return;
@@ -104,8 +126,12 @@ export function App() {
     setNotice(`Attached workflow "${wf.name}" to your next message.`);
   };
 
+  const controlledCount =
+    deckState.policy.scopeMode === 'all-tabs' ? profileTabs.length : agentTabs.length;
+
   const tabItems: Array<{ id: DeckTab; label: string }> = [
-    { id: 'overview', label: `Overview (${profileTabs.filter((t) => t.inAgentGroup).length})` },
+    { id: 'overview', label: `Overview (${controlledCount})` },
+    { id: 'timeline', label: `Timeline (${deckState.recentActivity.length})` },
     {
       id: 'devtools',
       label: `DevTools (${deckState.recentErrors.length + deckState.recentFailedNetwork.length})`,
@@ -113,6 +139,47 @@ export function App() {
     { id: 'workflows', label: `Workflows (${deckState.workflows.length})` },
     { id: 'security', label: 'Security' },
   ];
+
+  const renderTabRow = (t: TabInfo, highlight = false) => (
+    <div key={t.tabId} className={`item-row ${highlight ? 'agent-row' : ''}`}>
+      <div className="item-meta">
+        <div className="item-title">
+          [{t.tabId}] {t.title || '(untitled)'}{' '}
+          {t.active && <span className="pill">Active</span>}{' '}
+          {t.cdpAttached && <span className="pill warn">CDP</span>}
+        </div>
+        <div className="item-sub">{t.url}</div>
+      </div>
+      <div className="row" style={{ flexWrap: 'nowrap' }}>
+        <button
+          type="button"
+          className={`btn small ${t.inAgentGroup ? '' : 'primary'}`}
+          onClick={() =>
+            void callDeckTool('deck_tab_action', {
+              profileId: activeProfileId,
+              tabId: t.tabId,
+              action: t.inAgentGroup ? 'detach' : 'attach',
+            })
+          }
+        >
+          {t.inAgentGroup ? 'Detach' : 'Attach'}
+        </button>
+        <button
+          type="button"
+          className="btn small"
+          onClick={() =>
+            void callDeckTool('deck_tab_action', {
+              profileId: activeProfileId,
+              tabId: t.tabId,
+              action: 'focus',
+            })
+          }
+        >
+          Focus
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="deck">
@@ -122,7 +189,8 @@ export function App() {
           <div>
             <div className="deck-title">Browser Control Deck</div>
             <div className="muted">
-              v{deckState.brokerVersion} · {deckState.profiles.length} browser profile(s)
+              v{deckState.brokerVersion} · {deckState.profiles.length} profile(s) ·{' '}
+              {profileTabs.length} total tab(s)
             </div>
           </div>
         </div>
@@ -133,7 +201,9 @@ export function App() {
               className="select"
               aria-label="Active browser profile"
               value={activeProfileId}
-              onChange={(e) => void callDeckTool('deck_select_profile', { profileId: e.target.value })}
+              onChange={(e) =>
+                void callDeckTool('deck_select_profile', { profileId: e.target.value })
+              }
             >
               {deckState.profiles.map((p) => (
                 <option key={p.profileId} value={p.profileId}>
@@ -235,6 +305,26 @@ export function App() {
               </div>
             ))}
 
+            {/* DEDICATED AI AGENT CONTROLLED TABS */}
+            <div className="card agent-box">
+              <div className="row-between">
+                <strong>AI Agent Tabs ({agentTabs.length})</strong>
+                <span className="pill accent">
+                  {deckState.policy.scopeMode === 'all-tabs'
+                    ? 'Scope: All Tabs'
+                    : 'Scope: AI Agent Group'}
+                </span>
+              </div>
+              {agentTabs.length === 0 ? (
+                <div className="muted">
+                  No tabs in the <strong>AI Agent</strong> group yet. Drag any tab into the cyan
+                  &ldquo;AI Agent&rdquo; group in Chrome, or click <strong>Attach</strong> below.
+                </div>
+              ) : (
+                agentTabs.map((t) => renderTabRow(t, true))
+              )}
+            </div>
+
             {deckState.latestScreenshot && (
               <div className="card">
                 <div className="row-between">
@@ -253,81 +343,81 @@ export function App() {
               </div>
             )}
 
+            {/* ALL OTHER BROWSER TABS (VIRTUALIZED FOR 100+ TABS) */}
             <div className="card">
               <div className="row-between">
-                <strong>Browser Tabs</strong>
-                <span className="pill">
-                  Scope: {deckState.policy.scopeMode === 'all-tabs' ? 'All Tabs' : 'AI Agent Group'}
-                </span>
+                <strong>
+                  All Browser Tabs ({otherTabs.length}
+                  {tabQuery ? ` / ${profileTabs.length - agentTabs.length}` : ''})
+                </strong>
+                <span className="muted">Virtualized</span>
               </div>
+              <input
+                type="search"
+                className="search-input"
+                placeholder={`Filter ${profileTabs.length - agentTabs.length} tabs by title, URL, or ID…`}
+                value={tabQuery}
+                onChange={(e) => setTabQuery(e.target.value)}
+              />
               {profileTabs.length === 0 ? (
                 <div className="muted">
                   No Chrome profile connected yet. Run <code>npx chrome-browser-mcp token</code> and
                   connect from the Chrome Side Panel.
                 </div>
               ) : (
-                profileTabs.slice(0, 16).map((t) => (
-                  <div key={t.tabId} className="item-row">
-                    <div className="item-meta">
-                      <div className="item-title">
-                        [{t.tabId}] {t.title || '(untitled)'}{' '}
-                        {t.inAgentGroup && <span className="pill accent">Agent Group</span>}{' '}
-                        {t.cdpAttached && <span className="pill warn">CDP</span>}
-                      </div>
-                      <div className="item-sub">{t.url}</div>
-                    </div>
-                    <div className="row">
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() =>
-                          void callDeckTool('deck_tab_action', {
-                            profileId: activeProfileId,
-                            tabId: t.tabId,
-                            action: t.inAgentGroup ? 'detach' : 'attach',
-                          })
-                        }
-                      >
-                        {t.inAgentGroup ? 'Detach' : 'Attach'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() =>
-                          void callDeckTool('deck_tab_action', {
-                            profileId: activeProfileId,
-                            tabId: t.tabId,
-                            action: 'focus',
-                          })
-                        }
-                      >
-                        Focus
-                      </button>
-                    </div>
-                  </div>
-                ))
+                <VirtualList
+                  items={otherTabs}
+                  rowHeight={56}
+                  maxHeight={380}
+                  getKey={(t) => t.tabId}
+                  renderRow={(t) => renderTabRow(t, false)}
+                  emptyState={<div className="muted">No matching tabs.</div>}
+                />
               )}
             </div>
+          </div>
+        </section>
 
+        {/* TIMELINE (DEDICATED TOP-LEVEL TAB) */}
+        <section
+          role="tabpanel"
+          aria-labelledby="deck-tab-timeline"
+          hidden={activeTab !== 'timeline'}
+        >
+          <div className="panel-inner">
             <div className="card">
-              <strong>Live Action Timeline</strong>
+              <div className="row-between">
+                <strong>Live Action Timeline ({deckState.recentActivity.length})</strong>
+                <span className="muted">Most recent first</span>
+              </div>
               {deckState.recentActivity.length === 0 ? (
                 <div className="muted">Waiting for agent browser actions…</div>
               ) : (
-                deckState.recentActivity.slice(0, 15).map((ev) => (
-                  <div key={ev.id} className="item-row">
-                    <div className="item-meta">
-                      <div className="item-title">{ev.tool}</div>
-                      <div className="item-sub">
-                        {ev.summary}
-                        {ev.durationMs !== undefined ? ` · ${ev.durationMs}ms` : ''}
+                <VirtualList
+                  items={deckState.recentActivity}
+                  rowHeight={54}
+                  maxHeight={520}
+                  getKey={(ev) => ev.id}
+                  renderRow={(ev) => (
+                    <div className="item-row">
+                      <div className="item-meta">
+                        <div className="item-title">
+                          {ev.tool}{' '}
+                          <span className="muted" style={{ fontWeight: 400 }}>
+                            · {new Date(ev.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <div className="item-sub">
+                          {ev.summary}
+                          {ev.durationMs !== undefined ? ` · ${ev.durationMs}ms` : ''}
+                        </div>
                       </div>
+                      <span className={`pill ${ev.status === 'ok' ? 'accent' : 'danger'}`}>
+                        {ev.status}
+                      </span>
                     </div>
-                    <span className={`pill ${ev.status === 'ok' ? 'accent' : 'danger'}`}>
-                      {ev.status}
-                    </span>
-                  </div>
-                ))
+                  )}
+                />
               )}
             </div>
           </div>
@@ -390,7 +480,10 @@ export function App() {
                       void handleSendDiagnosticsToAgent(
                         `Please investigate these failed browser network requests:\n${deckState.recentFailedNetwork
                           .slice(0, 8)
-                          .map((n) => `- ${n.method} ${n.status ?? 'ERR'} ${n.url} ${n.errorText ?? ''}`)
+                          .map(
+                            (n) =>
+                              `- ${n.method} ${n.status ?? 'ERR'} ${n.url} ${n.errorText ?? ''}`,
+                          )
                           .join('\n')}`,
                       )
                     }
@@ -408,7 +501,9 @@ export function App() {
                       <div className="item-title">
                         {net.method} {net.status ?? 'FAILED'} · {net.url}
                       </div>
-                      <div className="item-sub">{net.errorText || net.statusText || 'HTTP error'}</div>
+                      <div className="item-sub">
+                        {net.errorText || net.statusText || 'HTTP error'}
+                      </div>
                     </div>
                   </div>
                 ))
