@@ -1613,10 +1613,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case 'sp.startRecording': {
           const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
           if (!active?.id) throw new Error('No active tab to record');
-          activeRecordingSteps = [];
-          activeRecordingStartUrl = active.url ?? '';
-          await saveRuntimeState({ recordingTabId: active.id });
+          const url = active.url ?? '';
+          const isWebPage = /^https?:\/\//i.test(url);
+          const isWebStore =
+            /^https?:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/i.test(url);
+          if (!isWebPage || isWebStore) {
+            throw new Error('RESTRICTED_RECORD_URL');
+          }
           await callContentScript(active.id, 'cs.setRecording', { enabled: true });
+          activeRecordingSteps = [];
+          activeRecordingStartUrl = url;
+          await saveRuntimeState({ recordingTabId: active.id });
           sendResponse({ ok: true, tabId: active.id });
           return;
         }

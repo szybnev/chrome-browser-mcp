@@ -74,6 +74,7 @@ export function App() {
   const [blockedError, setBlockedError] = useState<string | null>(null);
   const [cdpIdleError, setCdpIdleError] = useState<string | null>(null);
   const [workflowNameError, setWorkflowNameError] = useState<string | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
   const [connError, setConnError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -242,23 +243,39 @@ export function App() {
   };
 
   const handleAttachCurrent = async () => {
-    await sendSw({ type: 'sp.attachCurrentTab' });
-    await refresh();
+    try {
+      await sendSw({ type: 'sp.attachCurrentTab' });
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleToggleTab = async (tabId: number, attach: boolean) => {
-    await sendSw({ type: 'sp.toggleTab', tabId, attach });
-    await refresh();
+    try {
+      await sendSw({ type: 'sp.toggleTab', tabId, attach });
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleApproval = async (approvalId: string, decision: 'approved' | 'rejected') => {
-    await sendSw({ type: 'sp.resolveApproval', approvalId, decision });
-    await refresh();
+    try {
+      await sendSw({ type: 'sp.resolveApproval', approvalId, decision });
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleDialogAction = async (tabId: number, accept: boolean) => {
-    await sendSw({ type: 'sp.handleDialog', tabId, accept });
-    await refresh();
+    try {
+      await sendSw({ type: 'sp.handleDialog', tabId, accept });
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handlePairPin = async () => {
@@ -420,12 +437,23 @@ export function App() {
   };
 
   const handleStartRecording = async () => {
-    await sendSw({ type: 'sp.startRecording' });
-    await refresh();
+    setRecordError(null);
+    try {
+      await sendSw({ type: 'sp.startRecording' });
+      await refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('RESTRICTED_RECORD_URL') || /cannot access a chrome/i.test(msg)) {
+        setRecordError(t('recorder.restrictedUrl'));
+      } else {
+        setRecordError(msg);
+      }
+    }
   };
 
   const handleStopRecording = async (save: boolean) => {
     setWorkflowNameError(null);
+    setRecordError(null);
     if (save && workflowName.trim()) {
       const check = validateWorkflowName(workflowName);
       if (!check.ok) {
@@ -433,18 +461,26 @@ export function App() {
         return;
       }
     }
-    await sendSw({
-      type: 'sp.stopRecording',
-      save,
-      name: workflowName.trim() || undefined,
-    });
-    setWorkflowName('');
-    await refresh();
+    try {
+      await sendSw({
+        type: 'sp.stopRecording',
+        save,
+        name: workflowName.trim() || undefined,
+      });
+      setWorkflowName('');
+      await refresh();
+    } catch (err) {
+      setRecordError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleDeleteWorkflow = async (workflowId: string) => {
-    await sendSw({ type: 'sp.deleteWorkflow', workflowId });
-    await refresh();
+    try {
+      await sendSw({ type: 'sp.deleteWorkflow', workflowId });
+      await refresh();
+    } catch (err) {
+      setRecordError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleExportPlaywright = (wf: RecordedWorkflow) => {
@@ -778,6 +814,7 @@ export function App() {
                 )}
               </div>
               <div className="muted">{t('recorder.varsHint')}</div>
+              {recordError && <div className="field-error">{recordError}</div>}
               {!isRecording ? (
                 <button type="button" className="btn primary" onClick={handleStartRecording}>
                   {t('recorder.start')}
