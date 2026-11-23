@@ -15,18 +15,6 @@ import { VirtualList } from './VirtualList.js';
 import { InfoTip } from './InfoTip.js';
 import { ThemeToggle } from './ThemeToggle.js';
 
-function downloadText(filename: string, content: string, mimeType: string): void {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 type DeckTab = 'overview' | 'timeline' | 'devtools' | 'workflows' | 'security';
 
 interface ToolStructuredPayload {
@@ -39,7 +27,6 @@ export function App() {
   const [activeTab, setActiveTab] = useState<DeckTab>('overview');
   const [tabQuery, setTabQuery] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
-  const [exportedKey, setExportedKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [localePref, setLocalePref] = useState<LocalePreference>(() => {
     try {
@@ -53,20 +40,11 @@ export function App() {
   const locale = resolveLocale(localePref);
   const tr = (key: I18nKey, vars?: Record<string, string | number>) => translate(locale, key, vars);
 
-  const showNotice = useCallback((msg: string) => {
-    setNotice(msg);
-  }, []);
-
   useEffect(() => {
     if (!notice) return;
     const id = setTimeout(() => setNotice(null), 6000);
     return () => clearTimeout(id);
   }, [notice]);
-
-  const flashExported = useCallback((key: string) => {
-    setExportedKey(key);
-    setTimeout(() => setExportedKey((cur) => (cur === key ? null : cur)), 2500);
-  }, []);
 
   const { app, isConnected, error } = useApp({
     appInfo: { name: 'Browser Control Deck', version: APP_VERSION },
@@ -510,51 +488,6 @@ export function App() {
                 <strong>
                   {tr('tab.timeline')} ({deckState.recentActivity.length})
                 </strong>
-                <div className="row">
-                  <button
-                    type="button"
-                    className={`btn small ${exportedKey === 'audit-json' ? 'primary' : ''}`}
-                    disabled={busy}
-                    onClick={async () => {
-                      if (!app) return;
-                      try {
-                        const res = await app.callServerTool({
-                          name: 'deck_export_audit',
-                          arguments: { format: 'json' },
-                        });
-                        const payload = res.structuredContent as
-                          | {
-                              filename?: string;
-                              savedPath?: string;
-                              displayPath?: string;
-                              content?: string;
-                              contentType?: string;
-                            }
-                          | undefined;
-                        if (payload?.displayPath || payload?.savedPath) {
-                          flashExported('audit-json');
-                          showNotice(
-                            tr('status.savedTo', {
-                              path: payload.displayPath || payload.savedPath || '',
-                            }),
-                          );
-                        } else if (payload?.content) {
-                          downloadText(
-                            payload.filename || 'chrome-browser-mcp-timeline.json',
-                            payload.content,
-                            payload.contentType || 'application/json',
-                          );
-                          flashExported('audit-json');
-                          showNotice(tr('status.saved'));
-                        }
-                      } catch (err) {
-                        showNotice(err instanceof Error ? err.message : String(err));
-                      }
-                    }}
-                  >
-                    {exportedKey === 'audit-json' ? `✓ ${tr('status.saved')}` : tr('btn.exportJson')}
-                  </button>
-                </div>
               </div>
               {deckState.recentActivity.length === 0 ? (
                 <div className="muted">{tr('deck.waitingActions')}</div>
@@ -709,49 +642,6 @@ export function App() {
                           {tr('btn.attachToAgent')}
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className={`btn small ${exportedKey === `wf:${wf.id}` ? 'primary' : ''}`}
-                        onClick={async () => {
-                          if (!app) return;
-                          try {
-                            const res = await app.callServerTool({
-                              name: 'deck_export_playwright',
-                              arguments: { workflowId: wf.id },
-                            });
-                            const payload = res.structuredContent as
-                              | {
-                                  filename?: string;
-                                  savedPath?: string;
-                                  displayPath?: string;
-                                  code?: string;
-                                }
-                              | undefined;
-                            if (payload?.displayPath || payload?.savedPath) {
-                              flashExported(`wf:${wf.id}`);
-                              showNotice(
-                                tr('status.savedTo', {
-                                  path: payload.displayPath || payload.savedPath || '',
-                                }),
-                              );
-                            } else if (payload?.code) {
-                              downloadText(
-                                payload.filename || `${wf.id}.spec.ts`,
-                                payload.code,
-                                'text/typescript;charset=utf-8',
-                              );
-                              flashExported(`wf:${wf.id}`);
-                              showNotice(tr('status.saved'));
-                            }
-                          } catch (err) {
-                            showNotice(err instanceof Error ? err.message : String(err));
-                          }
-                        }}
-                      >
-                        {exportedKey === `wf:${wf.id}`
-                          ? `✓ ${tr('status.saved')}`
-                          : tr('btn.exportPlaywright')}
-                      </button>
                       <button
                         type="button"
                         className="btn small"

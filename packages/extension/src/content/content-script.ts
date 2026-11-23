@@ -417,20 +417,105 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     return inner.replace(/\s+/g, ' ').trim().slice(0, 140);
   }
 
+  function isEphemeralId(id: string): boolean {
+    if (!id || id.length > 64) return true;
+    // React useId (_R_..., :r0:, _r_...), Radix, HeadlessUI, MUI, Ember, UUIDs
+    if (/^(_[Rr]_|:[rR]|react-|radix-|headlessui-|mui-|ember\d|el-id-)/.test(id)) return true;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return true;
+    // Long random alphanumeric hash with mixed digits and letters
+    if (id.length >= 16 && /\d/.test(id) && /[a-z]/i.test(id) && !/[-_]/.test(id)) return true;
+    return false;
+  }
+
+  function isUniqueSelector(sel: string): boolean {
+    try {
+      return document.querySelectorAll(sel).length === 1;
+    } catch {
+      return false;
+    }
+  }
+
   function buildSelectorHint(el: Element): string {
-    if (el.id && /^[A-Za-z_][\w-]*$/.test(el.id)) return `#${el.id}`;
-    const testId = el.getAttribute('data-testid') || el.getAttribute('data-test');
-    if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
-    const name = el.getAttribute('name');
-    if (name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
-    const aria = el.getAttribute('aria-label');
-    if (aria) return `${el.tagName.toLowerCase()}[aria-label="${CSS.escape(aria.slice(0, 60))}"]`;
     const tag = el.tagName.toLowerCase();
-    const parent = el.parentElement;
-    if (!parent) return tag;
-    const siblings = [...parent.children].filter((c) => c.tagName === el.tagName);
-    const idx = siblings.indexOf(el) + 1;
-    return `${tag}:nth-of-type(${idx})`;
+
+    if (el.id && /^[A-Za-z_][\w-]*$/.test(el.id) && !isEphemeralId(el.id)) {
+      const sel = `#${CSS.escape(el.id)}`;
+      if (isUniqueSelector(sel)) return sel;
+    }
+
+    for (const attr of ['data-testid', 'data-test', 'data-cy'] as const) {
+      const val = el.getAttribute(attr)?.trim();
+      if (val) {
+        const sel = `[${attr}="${CSS.escape(val)}"]`;
+        if (isUniqueSelector(sel)) return sel;
+      }
+    }
+
+    const name = el.getAttribute('name')?.trim();
+    if (name) {
+      const sel = `${tag}[name="${CSS.escape(name)}"]`;
+      if (isUniqueSelector(sel)) return sel;
+    }
+
+    const aria = el.getAttribute('aria-label')?.trim();
+    if (aria) {
+      const sel = `${tag}[aria-label="${CSS.escape(aria.slice(0, 80))}"]`;
+      if (isUniqueSelector(sel)) return sel;
+    }
+
+    if (tag === 'a') {
+      const href = el.getAttribute('href')?.trim();
+      if (href && href !== '#' && href.length <= 160 && !href.startsWith('javascript:')) {
+        const sel = `a[href="${CSS.escape(href)}"]`;
+        if (isUniqueSelector(sel)) return sel;
+      }
+    }
+
+    const title = el.getAttribute('title')?.trim();
+    if (title) {
+      const sel = `${tag}[title="${CSS.escape(title.slice(0, 80))}"]`;
+      if (isUniqueSelector(sel)) return sel;
+    }
+
+    const placeholder = el.getAttribute('placeholder')?.trim();
+    if (placeholder) {
+      const sel = `${tag}[placeholder="${CSS.escape(placeholder.slice(0, 80))}"]`;
+      if (isUniqueSelector(sel)) return sel;
+    }
+
+    // Build shortest unique CSS ancestor path so Playwright strict mode matches exactly 1 element
+    const segments: string[] = [];
+    let cur: Element | null = el;
+    let depth = 0;
+    while (cur && cur.nodeType === Node.ELEMENT_NODE && cur.tagName.toLowerCase() !== 'html' && depth < 8) {
+      const curTag = cur.tagName.toLowerCase();
+      if (cur !== el && cur.id && /^[A-Za-z_][\w-]*$/.test(cur.id) && !isEphemeralId(cur.id)) {
+        const anchored = `#${CSS.escape(cur.id)} > ${segments.join(' > ')}`;
+        if (isUniqueSelector(anchored)) return anchored;
+      }
+      const curTestId = cur !== el ? cur.getAttribute('data-testid')?.trim() : null;
+      if (curTestId) {
+        const anchored = `[data-testid="${CSS.escape(curTestId)}"] > ${segments.join(' > ')}`;
+        if (isUniqueSelector(anchored)) return anchored;
+      }
+
+      const parent: Element | null = cur.parentElement;
+      if (!parent) {
+        segments.unshift(curTag);
+        break;
+      }
+      const siblings = [...parent.children].filter((c) => c.tagName === cur!.tagName);
+      const seg = siblings.length === 1 ? curTag : `${curTag}:nth-of-type(${siblings.indexOf(cur) + 1})`;
+      segments.unshift(seg);
+
+      const candidate = segments.join(' > ');
+      if (isUniqueSelector(candidate)) return candidate;
+
+      cur = parent;
+      depth += 1;
+    }
+
+    return segments.join(' > ') || tag;
   }
 
   // -------------------------------------------------------------------------
