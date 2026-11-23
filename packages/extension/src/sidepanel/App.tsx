@@ -6,6 +6,7 @@ import type {
 } from '@chrome-browser-mcp/protocol';
 import type { ExtensionRuntimeState, ExtensionSettings } from '../shared/storage.js';
 import { VirtualList } from './VirtualList.js';
+import { InfoTip } from './InfoTip.js';
 
 interface SidePanelPayload {
   settings: ExtensionSettings;
@@ -242,14 +243,14 @@ export function App() {
         ))}
       </div>
 
-      <main className="scroller" style={{ flex: 1 }}>
+      <main className="scroller sp-main">
         {/* CONTROL TAB */}
         <section
           role="tabpanel"
           aria-labelledby="tab-control"
           hidden={activeTab !== 'control'}
         >
-          <div className="tab-panel-inner">
+          <div className="tab-panel-inner panel-fill">
             {runtime.paused && (
               <div className="card paused-banner">
                 <div className="card-title">Automation Paused</div>
@@ -330,18 +331,19 @@ export function App() {
                   group or click <strong>Attach</strong> below.
                 </div>
               ) : (
-                <div className="list">{attachedTabs.map((t) => renderTabRow(t))}</div>
+                <div className="scroller agent-tabs-scroll">
+                  {attachedTabs.map((t) => renderTabRow(t))}
+                </div>
               )}
             </div>
 
-            {/* ALL OTHER BROWSER TABS (VIRTUALIZED) */}
-            <div className="card">
+            {/* ALL OTHER BROWSER TABS (ADAPTIVE HEIGHT) */}
+            <div className={`card ${otherTabs.length > 0 ? 'fill-card' : ''}`}>
               <div className="card-header">
                 <span className="card-title">
                   All Browser Tabs ({otherTabs.length}
                   {tabQuery ? ` / ${tabs.length - attachedTabs.length}` : ''})
                 </span>
-                <span className="muted">Virtualized</span>
               </div>
               <input
                 type="search"
@@ -353,7 +355,7 @@ export function App() {
               <VirtualList
                 items={otherTabs}
                 rowHeight={52}
-                maxHeight={340}
+                fillHeight
                 getKey={(t) => t.tabId}
                 renderRow={(t) => renderTabRow(t)}
                 emptyState={<div className="muted">No matching tabs.</div>}
@@ -368,8 +370,8 @@ export function App() {
           aria-labelledby="tab-timeline"
           hidden={activeTab !== 'timeline'}
         >
-          <div className="tab-panel-inner">
-            <div className="card">
+          <div className="tab-panel-inner panel-fill">
+            <div className={`card ${runtime.recentActivity.length > 0 ? 'fill-card' : ''}`}>
               <div className="card-header">
                 <span className="card-title">Live Action Timeline</span>
                 <span className="muted">{runtime.recentActivity.length} events</span>
@@ -380,7 +382,7 @@ export function App() {
                 <VirtualList
                   items={runtime.recentActivity}
                   rowHeight={48}
-                  maxHeight={460}
+                  fillHeight
                   getKey={(ev) => ev.id}
                   renderRow={(ev) => (
                     <div className="tab-row">
@@ -495,52 +497,89 @@ export function App() {
           hidden={activeTab !== 'security'}
         >
           <div className="tab-panel-inner">
-            <div className="card">
+            <div className="card security-card">
               <div className="card-title">Protection &amp; Approval Gates</div>
-              <label className="toggle-label">
-                <span>Prompt-Injection Shield (filter hidden DOM)</span>
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sp-sec-shield">Prompt-Injection Shield</label>
+                  <InfoTip
+                    label="Prompt-Injection Shield"
+                    text="Filters hidden/zero-opacity/offscreen DOM nodes, strips invisible zero-width/bidi characters, and frames page text with UNTRUSTED_PAGE_CONTENT boundaries."
+                  />
+                </span>
                 <input
+                  id="sp-sec-shield"
                   type="checkbox"
                   checked={settings.policy.promptInjectionShield}
                   onChange={(e) =>
                     void handlePolicyPatch({ promptInjectionShield: e.target.checked })
                   }
                 />
-              </label>
-              <label className="toggle-label">
-                <span>Confirm JS eval on new origins</span>
+              </div>
+
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sp-sec-eval">Confirm JS eval on new origins</label>
+                  <InfoTip
+                    label="Confirm JS eval on new origins"
+                    text="Requires Approve/Reject confirmation the first time an agent runs browser_eval on a domain."
+                  />
+                </span>
                 <input
+                  id="sp-sec-eval"
                   type="checkbox"
                   checked={settings.policy.requireApprovalForEval}
                   onChange={(e) =>
                     void handlePolicyPatch({ requireApprovalForEval: e.target.checked })
                   }
                 />
-              </label>
-              <label className="toggle-label">
-                <span>Confirm password field input</span>
+              </div>
+
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sp-sec-pass">Confirm password field input</label>
+                  <InfoTip
+                    label="Confirm password field input"
+                    text="Pauses for explicit confirmation before filling or typing into any password field."
+                  />
+                </span>
                 <input
+                  id="sp-sec-pass"
                   type="checkbox"
                   checked={settings.policy.requireApprovalForPasswords}
                   onChange={(e) =>
                     void handlePolicyPatch({ requireApprovalForPasswords: e.target.checked })
                   }
                 />
-              </label>
-              <label className="toggle-label">
-                <span>Confirm payment / delete submits</span>
+              </div>
+
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sp-sec-pay">Confirm payment / delete submits</label>
+                  <InfoTip
+                    label="Confirm payment and delete submits"
+                    text="Requires explicit approval before clicking controls related to checkout, payments, transfers, or account deletion."
+                  />
+                </span>
                 <input
+                  id="sp-sec-pay"
                   type="checkbox"
                   checked={settings.policy.requireApprovalForPayments}
                   onChange={(e) =>
                     void handlePolicyPatch({ requireApprovalForPayments: e.target.checked })
                   }
                 />
-              </label>
+              </div>
             </div>
 
             <div className="card">
-              <div className="card-title">Blocked Domains (one per line)</div>
+              <div className="card-header">
+                <span className="card-title">Blocked Domains (one per line)</span>
+                <InfoTip
+                  label="Blocked Domains"
+                  text="Wildcard rules (e.g. chrome://*, *.paypal.com, *.stripe.com/dashboard*) that hard-block agent access even when “Allow all tabs” is enabled."
+                />
+              </div>
               <textarea
                 className="textarea"
                 value={blockedDraft}

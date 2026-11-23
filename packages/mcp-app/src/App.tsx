@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp, useHostStyles } from '@modelcontextprotocol/ext-apps/react';
 import { APP_VERSION, type DeckState, type RecordedWorkflow, type TabInfo } from '@chrome-browser-mcp/protocol';
 import { VirtualList } from './VirtualList.js';
+import { InfoTip } from './InfoTip.js';
 
 type DeckTab = 'overview' | 'timeline' | 'devtools' | 'workflows' | 'security';
 
@@ -251,14 +252,14 @@ export function App() {
         ))}
       </div>
 
-      <main className="scroller">
+      <main className="scroller deck-main">
         {/* OVERVIEW */}
         <section
           role="tabpanel"
           aria-labelledby="deck-tab-overview"
           hidden={activeTab !== 'overview'}
         >
-          <div className="panel-inner">
+          <div className="panel-inner panel-fill">
             {notice && <div className="card">{notice}</div>}
 
             {deckState.paused && (
@@ -309,11 +310,6 @@ export function App() {
             <div className="card agent-box">
               <div className="row-between">
                 <strong>AI Agent Tabs ({agentTabs.length})</strong>
-                <span className="pill accent">
-                  {deckState.policy.scopeMode === 'all-tabs'
-                    ? 'Scope: All Tabs'
-                    : 'Scope: AI Agent Group'}
-                </span>
               </div>
               {agentTabs.length === 0 ? (
                 <div className="muted">
@@ -321,12 +317,14 @@ export function App() {
                   &ldquo;AI Agent&rdquo; group in Chrome, or click <strong>Attach</strong> below.
                 </div>
               ) : (
-                agentTabs.map((t) => renderTabRow(t, true))
+                <div className="scroller agent-tabs-scroll">
+                  {agentTabs.map((t) => renderTabRow(t, true))}
+                </div>
               )}
             </div>
 
             {deckState.latestScreenshot && (
-              <div className="card">
+              <div className="card" style={{ flex: '0 0 auto' }}>
                 <div className="row-between">
                   <strong>Latest Viewport Capture</strong>
                   <span className="pill accent">
@@ -343,14 +341,13 @@ export function App() {
               </div>
             )}
 
-            {/* ALL OTHER BROWSER TABS (VIRTUALIZED FOR 100+ TABS) */}
-            <div className="card">
+            {/* ALL OTHER BROWSER TABS (ADAPTIVE HEIGHT + VIRTUALIZED) */}
+            <div className={`card ${otherTabs.length > 0 ? 'fill-card' : ''}`}>
               <div className="row-between">
                 <strong>
                   All Browser Tabs ({otherTabs.length}
                   {tabQuery ? ` / ${profileTabs.length - agentTabs.length}` : ''})
                 </strong>
-                <span className="muted">Virtualized</span>
               </div>
               <input
                 type="search"
@@ -368,7 +365,7 @@ export function App() {
                 <VirtualList
                   items={otherTabs}
                   rowHeight={56}
-                  maxHeight={380}
+                  fillHeight
                   getKey={(t) => t.tabId}
                   renderRow={(t) => renderTabRow(t, false)}
                   emptyState={<div className="muted">No matching tabs.</div>}
@@ -384,8 +381,8 @@ export function App() {
           aria-labelledby="deck-tab-timeline"
           hidden={activeTab !== 'timeline'}
         >
-          <div className="panel-inner">
-            <div className="card">
+          <div className="panel-inner panel-fill">
+            <div className={`card ${deckState.recentActivity.length > 0 ? 'fill-card' : ''}`}>
               <div className="row-between">
                 <strong>Live Action Timeline ({deckState.recentActivity.length})</strong>
                 <span className="muted">Most recent first</span>
@@ -396,7 +393,7 @@ export function App() {
                 <VirtualList
                   items={deckState.recentActivity}
                   rowHeight={54}
-                  maxHeight={520}
+                  fillHeight
                   getKey={(ev) => ev.id}
                   renderRow={(ev) => (
                     <div className="item-row">
@@ -570,11 +567,20 @@ export function App() {
           hidden={activeTab !== 'security'}
         >
           <div className="panel-inner">
-            <div className="card">
+            <div className="card security-card">
               <strong>Security &amp; Guardrails</strong>
-              <label className="row-between">
-                <span>Allow all tabs (instead of AI Agent group only)</span>
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sec-all-tabs">
+                    Allow all tabs (instead of AI Agent group only)
+                  </label>
+                  <InfoTip
+                    label="Allow all tabs"
+                    text="By default, agents can only read and control tabs inside the cyan “AI Agent” tab group. Turn this on to let agents access any open tab in your browser window (blocked domains still stay protected)."
+                  />
+                </span>
                 <input
+                  id="sec-all-tabs"
                   type="checkbox"
                   checked={deckState.policy.scopeMode === 'all-tabs'}
                   onChange={(e) =>
@@ -583,10 +589,18 @@ export function App() {
                     })
                   }
                 />
-              </label>
-              <label className="row-between">
-                <span>Prompt-Injection Shield</span>
+              </div>
+
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sec-shield">Prompt-Injection Shield</label>
+                  <InfoTip
+                    label="Prompt-Injection Shield"
+                    text="Filters hidden, zero-opacity, and offscreen DOM traps, strips invisible zero-width/bidi characters, wraps page text in UNTRUSTED_PAGE_CONTENT markers, and flags suspicious prompt-override instructions."
+                  />
+                </span>
                 <input
+                  id="sec-shield"
                   type="checkbox"
                   checked={deckState.policy.promptInjectionShield}
                   onChange={(e) =>
@@ -595,10 +609,18 @@ export function App() {
                     })
                   }
                 />
-              </label>
-              <label className="row-between">
-                <span>Confirm JS eval on new origins</span>
+              </div>
+
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sec-eval">Confirm JS eval on new origins</label>
+                  <InfoTip
+                    label="Confirm JS eval on new origins"
+                    text="Pauses and asks for your explicit Approve/Reject confirmation the first time an agent attempts to run arbitrary JavaScript (browser_eval) on a website origin."
+                  />
+                </span>
                 <input
+                  id="sec-eval"
                   type="checkbox"
                   checked={deckState.policy.requireApprovalForEval}
                   onChange={(e) =>
@@ -607,10 +629,18 @@ export function App() {
                     })
                   }
                 />
-              </label>
-              <label className="row-between">
-                <span>Confirm password input</span>
+              </div>
+
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sec-pass">Confirm password input</label>
+                  <InfoTip
+                    label="Confirm password input"
+                    text="Requires explicit approval before an agent can fill or type into any password field (input[type=password])."
+                  />
+                </span>
                 <input
+                  id="sec-pass"
                   type="checkbox"
                   checked={deckState.policy.requireApprovalForPasswords}
                   onChange={(e) =>
@@ -619,10 +649,18 @@ export function App() {
                     })
                   }
                 />
-              </label>
-              <label className="row-between">
-                <span>Confirm payment / destructive submits</span>
+              </div>
+
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sec-pay">Confirm payment / destructive submits</label>
+                  <InfoTip
+                    label="Confirm payment and destructive submits"
+                    text="Pauses for explicit confirmation before clicking buttons labeled with checkout, payment, transfer, or account-deletion actions."
+                  />
+                </span>
                 <input
+                  id="sec-pay"
                   type="checkbox"
                   checked={deckState.policy.requireApprovalForPayments}
                   onChange={(e) =>
@@ -631,11 +669,18 @@ export function App() {
                     })
                   }
                 />
-              </label>
-              <div className="muted">
-                Blocked domains ({deckState.policy.blockedDomains.length}):{' '}
-                {deckState.policy.blockedDomains.slice(0, 6).join(', ')}
-                {deckState.policy.blockedDomains.length > 6 ? '…' : ''}
+              </div>
+
+              <div className="security-row" style={{ alignItems: 'flex-start' }}>
+                <div className="muted">
+                  Blocked domains ({deckState.policy.blockedDomains.length}):{' '}
+                  {deckState.policy.blockedDomains.slice(0, 6).join(', ')}
+                  {deckState.policy.blockedDomains.length > 6 ? '…' : ''}
+                </div>
+                <InfoTip
+                  label="Blocked domains"
+                  text="Hard-blocked URLs and wildcard patterns (e.g. chrome://*, *.paypal.com, banking & password managers). Agents cannot navigate, read, or act on these domains even if “Allow all tabs” is enabled. Edit the full list in Chrome Side Panel → Security."
+                />
               </div>
             </div>
           </div>

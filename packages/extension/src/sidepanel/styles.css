@@ -92,7 +92,23 @@ body {
 .app-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sp-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sp-main > [role='tabpanel']:not([hidden]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .scroller {
@@ -194,10 +210,16 @@ body {
 }
 
 .tab-panel-inner {
-  padding: 12px 14px 20px;
+  padding: 12px 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.tab-panel-inner.panel-fill {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .card {
@@ -220,11 +242,116 @@ body {
 
 .card.agent-box {
   border-color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.agent-tabs-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 34vh;
+  overflow-y: auto;
+}
+
+.card.fill-card {
+  flex: 1 1 auto;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .virtual-list {
   width: 100%;
   padding-right: 2px;
+}
+
+.virtual-list-fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.security-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.security-label-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.infotip-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.infotip-btn {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 700 10.5px/1 inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+  --interest-delay-start: 0.2s;
+  interest-delay-start: var(--interest-delay-start);
+  --interest-delay-end: 0.12s;
+  interest-delay-end: var(--interest-delay-end);
+}
+
+.infotip-btn:hover,
+.infotip-btn:focus-visible,
+.infotip-btn:is(:interest-source, .interest-source) {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+
+.security-card:has([interestfor]:is(:interest-source, .interest-source)) [interestfor] {
+  --interest-delay-start: 0s;
+}
+
+.infotip-popover {
+  max-width: 260px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: 400 11.5px/1.45 inherit;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+@supports (position-area: block-end) {
+  .infotip-popover {
+    inset: auto;
+    margin: 6px 0 0;
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
+}
+
+@supports not (position-area: block-end) {
+  .infotip-popover {
+    position: fixed;
+    inset: auto 10px 10px 10px;
+    width: auto;
+    max-width: none;
+    margin: 0;
+  }
 }
 
 .card-header {
