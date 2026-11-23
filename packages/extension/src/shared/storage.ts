@@ -1,6 +1,7 @@
 import {
   DEFAULT_BROKER_HOST,
   DEFAULT_BROKER_PORT,
+  resolveLocale,
   SecurityPolicySchema,
   type ActivityEvent,
   type ApprovalRequest,
@@ -78,7 +79,7 @@ export async function loadSettings(): Promise<ExtensionSettings> {
     profileId: existing?.profileId || generateProfileId(),
     profileLabel: existing?.profileLabel || 'default',
     browserName: existing?.browserName || detectBrowserName(),
-    locale: existing?.locale ?? 'auto',
+    locale: resolveLocale(existing?.locale),
     visualHudEnabled: existing?.visualHudEnabled ?? true,
     onboardingCompleted: existing?.onboardingCompleted ?? false,
     sidePanelTourPending: existing?.sidePanelTourPending ?? false,

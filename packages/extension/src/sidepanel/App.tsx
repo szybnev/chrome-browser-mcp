@@ -16,6 +16,7 @@ import { VirtualList } from './VirtualList.js';
 import { InfoTip } from './InfoTip.js';
 import { ThemeToggle, type ThemeOverride } from './ThemeToggle.js';
 import { OnboardingTour, SIDE_PANEL_TOUR_STEPS } from './OnboardingTour.js';
+import { CopyableCode } from './CopyableCode.js';
 
 interface SidePanelPayload {
   settings: ExtensionSettings;
@@ -193,10 +194,14 @@ export function App() {
   }
 
   const { settings, runtime, tabs, workflows, recordingSteps } = data;
-  const locale = resolveLocale(settings.locale, chrome.i18n?.getUILanguage?.());
+  const locale = resolveLocale(settings.locale);
   const t = (key: I18nKey) => translate(locale, key);
   const isRecording = runtime.recordingTabId !== null;
   const pendingDialogs = Object.values(runtime.pendingDialogs ?? {});
+  const brokerHttpBase = settings.wsUrl
+    .replace(/^ws:/i, 'http:')
+    .replace(/^wss:/i, 'https:')
+    .replace(/\/ws\/?$/, '');
 
   const handleThemePersist = async (next: ThemeOverride) => {
     await sendSw({ type: 'sp.saveSettings', patch: { theme: next }, reconnect: false });
@@ -247,7 +252,7 @@ export function App() {
         profileLabel: labelDraft.trim() || 'default',
       });
       setPinDraft('');
-      setStatusMsg('Paired successfully via 6-digit PIN!');
+      setStatusMsg(t('pair.pairedOk'));
       await refresh();
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
@@ -264,7 +269,7 @@ export function App() {
       },
       reconnect: true,
     });
-    setStatusMsg('Connection settings saved — reconnecting…');
+    setStatusMsg(t('pair.savedReconnecting'));
     await refresh();
   };
 
@@ -437,7 +442,7 @@ export function App() {
           <div>
             <div className="brand-title">{t('app.title')}</div>
             <div className="brand-sub">
-              {settings.browserName} · {settings.profileLabel} · {tabs.length} tabs
+              {settings.browserName} · {settings.profileLabel} · {tabs.length} {t('label.tabsCount')}
             </div>
           </div>
         </div>
@@ -499,7 +504,7 @@ export function App() {
               <div className="card paused-banner">
                 <div className="card-title">{t('status.paused')}</div>
                 <div className="muted">
-                  All external MCP actions are blocked until you resume (Alt+Shift+P).
+                  {t('status.pausedDesc')} (<kbd className="kbd-chip">Alt+Shift+P</kbd>)
                 </div>
               </div>
             )}
@@ -507,8 +512,10 @@ export function App() {
             {!runtime.connected && (
               <div className="card approval">
                 <div className="card-title">{t('status.offline')}</div>
-                <div className="muted">
-                  {runtime.lastError || t('pair.pinHint')}
+                <div className="inline-hint">
+                  <span>{t('pair.pinHintPrefix')}</span>
+                  <CopyableCode code="pnpm pair" locale={locale} />
+                  <span>{t('pair.pinHintSuffix')}</span>
                 </div>
                 <button
                   type="button"
@@ -533,14 +540,14 @@ export function App() {
                     className="btn primary small"
                     onClick={() => void handleDialogAction(dlg.tabId, true)}
                   >
-                    Accept
+                    {t('btn.accept')}
                   </button>
                   <button
                     type="button"
                     className="btn danger small"
                     onClick={() => void handleDialogAction(dlg.tabId, false)}
                   >
-                    Dismiss
+                    {t('btn.dismiss')}
                   </button>
                 </div>
               </div>
@@ -597,10 +604,7 @@ export function App() {
               </label>
 
               {attachedTabs.length === 0 ? (
-                <div className="muted">
-                  No tabs in the AI Agent group. Drag a tab into the cyan &ldquo;AI Agent&rdquo;
-                  group or click <strong>{t('btn.attach')}</strong> below.
-                </div>
+                <div className="muted">{t('empty.agentTabs')}</div>
               ) : (
                 <div className="scroller agent-tabs-scroll">
                   {attachedTabs.map((item) => renderTabRow(item))}
@@ -619,7 +623,7 @@ export function App() {
               <input
                 type="search"
                 className="search-input"
-                placeholder={`Filter ${tabs.length - attachedTabs.length} tabs…`}
+                placeholder={t('filter.tabsPlaceholder')}
                 value={tabQuery}
                 onChange={(e) => setTabQuery(e.target.value)}
               />
@@ -629,7 +633,7 @@ export function App() {
                 fillHeight
                 getKey={(item) => item.tabId}
                 renderRow={(item) => renderTabRow(item)}
-                emptyState={<div className="muted">No matching tabs.</div>}
+                emptyState={<div className="muted">{t('empty.matchingTabs')}</div>}
               />
             </div>
           </div>
@@ -663,7 +667,7 @@ export function App() {
                 </div>
               </div>
               {runtime.recentActivity.length === 0 ? (
-                <div className="muted">No actions recorded in this session yet.</div>
+                <div className="muted">{t('empty.timeline')}</div>
               ) : (
                 <VirtualList
                   items={runtime.recentActivity}
@@ -703,7 +707,7 @@ export function App() {
                 {isRecording ? (
                   <span className="pill warn">REC ({recordingSteps.length})</span>
                 ) : (
-                  <span className="pill">Idle</span>
+                  <span className="pill">{t('status.idle')}</span>
                 )}
               </div>
               <div className="muted">{t('recorder.varsHint')}</div>
@@ -732,7 +736,7 @@ export function App() {
                       className="btn"
                       onClick={() => void handleStopRecording(false)}
                     >
-                      Discard
+                      {t('btn.discard')}
                     </button>
                   </div>
                   {recordingSteps.length > 0 && (
@@ -745,9 +749,9 @@ export function App() {
             </div>
 
             <div className="card">
-              <div className="card-title">{t('tab.workflows')}</div>
+              <div className="card-title">{t('section.savedWorkflows')}</div>
               {workflows.length === 0 ? (
-                <div className="muted">No saved workflows yet.</div>
+                <div className="muted">{t('empty.workflows')}</div>
               ) : (
                 <div className="list">
                   {workflows.map((wf) => {
@@ -758,11 +762,13 @@ export function App() {
                           <div className="tab-title">
                             {wf.name}{' '}
                             {paramNames.length > 0 && (
-                              <span className="pill accent">{paramNames.length} vars</span>
+                              <span className="pill accent">
+                                {paramNames.length} {t('label.vars')}
+                              </span>
                             )}
                           </div>
                           <div className="tab-url">
-                            {wf.steps.length} steps · {wf.startUrl}
+                            {wf.steps.length} {t('label.steps')} · {wf.startUrl}
                           </div>
                         </div>
                         <div className="row">
@@ -820,10 +826,7 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-shield">{t('setting.shield')}</label>
-                  <InfoTip
-                    label={t('setting.shield')}
-                    text="Filters hidden/zero-opacity/offscreen DOM nodes, strips invisible zero-width/bidi characters, and frames page text with UNTRUSTED_PAGE_CONTENT boundaries."
-                  />
+                  <InfoTip label={t('setting.shield')} text={t('setting.shieldInfo')} />
                 </span>
                 <input
                   id="sp-sec-shield"
@@ -897,10 +900,9 @@ export function App() {
                   id="sp-sec-lang"
                   className="input"
                   style={{ width: 'auto', minWidth: 112 }}
-                  value={settings.locale}
+                  value={locale}
                   onChange={(e) => void handleLocaleChange(e.target.value as LocalePreference)}
                 >
-                  <option value="auto">Auto ({locale})</option>
                   <option value="en">English</option>
                   <option value="ru">Русский</option>
                   <option value="zh-CN">简体中文</option>
@@ -916,7 +918,7 @@ export function App() {
                   className="btn small"
                   onClick={() => void sendSw({ type: 'sp.openWelcome' })}
                 >
-                  Welcome Wizard
+                  {t('btn.openWelcome')}
                 </button>
               </div>
             </div>
@@ -993,9 +995,9 @@ export function App() {
                       })
                     }
                   >
-                    <option value="ask-agent">ask-agent</option>
-                    <option value="auto-dismiss">auto-dismiss</option>
-                    <option value="approval">approval</option>
+                    <option value="ask-agent">{t('setting.dialogAsk')}</option>
+                    <option value="auto-dismiss">{t('setting.dialogDismiss')}</option>
+                    <option value="approval">{t('setting.dialogApproval')}</option>
                   </select>
                 </div>
 
@@ -1080,7 +1082,24 @@ export function App() {
                       : t('status.offline')}
                 </span>
               </div>
-              <div className="muted">{t('pair.pinHint')}</div>
+              <div className="inline-hint">
+                <span>{t('pair.pinHintPrefix')}</span>
+                <CopyableCode code="pnpm pair" locale={locale} />
+                <span>{t('pair.pinHintSuffix')}</span>
+              </div>
+              {brokerDetected && (
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() =>
+                      void chrome.tabs.create({ url: `${brokerHttpBase}/pair`, active: true })
+                    }
+                  >
+                    {t('btn.openPairPage')}
+                  </button>
+                </div>
+              )}
               <div className="pin-row">
                 <input
                   className="input pin-input"
@@ -1120,16 +1139,17 @@ export function App() {
                     onChange={(e) => setWsUrlDraft(e.target.value)}
                   />
                 </label>
-                <label className="muted">
-                  {t('pair.token')}
-                  <input
-                    className="input"
-                    type="password"
-                    placeholder="Paste token from CLI"
-                    value={tokenDraft}
-                    onChange={(e) => setTokenDraft(e.target.value)}
-                  />
-                </label>
+                <div className="inline-hint">
+                  <span>{t('pair.token')}:</span>
+                  <CopyableCode code="pnpm token" locale={locale} />
+                </div>
+                <input
+                  className="input"
+                  type="password"
+                  placeholder={t('pair.tokenPlaceholder')}
+                  value={tokenDraft}
+                  onChange={(e) => setTokenDraft(e.target.value)}
+                />
                 <button type="button" className="btn primary small" onClick={handleSaveConnection}>
                   {t('pair.saveConnect')}
                 </button>

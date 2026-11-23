@@ -54,6 +54,7 @@ export async function startBrokerDaemon(options?: {
   const validateOrigin = localhostOriginValidation();
 
   let activePin: { code: string; expiresAt: number; attempts: number } | null = null;
+  let activePairNonce: { value: string; expiresAt: number } | null = null;
   const createPairingPin = () => {
     const code = String(randomInt(100000, 1000000));
     const expiresAt = Date.now() + PIN_TTL_MS;
@@ -134,15 +135,90 @@ export async function startBrokerDaemon(options?: {
         return;
       }
 
-      // One-Click 6-digit PIN pairing helper & exchange
+      // One-Click 6-digit PIN pairing page (browser-native, no npx/terminal required!)
       if (req.method === 'GET' && url.pathname === '/pair') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Chrome Browser MCP — Pair</title>
-<style>body{font:15px/1.5 system-ui,sans-serif;background:#111317;color:#e6e9ef;padding:40px;max-width:560px;margin:0 auto;}code{background:#1d2129;padding:3px 7px;border-radius:6px;color:#38e4d4;}</style>
-</head><body><h1>Chrome Browser MCP — Local Pairing</h1>
-<p>Broker is running on <code>${config.brokerUrl}</code>.</p>
-<p>Open the <strong>Chrome Browser MCP</strong> Side Panel (or Welcome Tour) and enter the 6-digit PIN printed by <code>npx chrome-browser-mcp pair</code>.</p>
-</body></html>`);
+        const nonce = randomUUID();
+        activePairNonce = { value: nonce, expiresAt: Date.now() + PIN_TTL_MS };
+        res.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store',
+        });
+        res.end(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="dark light">
+<title>Chrome Browser MCP — Local Pairing</title>
+<style>
+  :root { --bg:#111317; --surface:#181b21; --surface2:#1f232c; --border:#2b313e; --text:#e6e9ef; --muted:#9aa3b2; --accent:#2563eb; --accent2:#38e4d4; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f5f7fa; --surface:#fff; --surface2:#f0f2f6; --border:#d8dee9; --text:#151922; --muted:#5a6475; --accent:#2563eb; --accent2:#0d9488; } }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--bg); color:var(--text); font:14px/1.5 system-ui,-apple-system,sans-serif; }
+  .card { width:100%; max-width:480px; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; box-shadow:0 16px 40px rgba(0,0,0,0.28); }
+  h1 { margin:0 0 6px; font-size:19px; }
+  p { margin:0 0 14px; color:var(--muted); font-size:13px; }
+  .pin-box { display:none; align-items:center; justify-content:space-between; gap:12px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin:16px 0; }
+  .pin-box.show { display:flex; }
+  .pin-val { font:700 30px/1 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:0.24em; color:var(--accent2); }
+  button { appearance:none; border:1px solid var(--border); background:var(--accent); color:#fff; border-radius:9px; padding:9px 14px; font:600 13px/1.2 inherit; cursor:pointer; }
+  button.sec { background:var(--surface2); color:var(--text); }
+  button:hover { opacity:0.92; }
+  .hint { font-size:12px; color:var(--muted); margin-top:10px; }
+  code { background:var(--surface2); border:1px solid var(--border); padding:2px 6px; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; }
+</style></head><body>
+<div class="card">
+  <h1>Chrome Browser MCP — 1-Click Pairing</h1>
+  <p>Local broker is running on <code>${config.brokerUrl}</code>. Click below to generate a single-use 6-digit PIN (valid for 2 minutes) — no terminal needed.</p>
+  <button id="genBtn" type="button">Generate 6-Digit PIN</button>
+  <div id="pinBox" class="pin-box">
+    <span id="pinVal" class="pin-val">------</span>
+    <button id="copyBtn" type="button" class="sec">Copy PIN</button>
+  </div>
+  <div id="msg" class="hint">Paste this PIN into the Chrome Browser MCP Welcome Wizard or Side Panel → Pair tab.</div>
+</div>
+<script>
+  const nonce = ${JSON.stringify(nonce)};
+  const genBtn = document.getElementById('genBtn');
+  const pinBox = document.getElementById('pinBox');
+  const pinVal = document.getElementById('pinVal');
+  const copyBtn = document.getElementById('copyBtn');
+  const msg = document.getElementById('msg');
+  genBtn.addEventListener('click', async () => {
+    genBtn.disabled = true;
+    try {
+      const r = await fetch('/pair/request-pin', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ nonce })
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || 'Failed to generate PIN');
+      pinVal.textContent = j.data.pin;
+      pinBox.classList.add('show');
+      msg.textContent = 'PIN active for 2 minutes (single use). You can close this tab after pairing.';
+    } catch (e) {
+      msg.textContent = 'Error: ' + (e.message || e) + ' (reload this page to try again)';
+      genBtn.disabled = false;
+    }
+  });
+  copyBtn.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(pinVal.textContent.trim());
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = 'Copy PIN'; }, 1500);
+  });
+</script></body></html>`);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/pair/request-pin') {
+        const body = (await readJsonBody(req)) as { nonce?: string };
+        if (
+          !activePairNonce ||
+          Date.now() > activePairNonce.expiresAt ||
+          typeof body.nonce !== 'string' ||
+          body.nonce !== activePairNonce.value
+        ) {
+          writeJson(res, 403, { ok: false, error: 'Invalid or expired page nonce — reload /pair' });
+          return;
+        }
+        activePairNonce = null;
+        writeJson(res, 200, { ok: true, data: createPairingPin() });
         return;
       }
 
@@ -156,7 +232,7 @@ export async function startBrokerDaemon(options?: {
         if (!activePin || Date.now() > activePin.expiresAt) {
           activePin = null;
           res.writeHead(401, corsHeaders);
-          res.end(JSON.stringify({ ok: false, error: 'No active pairing PIN (run `npx chrome-browser-mcp pair`)' }));
+          res.end(JSON.stringify({ ok: false, error: 'No active pairing PIN — open http://127.0.0.1:43179/pair or run `pnpm pair`' }));
           return;
         }
         if (activePin.attempts >= MAX_PIN_ATTEMPTS) {

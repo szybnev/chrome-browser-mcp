@@ -43,11 +43,10 @@ export function App() {
   const [localePref, setLocalePref] = useState<LocalePreference>(() => {
     try {
       const saved = localStorage.getItem('cbmcp-deck-locale');
-      if (saved === 'en' || saved === 'ru' || saved === 'zh-CN' || saved === 'auto') return saved;
+      return resolveLocale(saved ?? undefined);
     } catch {
-      // ignore
+      return 'en';
     }
-    return 'auto';
   });
   const locale = resolveLocale(localePref);
   const tr = (key: I18nKey) => translate(locale, key);
@@ -201,14 +200,14 @@ export function App() {
     deckState.policy.scopeMode === 'all-tabs' ? profileTabs.length : agentTabs.length;
 
   const tabItems: Array<{ id: DeckTab; label: string }> = [
-    { id: 'overview', label: `Overview (${controlledCount})` },
-    { id: 'timeline', label: `Timeline (${deckState.recentActivity.length})` },
+    { id: 'overview', label: `${tr('tab.overview')} (${controlledCount})` },
+    { id: 'timeline', label: `${tr('tab.timeline')} (${deckState.recentActivity.length})` },
     {
       id: 'devtools',
-      label: `DevTools (${deckState.recentErrors.length + deckState.recentFailedNetwork.length})`,
+      label: `${tr('tab.devtools')} (${deckState.recentErrors.length + deckState.recentFailedNetwork.length})`,
     },
-    { id: 'workflows', label: `Workflows (${deckState.workflows.length})` },
-    { id: 'security', label: 'Security' },
+    { id: 'workflows', label: `${tr('tab.workflows')} (${deckState.workflows.length})` },
+    { id: 'security', label: tr('tab.security') },
   ];
 
   const renderTabRow = (t: TabInfo) => (
@@ -233,7 +232,7 @@ export function App() {
             })
           }
         >
-          {t.inAgentGroup ? 'Detach' : 'Attach'}
+          {t.inAgentGroup ? tr('btn.detach') : tr('btn.attach')}
         </button>
         <button
           type="button"
@@ -248,7 +247,7 @@ export function App() {
             })
           }
         >
-          Focus
+          {tr('btn.focus')}
         </button>
       </div>
     </div>
@@ -261,10 +260,10 @@ export function App() {
           <div className="deck-title-group">
             <span className={`status-dot ${deckState.profiles.length > 0 ? 'ok' : ''}`} />
             <div>
-              <div className="deck-title">Browser Control Deck</div>
+              <div className="deck-title">{tr('app.deckTitle')}</div>
               <div className="muted">
-                v{deckState.brokerVersion} · {deckState.profiles.length} profile(s) ·{' '}
-                {profileTabs.length} total tab(s)
+                v{deckState.brokerVersion} · {deckState.profiles.length} {tr('label.profilesCount')} ·{' '}
+                {profileTabs.length} {tr('label.tabsCount')}
               </div>
             </div>
           </div>
@@ -273,10 +272,9 @@ export function App() {
                 className="select"
                 aria-label={tr('setting.language')}
                 style={{ width: 'auto', minWidth: 64, padding: '2px 6px', fontSize: 11 }}
-                value={localePref}
+                value={locale}
                 onChange={(e) => handleLocaleChange(e.target.value as LocalePreference)}
               >
-                <option value="auto">Auto</option>
                 <option value="en">EN</option>
                 <option value="ru">RU</option>
                 <option value="zh-CN">中文</option>
@@ -308,14 +306,14 @@ export function App() {
             disabled={busy}
             onClick={() => void callDeckTool('deck_get_state')}
           >
-            Refresh
+            {tr('btn.refresh')}
           </button>
           <button
             type="button"
             className={`btn small ${deckState.paused ? 'primary' : 'danger'}`}
             onClick={() => void callDeckTool('deck_set_paused', { paused: !deckState.paused })}
           >
-            {deckState.paused ? 'Resume' : 'Pause All'}
+            {deckState.paused ? tr('btn.resume') : tr('btn.pauseAll')}
           </button>
         </div>
       </header>
@@ -353,15 +351,17 @@ export function App() {
 
             {deckState.paused && (
               <div className="card danger">
-                <strong>Automation Paused</strong>
-                <div className="muted">All agent actions are halted until resumed.</div>
+                <strong>{tr('status.paused')}</strong>
+                <div className="muted">{tr('status.pausedDesc')}</div>
               </div>
             )}
 
             {deckState.pendingApprovals.map((req) => (
               <div key={req.id} className="card warn">
                 <div className="row-between">
-                  <strong>Approval Required — {req.action}</strong>
+                  <strong>
+                    {tr('section.approvals')} — {req.action}
+                  </strong>
                   <span className="pill warn">{req.risk.toUpperCase()}</span>
                 </div>
                 <div className="muted">{req.reason}</div>
@@ -377,7 +377,7 @@ export function App() {
                       })
                     }
                   >
-                    Approve
+                    {tr('btn.approve')}
                   </button>
                   <button
                     type="button"
@@ -389,7 +389,7 @@ export function App() {
                       })
                     }
                   >
-                    Reject
+                    {tr('btn.reject')}
                   </button>
                 </div>
               </div>
@@ -398,13 +398,12 @@ export function App() {
             {/* DEDICATED AI AGENT CONTROLLED TABS */}
             <div className="card agent-box">
               <div className="row-between">
-                <strong>AI Agent Tabs ({agentTabs.length})</strong>
+                <strong>
+                  {tr('section.agentTabs')} ({agentTabs.length})
+                </strong>
               </div>
               {agentTabs.length === 0 ? (
-                <div className="muted">
-                  No tabs in the <strong>AI Agent</strong> group yet. Drag any tab into the cyan
-                  &ldquo;AI Agent&rdquo; group in Chrome, or click <strong>Attach</strong> below.
-                </div>
+                <div className="muted">{tr('empty.agentTabs')}</div>
               ) : (
                 <div className="scroller agent-tabs-scroll">
                   {agentTabs.map((t) => renderTabRow(t))}
@@ -415,7 +414,7 @@ export function App() {
             {deckState.latestScreenshot && (
               <div className="card" style={{ flex: '0 0 auto' }}>
                 <div className="row-between">
-                  <strong>Latest Viewport Capture</strong>
+                  <strong>{tr('section.latestCapture')}</strong>
                   <span className="pill accent">
                     Tab {deckState.latestScreenshot.tabId}
                     {deckState.latestScreenshot.setOfMark ? ' · SoM' : ''}
@@ -434,21 +433,20 @@ export function App() {
             <div className={`card ${otherTabs.length > 0 ? 'fill-card' : ''}`}>
               <div className="row-between">
                 <strong>
-                  All Browser Tabs ({otherTabs.length}
+                  {tr('section.otherTabs')} ({otherTabs.length}
                   {tabQuery ? ` / ${profileTabs.length - agentTabs.length}` : ''})
                 </strong>
               </div>
               <input
                 type="search"
                 className="search-input"
-                placeholder={`Filter ${profileTabs.length - agentTabs.length} tabs by title, URL, or ID…`}
+                placeholder={tr('filter.tabsPlaceholder')}
                 value={tabQuery}
                 onChange={(e) => setTabQuery(e.target.value)}
               />
               {profileTabs.length === 0 ? (
                 <div className="muted">
-                  No Chrome profile connected yet. Run <code>npx chrome-browser-mcp token</code> and
-                  connect from the Chrome Side Panel.
+                  {tr('pair.brokerOffline')} — <code>http://127.0.0.1:43179/pair</code>
                 </div>
               ) : (
                 <VirtualList
@@ -457,7 +455,7 @@ export function App() {
                   fillHeight
                   getKey={(t) => t.tabId}
                   renderRow={(t) => renderTabRow(t)}
-                  emptyState={<div className="muted">No matching tabs.</div>}
+                  emptyState={<div className="muted">{tr('empty.matchingTabs')}</div>}
                 />
               )}
             </div>
@@ -895,9 +893,9 @@ export function App() {
                       })
                     }
                   >
-                    <option value="ask-agent">ask-agent</option>
-                    <option value="auto-dismiss">auto-dismiss</option>
-                    <option value="approval">approval</option>
+                    <option value="ask-agent">{tr('setting.dialogAsk')}</option>
+                    <option value="auto-dismiss">{tr('setting.dialogDismiss')}</option>
+                    <option value="approval">{tr('setting.dialogApproval')}</option>
                   </select>
                 </div>
 

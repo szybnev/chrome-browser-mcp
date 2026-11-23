@@ -8,6 +8,7 @@ import {
 } from '@chrome-browser-mcp/protocol';
 import type { ExtensionRuntimeState, ExtensionSettings } from '../shared/storage.js';
 import { ThemeToggle, type ThemeOverride } from '../sidepanel/ThemeToggle.js';
+import { CopyableCode } from '../sidepanel/CopyableCode.js';
 
 interface StatePayload {
   settings: ExtensionSettings;
@@ -56,20 +57,29 @@ export function WelcomeApp() {
     void loadState();
   }, [loadState]);
 
-  const locale = resolveLocale(settings?.locale ?? 'auto', chrome.i18n?.getUILanguage?.());
+  const locale = resolveLocale(settings?.locale);
   const t = (key: I18nKey) => translate(locale, key);
 
   if (!settings || !runtime) {
     return (
       <div className="welcome-page">
-        <div className="welcome-shell">Loading…</div>
+        <div className="welcome-shell">{t('app.loading')}</div>
       </div>
     );
   }
 
+  const brokerHttpBase = settings.wsUrl
+    .replace(/^ws:/i, 'http:')
+    .replace(/^wss:/i, 'https:')
+    .replace(/\/ws\/?$/, '');
+
   const updateSettings = async (patch: Partial<ExtensionSettings>, reconnect = false) => {
     const next = await sendSw<ExtensionSettings>({ type: 'sp.saveSettings', patch, reconnect });
     setSettings(next);
+  };
+
+  const handleOpenPairPage = () => {
+    void chrome.tabs.create({ url: `${brokerHttpBase}/pair`, active: true });
   };
 
   const handlePairPin = async () => {
@@ -77,9 +87,13 @@ export function WelcomeApp() {
     setBusy(true);
     setFeedback(null);
     try {
-      await sendSw({ type: 'sp.pairWithPin', pin: pin.trim(), profileLabel: labelDraft.trim() || 'default' });
+      await sendSw({
+        type: 'sp.pairWithPin',
+        pin: pin.trim(),
+        profileLabel: labelDraft.trim() || 'default',
+      });
       setPin('');
-      setFeedback('Connected to local broker!');
+      setFeedback(t('pair.pairedOk'));
       await loadState();
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : String(err));
@@ -93,8 +107,11 @@ export function WelcomeApp() {
     setBusy(true);
     setFeedback(null);
     try {
-      await updateSettings({ token: tokenDraft.trim(), profileLabel: labelDraft.trim() || 'default' }, true);
-      setFeedback('Token saved — connecting…');
+      await updateSettings(
+        { token: tokenDraft.trim(), profileLabel: labelDraft.trim() || 'default' },
+        true,
+      );
+      setFeedback(t('pair.savedReconnecting'));
       await loadState();
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : String(err));
@@ -167,32 +184,31 @@ export function WelcomeApp() {
                   <div className="card-title">{t('setting.language')}</div>
                   <select
                     className="input"
-                    value={settings.locale}
+                    value={locale}
                     onChange={(e) =>
                       void updateSettings({ locale: e.target.value as LocalePreference })
                     }
                   >
-                    <option value="auto">Auto ({locale})</option>
                     <option value="en">English</option>
                     <option value="ru">Русский</option>
                     <option value="zh-CN">简体中文</option>
                   </select>
                 </div>
                 <div className="card">
-                  <div className="card-title">100% Local-First</div>
-                  <div className="muted">
-                    Strict <code>127.0.0.1</code> loopback connection. Zero cloud servers, zero
-                    telemetry, and dedicated <strong>AI Agent</strong> tab isolation.
-                  </div>
+                  <div className="card-title">{t('welcome.localTitle')}</div>
+                  <div className="muted">{t('welcome.localDesc')}</div>
                 </div>
               </div>
               <div className="card">
-                <div className="card-title">How it works in 30 seconds</div>
-                <div className="muted">
-                  1. Connect to your local MCP Broker Daemon (works with Antigravity, Claude Code,
-                  Cursor, Codex).<br />
-                  2. Attach only the tabs you want AI to access.<br />
-                  3. Press <code>Alt+Shift+P</code> anytime for instant emergency pause.
+                <div className="card-title">{t('welcome.howTitle')}</div>
+                <div className="muted" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div>1. {t('welcome.how1')}</div>
+                  <div>2. {t('welcome.how2')}</div>
+                  <div>
+                    3. {t('welcome.how3Prefix')}
+                    <kbd className="kbd-chip">Alt+Shift+P</kbd>
+                    {t('welcome.how3Suffix')}
+                  </div>
                 </div>
               </div>
             </>
@@ -211,7 +227,22 @@ export function WelcomeApp() {
                         : t('pair.brokerOffline')}
                   </span>
                 </div>
-                <div className="muted">{t('pair.pinHint')}</div>
+                <div className="inline-hint">
+                  <span>{t('pair.pinHintPrefix')}</span>
+                  <CopyableCode code="pnpm pair" locale={locale} />
+                  <span>{t('pair.pinHintSuffix')}</span>
+                </div>
+                {brokerAlive && (
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={handleOpenPairPage}
+                    >
+                      {t('btn.openPairPage')} ({brokerHttpBase}/pair)
+                    </button>
+                  </div>
+                )}
                 <div className="pin-row">
                   <input
                     className="input pin-input"
@@ -242,16 +273,17 @@ export function WelcomeApp() {
               <details className="advanced-box">
                 <summary>{t('section.advancedConnection')}</summary>
                 <div className="advanced-body">
-                  <label className="muted">
-                    {t('pair.token')}
-                    <input
-                      className="input"
-                      type="password"
-                      placeholder="Paste token from `npx chrome-browser-mcp token`"
-                      value={tokenDraft}
-                      onChange={(e) => setTokenDraft(e.target.value)}
-                    />
-                  </label>
+                  <div className="inline-hint">
+                    <span>{t('pair.token')}:</span>
+                    <CopyableCode code="pnpm token" locale={locale} />
+                  </div>
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder={t('pair.tokenPlaceholder')}
+                    value={tokenDraft}
+                    onChange={(e) => setTokenDraft(e.target.value)}
+                  />
                   <button
                     type="button"
                     className="btn small"
@@ -286,17 +318,17 @@ export function WelcomeApp() {
                 <div className="cursor-preview">
                   <span className="muted">
                     {settings.visualHudEnabled
-                      ? 'Active: animated cursor + target spotlight + clickable Pause pill'
-                      : 'Silent mode: no on-page cursor or highlights during actions'}
+                      ? t('setting.visualHudActive')
+                      : t('setting.visualHudSilent')}
                   </span>
                   <span className={`pill ${settings.visualHudEnabled ? 'accent' : ''}`}>
-                    {settings.visualHudEnabled ? 'ON' : 'OFF'}
+                    {settings.visualHudEnabled ? t('status.on') : t('status.off')}
                   </span>
                 </div>
               </div>
 
               <div className="card">
-                <div className="card-title">{t('setting.readOnlyDomains')}</div>
+                <div className="card-title">{t('setting.readOnlyOptional')}</div>
                 <div className="muted">{t('setting.readOnlyHint')}</div>
                 <div className="preset-chips">
                   {READ_ONLY_DOMAIN_PRESETS.map((domain) => {
@@ -320,12 +352,8 @@ export function WelcomeApp() {
 
           {step === 3 && (
             <div className="card">
-              <div className="card-title">You&apos;re all set!</div>
-              <div className="muted">
-                Click the button below to open the <strong>Control HUD Side Panel</strong> and take
-                a quick 4-step spotlight walkthrough of Tab Isolation, Emergency Pause, Workflow
-                Recorder, and Security settings.
-              </div>
+              <div className="card-title">{t('welcome.readyTitle')}</div>
+              <div className="muted">{t('welcome.readyDesc')}</div>
               <div className="row" style={{ marginTop: 8 }}>
                 <button type="button" className="btn primary" onClick={() => void handleOpenHud()}>
                   {t('welcome.openHud')}

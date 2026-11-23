@@ -824,3 +824,67 @@ body {
   letter-spacing: 0.2em;
   text-align: center;
 }
+
+/* Click-to-copy inline code & shortcut chips */
+.code-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  vertical-align: baseline;
+  margin: 0 3px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--control-border);
+  background: var(--surface-2);
+  color: var(--accent-text);
+  font: 500 11.5px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.code-chip:hover {
+  border-color: var(--accent-text);
+  background: var(--surface-hover);
+}
+
+.code-chip.copied {
+  border-color: var(--ok, #10b981);
+  color: var(--ok, #10b981);
+}
+
+.code-chip code {
+  font: inherit;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.code-chip-status {
+  display: inline-flex;
+  align-items: center;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 10.5px;
+  opacity: 0.85;
+}
+
+.kbd-chip {
+  display: inline-block;
+  margin: 0 3px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--control-border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 600 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.inline-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}

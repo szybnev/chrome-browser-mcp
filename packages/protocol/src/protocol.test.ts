@@ -222,13 +222,15 @@ describe('v2.0 Protocol Enhancements (Read-Only, Body Redaction, Workflows, i18n
     expect(spec).toContain(`await page.locator('#search').press('Enter');`);
   });
 
-  it('maintains complete i18n key parity across EN, RU, and ZH-CN', () => {
+  it('maintains complete i18n key parity across EN, RU, and ZH-CN (defaults to English)', () => {
     const enKeys = Object.keys(I18N_CATALOG.en).sort();
     expect(Object.keys(I18N_CATALOG.ru).sort()).toEqual(enKeys);
     expect(Object.keys(I18N_CATALOG['zh-CN']).sort()).toEqual(enKeys);
-    expect(resolveLocale('auto', 'ru-RU')).toBe('ru');
-    expect(resolveLocale('auto', 'zh-CN')).toBe('zh-CN');
-    expect(resolveLocale('auto', 'en-US')).toBe('en');
+    expect(resolveLocale(undefined)).toBe('en');
+    expect(resolveLocale('auto')).toBe('en');
+    expect(resolveLocale('ru')).toBe('ru');
+    expect(resolveLocale('zh-CN')).toBe('zh-CN');
     expect(translate('ru', 'status.connected')).toBe('Подключено');
+    expect(translate('zh-CN', 'welcome.readyTitle')).toBe('全部就绪！');
   });
 });

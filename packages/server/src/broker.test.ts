@@ -235,6 +235,29 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     });
     expect(reusePin.status).toBe(401);
 
+    // 1b. Browser-native /pair page (1-click PIN via CSRF nonce, no npx/terminal required)
+    const pairPage = await fetch(`${activeBroker.config.brokerUrl}/pair`);
+    expect(pairPage.status).toBe(200);
+    const pairHtml = await pairPage.text();
+    const nonceMatch = /const nonce = "([^"]+)"/.exec(pairHtml);
+    expect(nonceMatch?.[1]).toBeTruthy();
+
+    const badNonceRes = await fetch(`${activeBroker.config.brokerUrl}/pair/request-pin`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nonce: 'wrong-nonce' }),
+    });
+    expect(badNonceRes.status).toBe(403);
+
+    const browserPinRes = await fetch(`${activeBroker.config.brokerUrl}/pair/request-pin`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nonce: nonceMatch![1] }),
+    });
+    expect(browserPinRes.status).toBe(200);
+    const browserPinJson = (await browserPinRes.json()) as { ok: boolean; data: { pin: string } };
+    expect(browserPinJson.data.pin).toMatch(/^\d{6}$/);
+
     // 2. Zero-Secret resolution
     const secret = await activeBroker.hub.resolveSecret('env:STAGING_PASS');
     expect(secret.value).toBe('s3cr3t-v2-pass');

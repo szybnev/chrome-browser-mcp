@@ -328,7 +328,7 @@ async function connectBroker(): Promise<void> {
   if (!settings.token.trim()) {
     await saveRuntimeState({
       connected: false,
-      lastError: 'Enter pairing token from `npx chrome-browser-mcp token`',
+      lastError: 'Pair via http://127.0.0.1:43179/pair or run `pnpm pair` in the project folder',
     });
     await updateBadge();
     await notifySidePanel();
@@ -398,7 +398,7 @@ async function connectBroker(): Promise<void> {
       if (socket === ws) socket = null;
       const reason =
         ev.code === 4001
-          ? 'Invalid pairing token — check `npx chrome-browser-mcp token`'
+          ? 'Invalid pairing token — pair at http://127.0.0.1:43179/pair or run `pnpm token`'
           : ev.reason || 'Disconnected from local broker';
       await saveRuntimeState({ connected: false, lastError: reason });
       await updateBadge();
