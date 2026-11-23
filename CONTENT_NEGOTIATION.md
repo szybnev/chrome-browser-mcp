@@ -9,6 +9,16 @@
 
 ---
 
+## Verified Benchmark Result (`agentreadingtest.com`)
+
+Verified end-to-end with a clean-context AI agent running all 10 tasks on [`agentreadingtest.com`](https://agentreadingtest.com/) via `chrome-browser-mcp` on this branch — **20 / 20 points (16 / 16 scored canary tokens + 4 / 4 qualitative checks)**, including native Markdown delivery of `CANARY-CONNEG-MD-sigma` while preserving full HTML/JS/SPA/tab rendering across all other pages:
+
+![Agent Reading Test — 20 / 20 points (16 / 16 canary tokens)](./docs/content-negotiation-score.png)
+
+![Content Negotiation (1/1) — CANARY-CONNEG-MD-sigma verified](./docs/content-negotiation-check.png)
+
+---
+
 ## Why This Feature Is Not on `main`
 
 Chrome Browser MCP is designed to operate in your real daily browser session with minimal permissions and minimal attack surface. Sending `Accept: text/markdown` on browser navigations introduces three deliberate tradeoffs that do not fit `main`:
