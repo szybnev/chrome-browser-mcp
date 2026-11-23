@@ -2,9 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   exportWorkflowToPlaywright,
   extractWorkflowParamNames,
+  getPauseShortcut,
   READ_ONLY_DOMAIN_PRESETS,
   resolveLocale,
   translate,
+  validateCdpIdleSeconds,
+  validateDomainRules,
+  validatePairingPin,
+  validatePairingToken,
+  validateProfileLabel,
+  validateWorkflowName,
+  validateWsUrl,
   type I18nKey,
   type LocalePreference,
   type RecordedStep,
@@ -61,6 +69,13 @@ export function App() {
   const [pinDraft, setPinDraft] = useState('');
   const [blockedDraft, setBlockedDraft] = useState('');
   const [readOnlyDraft, setReadOnlyDraft] = useState('');
+  const [cdpIdleDraft, setCdpIdleDraft] = useState('60');
+  const [readOnlyError, setReadOnlyError] = useState<string | null>(null);
+  const [blockedError, setBlockedError] = useState<string | null>(null);
+  const [cdpIdleError, setCdpIdleError] = useState<string | null>(null);
+  const [workflowNameError, setWorkflowNameError] = useState<string | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [connError, setConnError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [tourStep, setTourStep] = useState<number | null>(null);
   const [hasDownloadsPerm, setHasDownloadsPerm] = useState(false);
@@ -101,6 +116,7 @@ export function App() {
       setLabelDraft((prev) => prev || payload.settings.profileLabel);
       setBlockedDraft((prev) => prev || payload.settings.policy.blockedDomains.join('\n'));
       setReadOnlyDraft((prev) => prev || payload.settings.policy.readOnlyDomains.join('\n'));
+      setCdpIdleDraft(String(payload.settings.policy.cdpIdleDetachSec));
       if (payload.settings.sidePanelTourPending) {
         setTourStep((cur) => (cur === null ? 0 : cur));
       }
@@ -195,7 +211,8 @@ export function App() {
 
   const { settings, runtime, tabs, workflows, recordingSteps } = data;
   const locale = resolveLocale(settings.locale);
-  const t = (key: I18nKey) => translate(locale, key);
+  const t = (key: I18nKey, vars?: Record<string, string | number>) => translate(locale, key, vars);
+  const pauseShortcut = getPauseShortcut();
   const isRecording = runtime.recordingTabId !== null;
   const pendingDialogs = Object.values(runtime.pendingDialogs ?? {});
   const brokerHttpBase = settings.wsUrl
@@ -244,11 +261,16 @@ export function App() {
   };
 
   const handlePairPin = async () => {
-    if (pinDraft.trim().length < 6) return;
+    setPinError(null);
+    const pinCheck = validatePairingPin(pinDraft);
+    if (!pinCheck.ok || !pinCheck.normalized) {
+      setPinError(t('val.pinInvalid'));
+      return;
+    }
     try {
       await sendSw({
         type: 'sp.pairWithPin',
-        pin: pinDraft.trim(),
+        pin: pinCheck.normalized,
         profileLabel: labelDraft.trim() || 'default',
       });
       setPinDraft('');
@@ -256,17 +278,51 @@ export function App() {
       await refresh();
       setTimeout(() => setActiveTab('control'), 650);
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setPinError(err instanceof Error ? err.message : String(err));
     }
   };
 
   const handleSaveConnection = async () => {
+    setConnError(null);
+    const labelCheck = validateProfileLabel(labelDraft);
+    if (!labelCheck.ok || !labelCheck.normalized) {
+      setConnError(
+        labelCheck.errorCode === 'length'
+          ? t('val.labelLength')
+          : labelCheck.errorCode === 'chars'
+            ? t('val.labelChars')
+            : t('val.labelEmpty'),
+      );
+      return;
+    }
+    const wsCheck = validateWsUrl(wsUrlDraft);
+    if (!wsCheck.ok || !wsCheck.normalized) {
+      setConnError(
+        wsCheck.errorCode === 'protocol'
+          ? t('val.wsUrlProtocol')
+          : wsCheck.errorCode === 'loopback'
+            ? t('val.wsUrlLoopback')
+            : t('val.wsUrlInvalid'),
+      );
+      return;
+    }
+    const tokenCheck = validatePairingToken(tokenDraft);
+    if (!tokenCheck.ok || !tokenCheck.normalized) {
+      setConnError(
+        tokenCheck.errorCode === 'whitespace'
+          ? t('val.tokenWhitespace')
+          : tokenCheck.errorCode === 'too_short'
+            ? t('val.tokenShort')
+            : t('val.tokenEmpty'),
+      );
+      return;
+    }
     await sendSw({
       type: 'sp.saveSettings',
       patch: {
-        wsUrl: wsUrlDraft.trim(),
-        token: tokenDraft.trim(),
-        profileLabel: labelDraft.trim() || 'default',
+        wsUrl: wsCheck.normalized,
+        token: tokenCheck.normalized,
+        profileLabel: labelCheck.normalized,
       },
       reconnect: true,
     });
@@ -284,22 +340,47 @@ export function App() {
     await refresh();
   };
 
+  const formatDomainError = (issues: ReturnType<typeof validateDomainRules>['issues']): string => {
+    const first = issues[0]!;
+    return t(first.kind === 'whitespace_or_comma' ? 'val.domainComma' : 'val.domainInvalid', {
+      line: first.line,
+      val: first.value,
+    });
+  };
+
   const handleSaveBlocklist = async () => {
-    const blockedDomains = blockedDraft
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    await handlePolicyPatch({ blockedDomains });
-    setStatusMsg(`Saved ${blockedDomains.length} blocked domain rule(s).`);
+    setBlockedError(null);
+    const { valid, issues } = validateDomainRules(blockedDraft);
+    if (issues.length > 0) {
+      setBlockedError(formatDomainError(issues));
+      return;
+    }
+    setBlockedDraft(valid.join('\n'));
+    await handlePolicyPatch({ blockedDomains: valid });
+    setStatusMsg(t('val.savedRules', { count: valid.length }));
   };
 
   const handleSaveReadOnly = async () => {
-    const readOnlyDomains = readOnlyDraft
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    await handlePolicyPatch({ readOnlyDomains });
-    setStatusMsg(`Saved ${readOnlyDomains.length} read-only domain rule(s).`);
+    setReadOnlyError(null);
+    const { valid, issues } = validateDomainRules(readOnlyDraft);
+    if (issues.length > 0) {
+      setReadOnlyError(formatDomainError(issues));
+      return;
+    }
+    setReadOnlyDraft(valid.join('\n'));
+    await handlePolicyPatch({ readOnlyDomains: valid });
+    setStatusMsg(t('val.savedRules', { count: valid.length }));
+  };
+
+  const handleCdpIdleChange = async (raw: string) => {
+    setCdpIdleDraft(raw);
+    const check = validateCdpIdleSeconds(raw);
+    if (!check.ok || check.value === undefined) {
+      setCdpIdleError(t('val.cdpIdleRange'));
+      return;
+    }
+    setCdpIdleError(null);
+    await handlePolicyPatch({ cdpIdleDetachSec: check.value });
   };
 
   const handleToggleReadOnlyPreset = async (domain: string) => {
@@ -343,6 +424,14 @@ export function App() {
   };
 
   const handleStopRecording = async (save: boolean) => {
+    setWorkflowNameError(null);
+    if (save && workflowName.trim()) {
+      const check = validateWorkflowName(workflowName);
+      if (!check.ok) {
+        setWorkflowNameError(t('val.workflowNameLength'));
+        return;
+      }
+    }
     await sendSw({
       type: 'sp.stopRecording',
       save,
@@ -457,7 +546,7 @@ export function App() {
             type="button"
             className={`btn small ${runtime.paused ? 'primary' : 'danger'}`}
             onClick={handleTogglePause}
-            title="Shortcut: Alt+Shift+P"
+            title={pauseShortcut}
           >
             {runtime.paused ? t('btn.resume') : t('btn.pause')}
           </button>
@@ -506,7 +595,7 @@ export function App() {
               <div className="card paused-banner">
                 <div className="card-title">{t('status.paused')}</div>
                 <div className="muted">
-                  {t('status.pausedDesc')} (<kbd className="kbd-chip">Alt+Shift+P</kbd>)
+                  {t('status.pausedDesc')} (<kbd className="kbd-chip">{pauseShortcut}</kbd>)
                 </div>
               </div>
             )}
@@ -716,11 +805,15 @@ export function App() {
               ) : (
                 <>
                   <input
-                    className="input"
+                    className={`input ${workflowNameError ? 'input-invalid' : ''}`}
                     placeholder={t('recorder.namePlaceholder')}
                     value={workflowName}
-                    onChange={(e) => setWorkflowName(e.target.value)}
+                    onChange={(e) => {
+                      setWorkflowName(e.target.value);
+                      setWorkflowNameError(null);
+                    }}
                   />
+                  {workflowNameError && <div className="field-error">{workflowNameError}</div>}
                   <div className="row">
                     <button
                       type="button"
@@ -839,6 +932,10 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-eval">{t('setting.approvalEval')}</label>
+                  <InfoTip
+                    label={t('setting.approvalEval')}
+                    text={t('setting.approvalEvalInfo')}
+                  />
                 </span>
                 <input
                   id="sp-sec-eval"
@@ -853,6 +950,10 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-pass">{t('setting.approvalPasswords')}</label>
+                  <InfoTip
+                    label={t('setting.approvalPasswords')}
+                    text={t('setting.approvalPasswordsInfo')}
+                  />
                 </span>
                 <input
                   id="sp-sec-pass"
@@ -867,6 +968,10 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-pay">{t('setting.approvalPayments')}</label>
+                  <InfoTip
+                    label={t('setting.approvalPayments')}
+                    text={t('setting.approvalPaymentsInfo')}
+                  />
                 </span>
                 <input
                   id="sp-sec-pay"
@@ -881,6 +986,10 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-upload">{t('setting.approvalUploads')}</label>
+                  <InfoTip
+                    label={t('setting.approvalUploads')}
+                    text={t('setting.approvalUploadsInfo')}
+                  />
                 </span>
                 <input
                   id="sp-sec-upload"
@@ -926,7 +1035,13 @@ export function App() {
               <summary>{t('section.advancedSettings')}</summary>
               <div className="advanced-body">
                 <div>
-                  <div className="card-title">{t('setting.readOnlyDomains')}</div>
+                  <div className="card-header" style={{ marginBottom: 4 }}>
+                    <span className="card-title">{t('setting.readOnlyDomains')}</span>
+                    <InfoTip
+                      label={t('setting.readOnlyDomains')}
+                      text={t('setting.readOnlyInfo')}
+                    />
+                  </div>
                   <div className="muted" style={{ marginBottom: 6 }}>
                     {t('setting.readOnlyHint')}
                   </div>
@@ -947,11 +1062,15 @@ export function App() {
                     })}
                   </div>
                   <textarea
-                    className="textarea"
+                    className={`textarea ${readOnlyError ? 'input-invalid' : ''}`}
                     rows={3}
                     value={readOnlyDraft}
-                    onChange={(e) => setReadOnlyDraft(e.target.value)}
+                    onChange={(e) => {
+                      setReadOnlyDraft(e.target.value);
+                      setReadOnlyError(null);
+                    }}
                   />
+                  {readOnlyError && <div className="field-error">{readOnlyError}</div>}
                   <button
                     type="button"
                     className="btn small"
@@ -963,13 +1082,23 @@ export function App() {
                 </div>
 
                 <div>
-                  <div className="card-title">{t('setting.blockedDomains')}</div>
+                  <div className="card-header" style={{ marginBottom: 4 }}>
+                    <span className="card-title">{t('setting.blockedDomains')}</span>
+                    <InfoTip
+                      label={t('setting.blockedDomains')}
+                      text={t('setting.blockedDomainsInfo')}
+                    />
+                  </div>
                   <textarea
-                    className="textarea"
+                    className={`textarea ${blockedError ? 'input-invalid' : ''}`}
                     rows={4}
                     value={blockedDraft}
-                    onChange={(e) => setBlockedDraft(e.target.value)}
+                    onChange={(e) => {
+                      setBlockedDraft(e.target.value);
+                      setBlockedError(null);
+                    }}
                   />
+                  {blockedError && <div className="field-error">{blockedError}</div>}
                   <button
                     type="button"
                     className="btn small"
@@ -981,7 +1110,13 @@ export function App() {
                 </div>
 
                 <div className="security-row">
-                  <label htmlFor="sp-adv-dialog">{t('setting.dialogPolicy')}</label>
+                  <span className="security-label-group">
+                    <label htmlFor="sp-adv-dialog">{t('setting.dialogPolicy')}</label>
+                    <InfoTip
+                      label={t('setting.dialogPolicy')}
+                      text={t('setting.dialogPolicyInfo')}
+                    />
+                  </span>
                   <select
                     id="sp-adv-dialog"
                     className="input"
@@ -999,22 +1134,27 @@ export function App() {
                   </select>
                 </div>
 
-                <div className="security-row">
-                  <label htmlFor="sp-adv-cdp-idle">{t('setting.cdpDetach')}</label>
-                  <input
-                    id="sp-adv-cdp-idle"
-                    type="number"
-                    min={10}
-                    max={600}
-                    className="input"
-                    style={{ width: 84 }}
-                    value={settings.policy.cdpIdleDetachSec}
-                    onChange={(e) =>
-                      void handlePolicyPatch({
-                        cdpIdleDetachSec: Math.max(10, Math.min(600, Number(e.target.value) || 60)),
-                      })
-                    }
-                  />
+                <div>
+                  <div className="security-row">
+                    <span className="security-label-group">
+                      <label htmlFor="sp-adv-cdp-idle">{t('setting.cdpDetach')}</label>
+                      <InfoTip
+                        label={t('setting.cdpDetach')}
+                        text={t('setting.cdpDetachInfo')}
+                      />
+                    </span>
+                    <input
+                      id="sp-adv-cdp-idle"
+                      type="number"
+                      min={10}
+                      max={600}
+                      className={`input ${cdpIdleError ? 'input-invalid' : ''}`}
+                      style={{ width: 84 }}
+                      value={cdpIdleDraft}
+                      onChange={(e) => void handleCdpIdleChange(e.target.value)}
+                    />
+                  </div>
+                  {cdpIdleError && <div className="field-error">{cdpIdleError}</div>}
                 </div>
 
                 <div className="security-row">
@@ -1036,7 +1176,13 @@ export function App() {
                   {t('section.optionalPermissions')}
                 </div>
                 <div className="security-row">
-                  <label htmlFor="sp-perm-dl">{t('setting.downloadsPerm')}</label>
+                  <span className="security-label-group">
+                    <label htmlFor="sp-perm-dl">{t('setting.downloadsPerm')}</label>
+                    <InfoTip
+                      label={t('setting.downloadsPerm')}
+                      text={t('setting.downloadsPermInfo')}
+                    />
+                  </span>
                   <input
                     id="sp-perm-dl"
                     type="checkbox"
@@ -1045,7 +1191,13 @@ export function App() {
                   />
                 </div>
                 <div className="security-row">
-                  <label htmlFor="sp-perm-nm">{t('setting.nativeHostPerm')}</label>
+                  <span className="security-label-group">
+                    <label htmlFor="sp-perm-nm">{t('setting.nativeHostPerm')}</label>
+                    <InfoTip
+                      label={t('setting.nativeHostPerm')}
+                      text={t('setting.nativeHostPermInfo')}
+                    />
+                  </span>
                   <input
                     id="sp-perm-nm"
                     type="checkbox"
@@ -1094,22 +1246,25 @@ export function App() {
                   </button>
                 )}
                 <input
-                  className="input pin-input"
+                  className={`input pin-input ${pinError ? 'input-invalid' : ''}`}
                   inputMode="numeric"
                   maxLength={6}
                   placeholder={t('pair.pinPlaceholder')}
                   value={pinDraft}
-                  onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onChange={(e) => {
+                    setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    setPinError(null);
+                  }}
                 />
                 <button
                   type="button"
                   className="btn primary small"
-                  disabled={pinDraft.length < 6}
                   onClick={() => void handlePairPin()}
                 >
                   {t('pair.pinButton')}
                 </button>
               </div>
+              {pinError && <div className="field-error">{pinError}</div>}
             </div>
 
             <details className="advanced-box">
@@ -1120,7 +1275,10 @@ export function App() {
                   <input
                     className="input"
                     value={labelDraft}
-                    onChange={(e) => setLabelDraft(e.target.value)}
+                    onChange={(e) => {
+                      setLabelDraft(e.target.value);
+                      setConnError(null);
+                    }}
                   />
                 </label>
                 <label className="muted">
@@ -1128,7 +1286,10 @@ export function App() {
                   <input
                     className="input"
                     value={wsUrlDraft}
-                    onChange={(e) => setWsUrlDraft(e.target.value)}
+                    onChange={(e) => {
+                      setWsUrlDraft(e.target.value);
+                      setConnError(null);
+                    }}
                   />
                 </label>
                 <div className="inline-hint">
@@ -1136,12 +1297,16 @@ export function App() {
                   <CopyableCode code="node packages/server/dist/cli.js token" locale={locale} />
                 </div>
                 <input
-                  className="input"
+                  className={`input ${connError ? 'input-invalid' : ''}`}
                   type="password"
                   placeholder={t('pair.tokenPlaceholder')}
                   value={tokenDraft}
-                  onChange={(e) => setTokenDraft(e.target.value)}
+                  onChange={(e) => {
+                    setTokenDraft(e.target.value);
+                    setConnError(null);
+                  }}
                 />
+                {connError && <div className="field-error">{connError}</div>}
                 <button type="button" className="btn primary small" onClick={handleSaveConnection}>
                   {t('pair.saveConnect')}
                 </button>

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  getPauseShortcut,
   READ_ONLY_DOMAIN_PRESETS,
   resolveLocale,
   translate,
+  validatePairingPin,
+  validatePairingToken,
+  validateProfileLabel,
   type I18nKey,
   type LocalePreference,
 } from '@chrome-browser-mcp/protocol';
@@ -34,6 +38,8 @@ export function WelcomeApp() {
   const [tokenDraft, setTokenDraft] = useState('');
   const [labelDraft, setLabelDraft] = useState('default');
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const loadState = useCallback(async () => {
@@ -58,7 +64,8 @@ export function WelcomeApp() {
   }, [loadState]);
 
   const locale = resolveLocale(settings?.locale);
-  const t = (key: I18nKey) => translate(locale, key);
+  const t = (key: I18nKey, vars?: Record<string, string | number>) => translate(locale, key, vars);
+  const pauseShortcut = getPauseShortcut();
 
   if (!settings || !runtime) {
     return (
@@ -83,14 +90,30 @@ export function WelcomeApp() {
   };
 
   const handlePairPin = async () => {
-    if (!pin.trim()) return;
-    setBusy(true);
+    setPinError(null);
     setFeedback(null);
+    const pinCheck = validatePairingPin(pin);
+    if (!pinCheck.ok || !pinCheck.normalized) {
+      setPinError(t('val.pinInvalid'));
+      return;
+    }
+    const labelCheck = validateProfileLabel(labelDraft || 'default');
+    if (!labelCheck.ok || !labelCheck.normalized) {
+      setPinError(
+        labelCheck.errorCode === 'length'
+          ? t('val.labelLength')
+          : labelCheck.errorCode === 'chars'
+            ? t('val.labelChars')
+            : t('val.labelEmpty'),
+      );
+      return;
+    }
+    setBusy(true);
     try {
       await sendSw({
         type: 'sp.pairWithPin',
-        pin: pin.trim(),
-        profileLabel: labelDraft.trim() || 'default',
+        pin: pinCheck.normalized,
+        profileLabel: labelCheck.normalized,
       });
       setPin('');
       setFeedback(t('pair.pairedOk'));
@@ -99,19 +122,41 @@ export function WelcomeApp() {
         setStep((cur) => (cur === 1 ? 2 : cur));
       }, 650);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : String(err));
+      setPinError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
   };
 
   const handleManualToken = async () => {
-    if (!tokenDraft.trim()) return;
-    setBusy(true);
+    setManualError(null);
     setFeedback(null);
+    const labelCheck = validateProfileLabel(labelDraft);
+    if (!labelCheck.ok || !labelCheck.normalized) {
+      setManualError(
+        labelCheck.errorCode === 'length'
+          ? t('val.labelLength')
+          : labelCheck.errorCode === 'chars'
+            ? t('val.labelChars')
+            : t('val.labelEmpty'),
+      );
+      return;
+    }
+    const tokenCheck = validatePairingToken(tokenDraft);
+    if (!tokenCheck.ok || !tokenCheck.normalized) {
+      setManualError(
+        tokenCheck.errorCode === 'whitespace'
+          ? t('val.tokenWhitespace')
+          : tokenCheck.errorCode === 'too_short'
+            ? t('val.tokenShort')
+            : t('val.tokenEmpty'),
+      );
+      return;
+    }
+    setBusy(true);
     try {
       await updateSettings(
-        { token: tokenDraft.trim(), profileLabel: labelDraft.trim() || 'default' },
+        { token: tokenCheck.normalized, profileLabel: labelCheck.normalized },
         true,
       );
       setFeedback(t('pair.pairedOk'));
@@ -120,7 +165,7 @@ export function WelcomeApp() {
         setStep((cur) => (cur === 1 ? 2 : cur));
       }, 650);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : String(err));
+      setManualError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -212,7 +257,7 @@ export function WelcomeApp() {
                   <div>2. {t('welcome.how2')}</div>
                   <div>
                     3. {t('welcome.how3Prefix')}
-                    <kbd className="kbd-chip">Alt+Shift+P</kbd>
+                    <kbd className="kbd-chip">{pauseShortcut}</kbd>
                     {t('welcome.how3Suffix')}
                   </div>
                 </div>
@@ -257,6 +302,7 @@ export function WelcomeApp() {
                     {t('pair.pinButton')}
                   </button>
                 </div>
+                {pinError && <div className="field-error">{pinError}</div>}
                 {feedback && <div className="muted">{feedback}</div>}
               </div>
 
@@ -269,7 +315,10 @@ export function WelcomeApp() {
                       className="input"
                       placeholder={t('pair.profileLabel')}
                       value={labelDraft}
-                      onChange={(e) => setLabelDraft(e.target.value)}
+                      onChange={(e) => {
+                        setLabelDraft(e.target.value);
+                        setManualError(null);
+                      }}
                     />
                   </label>
                   <div className="inline-hint">
@@ -277,16 +326,20 @@ export function WelcomeApp() {
                     <CopyableCode code="node packages/server/dist/cli.js token" locale={locale} />
                   </div>
                   <input
-                    className="input"
+                    className={`input ${manualError ? 'input-invalid' : ''}`}
                     type="password"
                     placeholder={t('pair.tokenPlaceholder')}
                     value={tokenDraft}
-                    onChange={(e) => setTokenDraft(e.target.value)}
+                    onChange={(e) => {
+                      setTokenDraft(e.target.value);
+                      setManualError(null);
+                    }}
                   />
+                  {manualError && <div className="field-error">{manualError}</div>}
                   <button
                     type="button"
                     className="btn small"
-                    disabled={busy || !tokenDraft.trim()}
+                    disabled={busy}
                     onClick={() => void handleManualToken()}
                   >
                     {t('pair.saveConnect')}

@@ -372,7 +372,6 @@ export const READ_ONLY_DOMAIN_PRESETS = [
   'mail.google.com',
   'github.com',
   'linear.app',
-  'notion.so',
 ] as const;
 
 export const SecurityPolicySchema = z.object({
@@ -389,6 +388,7 @@ export const SecurityPolicySchema = z.object({
   cdpProxyEnabled: z.boolean().default(false),
   cdpIdleDetachSec: z.number().int().min(10).max(600).default(60),
   promptInjectionShield: z.boolean().default(true),
+  uiLocale: z.enum(['en', 'ru', 'zh-CN']).default('en'),
 });
 export type SecurityPolicy = z.infer<typeof SecurityPolicySchema>;
 

@@ -15,6 +15,11 @@ import {
   resolveLocale,
   sanitizePageText,
   translate,
+  validateCdpIdleSeconds,
+  validateDomainRules,
+  validatePairingToken,
+  validateProfileLabel,
+  validateWsUrl,
   type PageSnapshot,
   type RecordedWorkflow,
 } from './index.js';
@@ -232,5 +237,29 @@ describe('v2.0 Protocol Enhancements (Read-Only, Body Redaction, Workflows, i18n
     expect(resolveLocale('zh-CN')).toBe('zh-CN');
     expect(translate('ru', 'status.connected')).toBe('Подключено');
     expect(translate('zh-CN', 'welcome.readyTitle')).toBe('全部就绪！');
+  });
+
+  it('strictly validates domain rules, loopback WS URLs, profile labels, tokens, and CDP timeouts', () => {
+    const domains = validateDomainRules('mail.google.com\n*.github.com/settings*\nchrome://*\nmail.google.com,\n111\n,,111');
+    expect(domains.valid).toEqual(['mail.google.com', '*.github.com/settings*', 'chrome://*']);
+    expect(domains.issues).toHaveLength(3);
+    expect(domains.issues[0]?.kind).toBe('whitespace_or_comma');
+    expect(domains.issues[1]?.kind).toBe('invalid_domain');
+
+    expect(validateWsUrl('ws://127.0.0.1:43179/ws').ok).toBe(true);
+    expect(validateWsUrl('ws://evil.com:43179/ws').errorCode).toBe('loopback');
+    expect(validateWsUrl('http://127.0.0.1:43179/ws').errorCode).toBe('protocol');
+
+    expect(validateProfileLabel('work-1').ok).toBe(true);
+    expect(validateProfileLabel('   ').errorCode).toBe('empty');
+    expect(validateProfileLabel('bad<>label').errorCode).toBe('chars');
+
+    expect(validatePairingToken('abcdef1234567890').ok).toBe(true);
+    expect(validatePairingToken('short').errorCode).toBe('too_short');
+    expect(validatePairingToken('has space 1234567890').errorCode).toBe('whitespace');
+
+    expect(validateCdpIdleSeconds(60).ok).toBe(true);
+    expect(validateCdpIdleSeconds(5).ok).toBe(false);
+    expect(validateCdpIdleSeconds(999).ok).toBe(false);
   });
 });

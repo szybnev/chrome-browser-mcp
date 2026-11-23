@@ -48,17 +48,9 @@ export function App() {
       return 'en';
     }
   });
+  const [localeDirty, setLocaleDirty] = useState(false);
   const locale = resolveLocale(localePref);
   const tr = (key: I18nKey) => translate(locale, key);
-
-  const handleLocaleChange = (next: LocalePreference) => {
-    setLocalePref(next);
-    try {
-      localStorage.setItem('cbmcp-deck-locale', next);
-    } catch {
-      // ignore
-    }
-  };
 
   const { app, isConnected, error } = useApp({
     appInfo: { name: 'Browser Control Deck', version: APP_VERSION },
@@ -90,6 +82,23 @@ export function App() {
     },
     [app],
   );
+
+  useEffect(() => {
+    if (!localeDirty && deckState?.policy?.uiLocale) {
+      setLocalePref(resolveLocale(deckState.policy.uiLocale));
+    }
+  }, [deckState?.policy?.uiLocale, localeDirty]);
+
+  const handleLocaleChange = (next: LocalePreference) => {
+    setLocaleDirty(true);
+    setLocalePref(next);
+    try {
+      localStorage.setItem('cbmcp-deck-locale', next);
+    } catch {
+      // ignore sandboxed iframe storage errors
+    }
+    void callDeckTool('deck_update_policy', { uiLocale: next });
+  };
 
   useEffect(() => {
     if (!isConnected || !app) return;
@@ -267,11 +276,10 @@ export function App() {
               </div>
             </div>
           </div>
-            <div className="row" style={{ gap: 6 }}>
+            <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
               <select
-                className="select"
+                className="select lang-select"
                 aria-label={tr('setting.language')}
-                style={{ width: 'auto', minWidth: 64, padding: '2px 6px', fontSize: 11 }}
                 value={locale}
                 onChange={(e) => handleLocaleChange(e.target.value as LocalePreference)}
               >
@@ -524,7 +532,7 @@ export function App() {
                 </div>
               </div>
               {deckState.recentActivity.length === 0 ? (
-                <div className="muted">Waiting for agent browser actions…</div>
+                <div className="muted">{tr('deck.waitingActions')}</div>
               ) : (
                 <VirtualList
                   items={deckState.recentActivity}
@@ -565,7 +573,7 @@ export function App() {
           <div className="panel-inner">
             <div className="card">
               <div className="row-between">
-                <strong>Console Errors &amp; Warnings</strong>
+                <strong>{tr('section.consoleErrors')}</strong>
                 {canSendMessage && deckState.recentErrors.length > 0 && (
                   <button
                     type="button"
@@ -579,12 +587,12 @@ export function App() {
                       )
                     }
                   >
-                    Ask Agent to Fix
+                    {tr('btn.askAgentFix')}
                   </button>
                 )}
               </div>
               {deckState.recentErrors.length === 0 ? (
-                <div className="muted">No console warnings or errors captured yet.</div>
+                <div className="muted">{tr('empty.console')}</div>
               ) : (
                 deckState.recentErrors.map((errEntry) => (
                   <div key={errEntry.id} className="item-row">
@@ -604,7 +612,7 @@ export function App() {
 
             <div className="card">
               <div className="row-between">
-                <strong>Failed Network Requests</strong>
+                <strong>{tr('section.failedNetwork')}</strong>
                 {canSendMessage && deckState.recentFailedNetwork.length > 0 && (
                   <button
                     type="button"
@@ -621,12 +629,12 @@ export function App() {
                       )
                     }
                   >
-                    Ask Agent to Debug
+                    {tr('btn.askAgentDebug')}
                   </button>
                 )}
               </div>
               {deckState.recentFailedNetwork.length === 0 ? (
-                <div className="muted">No failed HTTP/network requests captured.</div>
+                <div className="muted">{tr('empty.network')}</div>
               ) : (
                 deckState.recentFailedNetwork.map((net) => (
                   <div key={net.requestId} className="item-row">
@@ -653,20 +661,17 @@ export function App() {
         >
           <div className="panel-inner">
             <div className="card">
-              <strong>Recorded User Workflows</strong>
-              <div className="muted">
-                Record multi-step flows in Chrome Side Panel (“Show by hand”) and attach them to
-                your conversation or let the agent replay them via <code>browser_workflows</code>.
-              </div>
+              <strong>{tr('section.savedWorkflows')}</strong>
+              <div className="muted">{tr('deck.workflowsDesc')}</div>
               {deckState.workflows.length === 0 ? (
-                <div className="muted">No saved workflows yet.</div>
+                <div className="muted">{tr('empty.workflows')}</div>
               ) : (
                 deckState.workflows.map((wf) => (
                   <div key={wf.id} className="item-row">
                     <div className="item-meta">
                       <div className="item-title">{wf.name}</div>
                       <div className="item-sub">
-                        {wf.steps.length} steps · {wf.startUrl}
+                        {wf.steps.length} {tr('label.steps')} · {wf.startUrl}
                       </div>
                     </div>
                     <div className="row">
@@ -676,7 +681,7 @@ export function App() {
                           className="btn primary small"
                           onClick={() => void handleAttachWorkflowToContext(wf)}
                         >
-                          Attach to Agent
+                          {tr('btn.attachToAgent')}
                         </button>
                       )}
                       <button
@@ -727,15 +732,13 @@ export function App() {
         >
           <div className="panel-inner">
             <div className="card security-card">
-              <strong>Security &amp; Guardrails</strong>
+              <strong>{tr('deck.securityTitle')}</strong>
               <div className="security-row">
                 <span className="security-label-group">
-                  <label htmlFor="sec-all-tabs">
-                    Allow all tabs (instead of AI Agent group only)
-                  </label>
+                  <label htmlFor="sec-all-tabs">{tr('setting.allowAllTabs')}</label>
                   <InfoTip
-                    label="Allow all tabs"
-                    text="By default, agents can only read and control tabs inside the cyan “AI Agent” tab group. Turn this on to let agents access any open tab in your browser window (blocked domains still stay protected)."
+                    label={tr('setting.allowAllTabs')}
+                    text={tr('setting.allowAllTabsInfo')}
                   />
                 </span>
                 <input
@@ -752,10 +755,10 @@ export function App() {
 
               <div className="security-row">
                 <span className="security-label-group">
-                  <label htmlFor="sec-shield">Prompt-Injection Shield</label>
+                  <label htmlFor="sec-shield">{tr('setting.shield')}</label>
                   <InfoTip
-                    label="Prompt-Injection Shield"
-                    text="Filters hidden, zero-opacity, and offscreen DOM traps, strips invisible zero-width/bidi characters, wraps page text in UNTRUSTED_PAGE_CONTENT markers, and flags suspicious prompt-override instructions."
+                    label={tr('setting.shield')}
+                    text={tr('setting.shieldInfo')}
                   />
                 </span>
                 <input
@@ -772,10 +775,10 @@ export function App() {
 
               <div className="security-row">
                 <span className="security-label-group">
-                  <label htmlFor="sec-eval">Confirm JS eval on new origins</label>
+                  <label htmlFor="sec-eval">{tr('setting.approvalEval')}</label>
                   <InfoTip
-                    label="Confirm JS eval on new origins"
-                    text="Pauses and asks for your explicit Approve/Reject confirmation the first time an agent attempts to run arbitrary JavaScript (browser_eval) on a website origin."
+                    label={tr('setting.approvalEval')}
+                    text={tr('setting.approvalEvalInfo')}
                   />
                 </span>
                 <input
@@ -792,10 +795,10 @@ export function App() {
 
               <div className="security-row">
                 <span className="security-label-group">
-                  <label htmlFor="sec-pass">Confirm password input</label>
+                  <label htmlFor="sec-pass">{tr('setting.approvalPasswords')}</label>
                   <InfoTip
-                    label="Confirm password input"
-                    text="Requires explicit approval before an agent can fill or type into any password field (input[type=password])."
+                    label={tr('setting.approvalPasswords')}
+                    text={tr('setting.approvalPasswordsInfo')}
                   />
                 </span>
                 <input
@@ -812,10 +815,10 @@ export function App() {
 
               <div className="security-row">
                 <span className="security-label-group">
-                  <label htmlFor="sec-pay">Confirm payment / destructive submits</label>
+                  <label htmlFor="sec-pay">{tr('setting.approvalPayments')}</label>
                   <InfoTip
-                    label="Confirm payment and destructive submits"
-                    text="Pauses for explicit confirmation before clicking buttons labeled with checkout, payment, transfer, or account-deletion actions."
+                    label={tr('setting.approvalPayments')}
+                    text={tr('setting.approvalPaymentsInfo')}
                   />
                 </span>
                 <input
@@ -833,6 +836,10 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sec-upload">{tr('setting.approvalUploads')}</label>
+                  <InfoTip
+                    label={tr('setting.approvalUploads')}
+                    text={tr('setting.approvalUploadsInfo')}
+                  />
                 </span>
                 <input
                   id="sec-upload"
@@ -852,7 +859,13 @@ export function App() {
               <summary>{tr('section.advancedSettings')}</summary>
               <div className="advanced-body">
                 <div>
-                  <strong>{tr('setting.readOnlyDomains')}</strong>
+                  <span className="security-label-group">
+                    <strong>{tr('setting.readOnlyDomains')}</strong>
+                    <InfoTip
+                      label={tr('setting.readOnlyDomains')}
+                      text={tr('setting.readOnlyInfo')}
+                    />
+                  </span>
                   <div className="muted" style={{ marginBottom: 6 }}>
                     {tr('setting.readOnlyHint')}
                   </div>
@@ -881,7 +894,13 @@ export function App() {
                 </div>
 
                 <div className="security-row">
-                  <label htmlFor="sec-dialog">{tr('setting.dialogPolicy')}</label>
+                  <span className="security-label-group">
+                    <label htmlFor="sec-dialog">{tr('setting.dialogPolicy')}</label>
+                    <InfoTip
+                      label={tr('setting.dialogPolicy')}
+                      text={tr('setting.dialogPolicyInfo')}
+                    />
+                  </span>
                   <select
                     id="sec-dialog"
                     className="select"
@@ -918,13 +937,13 @@ export function App() {
 
                 <div className="security-row" style={{ alignItems: 'flex-start' }}>
                   <div className="muted">
-                    Blocked domains ({deckState.policy.blockedDomains.length}):{' '}
+                    {tr('deck.blockedSummary')} ({deckState.policy.blockedDomains.length}):{' '}
                     {deckState.policy.blockedDomains.slice(0, 6).join(', ')}
                     {deckState.policy.blockedDomains.length > 6 ? '…' : ''}
                   </div>
                   <InfoTip
-                    label="Blocked domains"
-                    text="Hard-blocked URLs and wildcard patterns (e.g. chrome://*, *.paypal.com, banking & password managers). Edit the full list in Chrome Side Panel → Security → Advanced Settings."
+                    label={tr('deck.blockedSummary')}
+                    text={tr('setting.blockedDomainsInfo')}
                   />
                 </div>
               </div>
