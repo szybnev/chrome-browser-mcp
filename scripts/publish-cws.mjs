@@ -130,9 +130,11 @@ async function uploadPackage(token, zipBuffer) {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(
-      `CWS upload failed (${res.status}): ${json.error?.message || JSON.stringify(json)}`,
-    );
+    const msg = json.error?.message || JSON.stringify(json);
+    const err = new Error(`CWS upload failed (${res.status}): ${msg}`);
+    err.status = res.status;
+    err.apiMessage = msg;
+    throw err;
   }
   return json;
 }
@@ -208,9 +210,10 @@ async function main() {
   const status = await fetchItemStatus(token);
   const storeVersion = extractHighestStoreVersion(status);
   const submittedState = status.submittedItemRevisionStatus?.state;
+  const publishedState = status.publishedItemRevisionStatus?.state;
 
   console.log(
-    `[publish-cws] Store status: highestVersion=${storeVersion ?? 'none'} submittedState=${submittedState ?? 'none'}`,
+    `[publish-cws] Store status: highestVersion=${storeVersion ?? 'none'} publishedState=${publishedState ?? 'none'} submittedState=${submittedState ?? 'none'}`,
   );
 
   if (storeVersion && compareVersions(localVersion, storeVersion) <= 0) {
@@ -220,9 +223,9 @@ async function main() {
     return;
   }
 
-  if (submittedState === 'PENDING_REVIEW') {
+  if (submittedState === 'PENDING_REVIEW' || submittedState === 'STAGED') {
     console.log(
-      '[publish-cws] An earlier revision is currently PENDING_REVIEW in Chrome Web Store. Skipping upload to avoid cancelling the active review.',
+      `[publish-cws] An earlier revision is currently ${submittedState} in Chrome Web Store. Skipping upload to avoid cancelling the active review.`,
     );
     return;
   }
@@ -234,7 +237,25 @@ async function main() {
 
   const zipBuffer = readFileSync(zipPath);
   console.log(`[publish-cws] Uploading ${zipBuffer.length} bytes to Chrome Web Store API v2…`);
-  const uploadRes = await uploadPackage(token, zipBuffer);
+  let uploadRes;
+  try {
+    uploadRes = await uploadPackage(token, zipBuffer);
+  } catch (err) {
+    const apiMsg = String(err?.apiMessage || err?.message || '');
+    if (/in review/i.test(apiMsg)) {
+      console.log(
+        '[publish-cws] Item is currently under review in Chrome Web Store. Skipping upload until review finishes (CI stays green).',
+      );
+      return;
+    }
+    if (/larger version|already exists|same version/i.test(apiMsg)) {
+      console.log(
+        `[publish-cws] Version ${localVersion} is already uploaded in Chrome Web Store. Skipping upload (bump version via \`pnpm version:set <next>\` to publish a new release).`,
+      );
+      return;
+    }
+    throw err;
+  }
   await waitForUploadCompletion(token, uploadRes);
 
   console.log(`[publish-cws] Submitting item for publication (publishType=${publishType})…`);
