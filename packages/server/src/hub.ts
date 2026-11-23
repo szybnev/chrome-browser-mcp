@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
+  APP_VERSION,
   isUrlBlocked,
   SecurityPolicySchema,
   type ActivityEvent,
@@ -26,7 +27,7 @@ import {
   savePersistedWorkflows,
 } from './config.js';
 
-export const SERVER_VERSION = '0.2.0';
+export const SERVER_VERSION = APP_VERSION;
 const MAX_ACTIVITY = 60;
 const MAX_CONSOLE = 150;
 const MAX_NETWORK = 150;

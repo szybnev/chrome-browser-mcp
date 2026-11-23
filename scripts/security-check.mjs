@@ -250,10 +250,37 @@ function runPnpmAudit() {
   }
 }
 
+function checkVersionSync() {
+  try {
+    execFileSync(process.execPath, [resolve(rootDir, 'scripts/sync-version.mjs'), '--check'], {
+      cwd: rootDir,
+      stdio: 'pipe',
+      encoding: 'utf8',
+    });
+    console.log('  ✓ version sync: all packages, manifests & code match root package.json');
+  } catch (err) {
+    const out = `${err?.stdout?.toString?.() ?? ''}\n${err?.stderr?.toString?.() ?? ''}`.trim();
+    fail(`[VERSION] ${out || 'Version drift detected — run pnpm version:sync'}`);
+  }
+}
+
 console.log(`[security-check] Running in --${mode} mode...`);
 const targetFiles = getTargetFiles();
 console.log(`  • Scanning ${targetFiles.length} file(s) for secrets & static security rules...`);
 scanFiles(targetFiles);
+
+const versionFileTouched = targetFiles.some(
+  (f) =>
+    f.endsWith('package.json') ||
+    f.endsWith('manifest.json') ||
+    f.endsWith('plugin.json') ||
+    f.endsWith('version.ts'),
+);
+
+if (mode === 'full' || versionFileTouched) {
+  console.log('  • Verifying single-source-of-truth version consistency...');
+  checkVersionSync();
+}
 
 const lockOrPkgTouched = targetFiles.some(
   (f) => f === 'pnpm-lock.yaml' || f.endsWith('package.json') || f === 'pnpm-workspace.yaml',

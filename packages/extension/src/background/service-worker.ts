@@ -1,4 +1,5 @@
 import {
+  APP_VERSION,
   BrokerToExtensionMessageSchema,
   ExtensionActParamsSchema,
   isUrlBlocked,
@@ -25,7 +26,7 @@ import {
 } from '../shared/storage.js';
 import { CdpManager } from './cdp-manager.js';
 
-const EXTENSION_VERSION = '0.2.0';
+const EXTENSION_VERSION = APP_VERSION;
 const ALARM_WATCHDOG = 'chrome-browser-mcp-watchdog';
 const CONTEXT_MENU_TOGGLE_TAB = 'chrome-browser-mcp-toggle-tab';
 const AGENT_GROUP_TITLE = 'AI Agent';

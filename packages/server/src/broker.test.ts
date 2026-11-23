@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { startBrokerDaemon, type BrokerDaemonHandle } from './broker.js';
-import type { BrokerToExtensionMessage } from '@chrome-browser-mcp/protocol';
+import { APP_VERSION, type BrokerToExtensionMessage } from '@chrome-browser-mcp/protocol';
 
 const cleanupDirs: string[] = [];
 let activeBroker: BrokerDaemonHandle | null = null;
@@ -38,7 +38,7 @@ function connectMockExtension(wsUrl: string, token: string, profileId: string) {
             profileId,
             browserName: 'Chrome',
             label: profileId,
-            extensionVersion: '0.1.0',
+            extensionVersion: APP_VERSION,
             connectedAt: Date.now(),
             lastSeenAt: Date.now(),
             tabGroupId: 42,

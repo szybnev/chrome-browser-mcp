@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp, useHostStyles } from '@modelcontextprotocol/ext-apps/react';
-import type { DeckState, RecordedWorkflow, TabInfo } from '@chrome-browser-mcp/protocol';
+import { APP_VERSION, type DeckState, type RecordedWorkflow, type TabInfo } from '@chrome-browser-mcp/protocol';
 import { VirtualList } from './VirtualList.js';
 
 type DeckTab = 'overview' | 'timeline' | 'devtools' | 'workflows' | 'security';
@@ -18,7 +18,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
 
   const { app, isConnected, error } = useApp({
-    appInfo: { name: 'Browser Control Deck', version: '0.2.0' },
+    appInfo: { name: 'Browser Control Deck', version: APP_VERSION },
     capabilities: {},
     onAppCreated: (instance) => {
       instance.ontoolresult = (result) => {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { APP_VERSION } from './version.js';
 
 export const DEFAULT_BROKER_HOST = '127.0.0.1';
 export const DEFAULT_BROKER_PORT = 43179;
@@ -12,7 +13,7 @@ export const BrowserProfileInfoSchema = z.object({
   profileId: z.string().min(1),
   browserName: z.string().default('Chrome'),
   label: z.string().default('default'),
-  extensionVersion: z.string().default('0.1.0'),
+  extensionVersion: z.string().default(APP_VERSION),
   connectedAt: z.number(),
   lastSeenAt: z.number(),
   tabGroupId: z.number().nullable().default(null),
