@@ -9,16 +9,19 @@
     "node": ">=20.11.0"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "build": "pnpm --filter @chrome-browser-mcp/protocol build && pnpm --filter @chrome-browser-mcp/mcp-app build && pnpm --filter chrome-browser-mcp build && pnpm --filter @chrome-browser-mcp/extension build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
+    "security:staged": "node scripts/security-check.mjs --staged",
+    "security:check": "node scripts/security-check.mjs --full",
     "icons": "node scripts/generate-icons.mjs",
     "pack:cws": "pnpm --filter @chrome-browser-mcp/extension build && node scripts/pack-cws.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "vitest": "^5.1.1"
   }
 }

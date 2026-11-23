@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "▶ [pre-push] Running full security, supply-chain & CVE audit..."
+node scripts/security-check.mjs --full
+
+echo "▶ [pre-push] Running full typecheck, build & automated tests..."
+pnpm typecheck
+pnpm build
+pnpm test
+
+echo "✓ [pre-push] Safe to push."

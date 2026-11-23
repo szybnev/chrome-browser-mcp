@@ -1,16 +1,31 @@
+<div align="center">
+
 # Chrome Browser MCP
 
-**Next-gen Chrome Extension (MV3) & MCP Server for real-session AI browser use** — combining a hybrid Content Script + on-demand CDP engine, native **WebMCP** discovery, **Prompt-Injection Shield**, **Workflow Recorder**, multi-browser/multi-profile routing, and a live **Browser Control Deck** MCP App (SEP-1865) for Antigravity, Claude Code, Cursor, Codex, and any MCP client.
+**Next-gen Chrome Extension (MV3) & MCP v2 Server for real-session AI browser use**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-teal.svg)](./LICENSE)
-[![MCP v2](https://img.shields.io/badge/MCP-Streamable%20HTTP%20%2B%20stdio%20%2B%20Apps-0d9488.svg)](https://modelcontextprotocol.io)
-[![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-blue.svg)](./packages/extension)
+Hybrid Content Script + On-Demand CDP · Native WebMCP · Prompt-Injection Shield · Workflow Recorder · Multi-Profile Broker · Antigravity Control Deck MCP App
+
+**English** · [Русский](./README.ru.md) · [简体中文](./README.zh-CN.md)
+
+[![CI & Security](https://img.shields.io/github/actions/workflow/status/szybnev/chrome-browser-mcp/ci.yml?branch=main&label=CI%20%26%20Security&logo=githubactions&logoColor=white)](https://github.com/szybnev/chrome-browser-mcp/actions/workflows/ci.yml)
+[![MCP v2](https://img.shields.io/badge/MCP-v2%20Streamable%20HTTP%20%2B%20stdio%20%2B%20Apps-0d9488?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
+[![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](./packages/extension)
+[![WebMCP Ready](https://img.shields.io/badge/WebMCP-navigator.modelContext-7c3aed)](./packages/extension/src/background/service-worker.ts)
+[![Node >=20](https://img.shields.io/badge/Node-%3E%3D20-339933?logo=nodedotjs&logoColor=white)](./package.json)
+[![TypeScript Strict](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white)](./tsconfig.base.json)
+[![100% Local-First](https://img.shields.io/badge/Privacy-100%25%20Local--First%20%7C%20Zero%20Telemetry-10b981)](./PRIVACY.md)
+[![Prompt-Injection Shield](https://img.shields.io/badge/Shield-Prompt--Injection%20Protected-f59e0b)](./packages/protocol/src/shield.ts)
+[![License: MIT](https://img.shields.io/badge/License-MIT-64748b.svg)](./LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/szybnev/chrome-browser-mcp?style=flat&color=eab308)](https://github.com/szybnev/chrome-browser-mcp/stargazers)
+
+</div>
 
 ---
 
 ## Why Chrome Browser MCP?
 
-Most browser-use extensions force painful trade-offs: either they spin up logged-out headless browsers, permanently show Chrome's yellow debugger banner, burn 30K+ tokens per step with raw screenshots/HTML, conflict when two agents run simultaneously, or expose every private tab to prompt injection.
+Most browser-use extensions force painful trade-offs: they either spin up logged-out headless browsers, permanently show Chrome's yellow debugger banner, burn 30K+ tokens per step with raw screenshots/HTML, conflict when two agents run simultaneously, or expose every private tab to prompt injection.
 
 | Capability | Chrome Browser MCP | Typical Browser Relay / Visual Extensions |
 | :--- | :--- | :--- |
@@ -74,7 +89,7 @@ pnpm build
 3. Click the **Chrome Browser MCP** icon in Chrome's toolbar to open the **Control HUD** Side Panel.
 
 ### 3. Pair with your local Broker
-Generate/view your local loopback pairing token:
+Generate or view your local loopback pairing token:
 ```bash
 node packages/server/dist/cli.js token
 ```
@@ -83,7 +98,7 @@ Open the **Pair** tab in the Chrome Side Panel, paste the token, give the profil
 ### 4. Connect your AI Agent
 
 #### Antigravity (Plugin + Browser Control Deck MCP App + Skill)
-Link or copy `plugins/antigravity` into `~/.gemini/config/plugins/chrome-browser-mcp`:
+Link `plugins/antigravity` into `~/.gemini/config/plugins/chrome-browser-mcp`:
 ```bash
 ln -s "$(pwd)/plugins/antigravity" ~/.gemini/config/plugins/chrome-browser-mcp
 ```
@@ -136,6 +151,16 @@ Connect any Streamable HTTP MCP client to `http://127.0.0.1:43179/mcp`.
 
 ---
 
+## Security, Supply-Chain & Git Hooks
+
+`pnpm install` automatically activates repository Git hooks via `core.hooksPath = .githooks`:
+
+- **`pre-commit`**: scans staged files for secrets/keys and unsafe patterns (`eval`, `innerHTML`, `0.0.0.0` binding, MV2 regressions), verifies lockfile integrity & CVEs if dependencies changed, then runs `pnpm typecheck` and `pnpm test`.
+- **`pre-push`**: runs full repository security scan, `sha512` lockfile & npm registry verification, unexpected `preinstall`/`install`/`postinstall` compromise check, `pnpm audit --audit-level=moderate`, plus full `typecheck`, `build`, and `test`.
+- **`pnpm-workspace.yaml`**: enforces `blockExoticSubdeps: true` and strict `allowBuilds` allowlisting (`esbuild` only).
+
+---
+
 ## Monorepo Layout
 
 ```text
@@ -147,7 +172,8 @@ chrome-browser-mcp/
 │   └── mcp-app/       # Browser Control Deck (React + @modelcontextprotocol/ext-apps + vite-plugin-singlefile)
 ├── plugins/
 │   └── antigravity/   # Ready-to-link Antigravity plugin (plugin.json, mcp_config.json, SKILL.md, logo)
-├── scripts/           # Icon generator & Chrome Web Store ZIP packager
+├── scripts/           # Security/supply-chain checker, icon generator & Chrome Web Store ZIP packager
+├── .githooks/         # Automatic pre-commit & pre-push security, audit, and test hooks
 ├── CHROMEWEBSTORE.md  # Chrome Web Store listing, permission justifications & privacy disclosures
 └── PRIVACY.md         # Local-first privacy policy (zero telemetry)
 ```
@@ -157,10 +183,11 @@ chrome-browser-mcp/
 ## Development & Testing
 
 ```bash
-pnpm typecheck   # Strict TypeScript check across all 4 packages
-pnpm build       # Build protocol -> mcp-app -> server (bundles deck.html) -> extension
-pnpm test        # Run Vitest unit + live Broker/MCP integration tests
-pnpm pack:cws    # Package clean Chrome Web Store ZIP in release/
+pnpm security:check  # Secret scan + static guardrails + lockfile integrity + pnpm audit
+pnpm typecheck       # Strict TypeScript check across all 4 packages
+pnpm build           # Build protocol -> mcp-app -> server (bundles deck.html) -> extension
+pnpm test            # Run Vitest unit + live Broker/MCP integration tests
+pnpm pack:cws        # Package clean Chrome Web Store ZIP in release/
 ```
 
 ---
