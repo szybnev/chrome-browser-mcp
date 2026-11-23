@@ -19,6 +19,7 @@ Attach or detach any tab in one click, or pause all automation instantly
 Review live action logs, approve sensitive steps, and protect private domains with an editable blocklist
 Record step-by-step browser flows by hand and reuse them with your assistant
 Inspect console errors, network failures, and accessibility checks directly from your assistant
+Switch smoothly between Dark and Light themes with persistent preferences
 Connect multiple browser profiles at the same time on your local machine
 
 How to use it:
@@ -46,15 +47,10 @@ English
 | Asset | Dimensions | Status | Filename |
 |-------|-----------|--------|----------|
 | Store Icon [REQUIRED] | 128×128 PNG | ✅ Ready | `packages/extension/public/icons/icon-128.png` |
-| Screenshot 1 [REQUIRED] | 1280×800 or 640×400 | ⬜ Not created | |
-| Screenshot 2 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ Not created | |
-| Screenshot 3 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ Not created | |
-| Small Promo Tile [RECOMMENDED] | 440×280 | ⬜ Not created | |
-
-### Screenshot Notes
-- Screenshot 1: Chrome Side Panel showing the AI Agent tab group, live action timeline, and Pause/Stop control.
-- Screenshot 2: In-page highlight border and workflow recorder capturing a multi-step form flow.
-- Screenshot 3: Antigravity Browser Control Deck MCP App synced with live Chrome tabs and DevTools errors.
+| Screenshot 1 [REQUIRED] | 1280×800 PNG (24-bit, no alpha) | ✅ Ready | `release/store-assets/screenshot-1-control-hud.png` |
+| Screenshot 2 [RECOMMENDED] | 1280×800 PNG (24-bit, no alpha) | ✅ Ready | `release/store-assets/screenshot-2-security-themes.png` |
+| Small Promo Tile [RECOMMENDED] | 440×280 PNG (24-bit, no alpha) | ✅ Ready | `release/store-assets/promo-tile-440x280.png` |
+| Extension Package ZIP [REQUIRED] | Clean MV3 build | ✅ Ready | `release/chrome-browser-mcp-extension.zip` |
 
 ## Permissions Justification
 
@@ -63,7 +59,7 @@ English
 | `tabs` | permissions | Required to list tab titles and URLs in the user's AI Agent tab group, focus or open tabs requested by the local assistant, and enforce the domain blocklist. |
 | `tabGroups` | permissions | Required to create and manage the dedicated colored "AI Agent" tab group so users can clearly see and isolate which tabs an assistant is allowed to access. |
 | `sidePanel` | permissions | Required to display the Control HUD side panel where users attach tabs, approve sensitive actions, record workflows, and pause automation. |
-| `storage` | permissions | Required to persist local pairing settings, domain allow/block lists, security preferences, and locally recorded workflows. |
+| `storage` | permissions | Required to persist local pairing settings, theme preferences, domain allow/block lists, security preferences, and locally recorded workflows. |
 | `alarms` | permissions | Required to periodically verify and restore the local connection to the user's companion server after browser idle or system sleep. |
 | `scripting` | permissions | Required to inspect page structure, extract readable text, render the visual highlight border on active agent tabs, and record user-initiated workflows on tabs the user shares. |
 | `debugger` | permissions | Required on demand for tabs the user shares with the assistant in order to send reliable clicks and keystrokes, capture screenshots, read accessibility trees across iframes, and inspect console and network errors for debugging. Automatically detaches after idle timeout. |
@@ -98,8 +94,8 @@ https://github.com/szybnev/chrome-browser-mcp/blob/main/PRIVACY.md
 **Publisher Name** [REQUIRED]
 szybnev
 
-**Contact Email** [REQUIRED]
-_(fill before CWS submission)_
+**Publisher ID**
+`865bc92f-dbf2-441f-b163-112b5a2c7a26`
 
 **Support URL / Email** [RECOMMENDED]
 https://github.com/szybnev/chrome-browser-mcp/issues
@@ -107,14 +103,43 @@ https://github.com/szybnev/chrome-browser-mcp/issues
 **Homepage URL** [RECOMMENDED]
 https://github.com/szybnev/chrome-browser-mcp
 
+## Automated Publishing via GitHub Actions (Chrome Web Store API v2)
+
+This repository includes an automated CI/CD release pipeline in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) powered by our zero-dependency API v2 publisher script [`scripts/publish-cws.mjs`](./scripts/publish-cws.mjs).
+
+### One-Time Prerequisites
+1. **First manual upload (required by Google)**: Chrome Web Store API v2 cannot create brand-new items. Upload `release/chrome-browser-mcp-extension.zip` once in the [Developer Dashboard](https://chrome.google.com/webstore/devconsole/865bc92f-dbf2-441f-b163-112b5a2c7a26), complete the Store Listing + Privacy tabs using the sections above, and copy your 32-character **Extension ID**.
+2. **Enable Chrome Web Store API in Google Cloud Console**:
+   - Create/select a Google Cloud project → **APIs & Services → Library** → enable **Chrome Web Store API**.
+   - **OAuth consent screen**: choose External (or Internal), add your developer email as a Test User, and add scope `https://www.googleapis.com/auth/chromewebstore`.
+   - **Credentials → Create Credentials → OAuth client ID** (Desktop app or Web app with redirect URI `https://developers.google.com/oauthplayground`).
+   - Use [Google OAuth 2.0 Playground](https://developers.google.com/oauthplayground/) (gear icon → **Use your own OAuth credentials**, scope `https://www.googleapis.com/auth/chromewebstore`) to obtain a **Refresh Token**.
+3. **Add 5 GitHub Repository Secrets** (`Settings → Secrets and variables → Actions → New repository secret`):
+   - `CWS_PUBLISHER_ID`: `865bc92f-dbf2-441f-b163-112b5a2c7a26`
+   - `CWS_EXTENSION_ID`: *(32-char ID from Chrome Web Store Dashboard)*
+   - `CWS_CLIENT_ID`: *(Google Cloud OAuth Client ID)*
+   - `CWS_CLIENT_SECRET`: *(Google Cloud OAuth Client Secret)*
+   - `CWS_REFRESH_TOKEN`: *(OAuth Refresh Token)*
+
+### How Releases Work After Setup
+- Every push to `main` runs full **Security + Typecheck + Build + Test** and attaches a downloadable `chrome-browser-mcp-extension.zip` artifact.
+- When you want to publish a new version to the Chrome Web Store, simply bump the single source of truth version and push to `main`:
+  ```bash
+  pnpm version:set 0.2.1
+  git add -A && git commit -m "release: v0.2.1" && git push origin main
+  ```
+- After `verify` passes, `publish-cws` queries `:fetchStatus` on Chrome Web Store API v2:
+  - If the version in `manifest.json` is **newer** than the published/submitted store version (and no earlier revision is `PENDING_REVIEW`), it automatically uploads the `.zip` via `:upload`, waits for async processing, and submits via `:publish` (`DEFAULT_PUBLISH`).
+  - If the version has **not** been bumped (e.g. README/docs updates on `main`), it skips cleanly with exit code 0.
+
 ## Version History
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.2.0 | 2026-11-23 | Auto-discover manual "AI Agent" Chrome tab groups across reloads, dedicated AI Agent Tabs card, virtualized searchable list for 100+ tabs, top-level Timeline tab, paginated `browser_read` (offset up to 200k), Shadow DOM / same-origin iframe / rich Markdown tables, and PerformanceObserver LCP/CLS audits. | Draft |
+| 0.2.0 | 2026-11-23 | Unified Antigravity Dark/Light theme with persistent toggle, Bridge Aperture icon, virtualized 100+ tab view, top-level Timeline tab, push-port side panel, and end-to-end runtime optimizations. | Ready for First Upload |
 | 0.1.0 | 2026-11-23 | Initial MV3 release: Hybrid engine, Agent Tab Group, Workflow Recorder, Control HUD Side Panel, WebMCP bridge, and local MCP companion server. | Draft |
 
 ## Review Notes
 
 ### Known Issues / Limitations
-- Uses `chrome.debugger` strictly on demand for user-shared tabs and detaches automatically when idle; requires a clear reviewer demo video showing the local companion server (`npx chrome-browser-mcp`) and side panel controls.
+- Uses `chrome.debugger` strictly on demand for user-shared tabs and detaches automatically when idle; requires a clear reviewer demo video or clear instructions showing the local companion server (`npx chrome-browser-mcp`) and side panel controls.

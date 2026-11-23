@@ -20,7 +20,8 @@
     "security:staged": "node scripts/security-check.mjs --staged",
     "security:check": "node scripts/security-check.mjs --full",
     "icons": "node scripts/generate-icons.mjs",
-    "pack:cws": "pnpm --filter @chrome-browser-mcp/extension build && node scripts/pack-cws.mjs"
+    "pack:cws": "pnpm --filter @chrome-browser-mcp/extension build && node scripts/pack-cws.mjs",
+    "publish:cws": "node scripts/publish-cws.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

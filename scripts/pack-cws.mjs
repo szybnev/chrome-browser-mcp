@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,6 +14,7 @@ if (!existsSync(resolve(distDir, 'manifest.json'))) {
 
 mkdirSync(releaseDir, { recursive: true });
 const outZip = resolve(releaseDir, 'chrome-browser-mcp-extension.zip');
+rmSync(outZip, { force: true });
 
 execFileSync('zip', ['-r', '-q', outZip, '.', '-x', '*.map', '*.DS_Store'], {
   cwd: distDir,
