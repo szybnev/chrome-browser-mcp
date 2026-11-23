@@ -1,0 +1,41 @@
+name: Feature Request
+description: Propose a new MCP tool, browser capability, UI improvement, or workflow
+title: "[Feat]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Target Area
+      options:
+        - Chrome Extension (Side Panel / HUD / Recorder)
+        - MCP Tools & Broker Daemon
+        - Browser Control Deck (MCP App)
+        - Security & Guardrails
+        - Performance & Token Efficiency
+        - Docs / Developer Experience
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Motivation
+      description: What limitation or friction are you running into today?
+      placeholder: "I'm trying to ... and currently ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: How should this feature work from a user or AI agent perspective?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Permissions, Security & Tradeoffs (Optional)
+      description: Would this require new Chrome Extension permissions, host access, or affect token usage?

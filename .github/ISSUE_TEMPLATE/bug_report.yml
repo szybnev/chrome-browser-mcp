@@ -1,0 +1,62 @@
+name: Bug Report
+description: Report a bug, crash, or unexpected behavior in Chrome Browser MCP
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      options:
+        - Chrome Extension (MV3 Side Panel / Service Worker / Content Script)
+        - MCP Server / Local Broker Daemon
+        - Browser Control Deck (Antigravity MCP App)
+        - Protocol / Prompt-Injection Shield
+        - Build / CI / Packaging
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+      placeholder: Describe what went wrong and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1. Open Chrome and attach tab to AI Agent group
+        2. Call `browser_...` with arguments ...
+        3. Observe error ...
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser + version, Node.js version, MCP client (Antigravity / Claude Code / Cursor), and extension version.
+      placeholder: "macOS 15, Chrome 140, Node 24.x, Antigravity, v1.0.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Screenshots
+      description: Paste broker daemon output, Chrome Extensions error panel trace, or attach screenshots. Remember to redact your local pairing token!
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I reloaded the unpacked/store extension and verified the local broker daemon is running.
+        - label: I redacted any pairing tokens, cookies, or private URLs from logs and screenshots.
+          required: true

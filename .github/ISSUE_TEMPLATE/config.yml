@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🔒 Report a Security Vulnerability Privately (Recommended)
+    url: https://github.com/szybnev/chrome-browser-mcp/security/advisories/new
+    about: Report vulnerabilities privately via GitHub Security Advisories — please do not disclose exploits in public issues.
+  - name: 📖 Security Policy
+    url: https://github.com/szybnev/chrome-browser-mcp/blob/main/SECURITY.md
+    about: Read our trust boundaries, supported versions, and disclosure timeline.

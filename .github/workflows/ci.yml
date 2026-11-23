@@ -16,13 +16,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: pnpm
@@ -46,13 +46,66 @@ jobs:
         run: pnpm pack:cws
 
       - name: Upload Chrome Web Store ZIP artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: chrome-browser-mcp-extension
           path: |
             release/chrome-browser-mcp-extension.zip
             packages/extension/dist/manifest.json
+            packages/protocol/dist
+            packages/server/dist
           retention-days: 30
+
+  release:
+    name: GitHub Release & Packages
+    needs: verify
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Download verified release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: chrome-browser-mcp-extension
+          path: .
+
+      - name: Create GitHub Release (when version tag does not exist yet)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "[release] GitHub Release ${TAG} already exists — skipping."
+          else
+            cp release/chrome-browser-mcp-extension.zip "release/chrome-browser-mcp-extension-${TAG}.zip"
+            (cd release && sha256sum "chrome-browser-mcp-extension-${TAG}.zip" > SHA256SUMS.txt)
+            gh release create "$TAG" \
+              "release/chrome-browser-mcp-extension-${TAG}.zip" \
+              "release/SHA256SUMS.txt" \
+              --target "$GITHUB_SHA" \
+              --title "Chrome Browser MCP ${TAG}" \
+              --generate-notes
+            echo "[release] Created GitHub Release ${TAG}."
+          fi
+
+      - name: Publish npm packages to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: node scripts/publish-gh-packages.mjs
 
   publish-cws:
     name: Publish to Chrome Web Store (API v2)
@@ -61,15 +114,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 26
 
       - name: Download verified extension package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: chrome-browser-mcp-extension
           path: .

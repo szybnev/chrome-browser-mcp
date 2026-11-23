@@ -136,7 +136,8 @@ This repository includes an automated CI/CD release pipeline in [`.github/workfl
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.2.0 | 2026-11-23 | Unified Antigravity Dark/Light theme with persistent toggle, Bridge Aperture icon, virtualized 100+ tab view, top-level Timeline tab, push-port side panel, and end-to-end runtime optimizations. | Ready for First Upload |
+| 1.0.0 | 2026-11-24 | Production v1.0.0 release: unified Antigravity Dark/Light theme, Bridge Aperture icons, push-port side panel, native `checkVisibility()` + `MutationObserver` runtime speedups, `maxWidth` screenshot downscaling, Node 26 / TS 7 / Vite 8 toolchain, and automated CWS API v2 + GitHub Releases CI/CD. | Ready |
+| 0.2.0 | 2026-11-23 | Auto-discover manual "AI Agent" Chrome tab groups across reloads, dedicated AI Agent Tabs card, virtualized searchable list for 100+ tabs, top-level Timeline tab, paginated `browser_read` (offset up to 200k), Shadow DOM / same-origin iframe / rich Markdown tables, and PerformanceObserver LCP/CLS audits. | In Review |
 | 0.1.0 | 2026-11-23 | Initial MV3 release: Hybrid engine, Agent Tab Group, Workflow Recorder, Control HUD Side Panel, WebMCP bridge, and local MCP companion server. | Draft |
 
 ## Review Notes

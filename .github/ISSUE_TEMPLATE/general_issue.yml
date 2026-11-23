@@ -1,0 +1,18 @@
+name: General Issue / Question
+description: Ask a question, report a documentation gap, or start a general discussion
+title: "[Issue]: "
+labels: ["question"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe your question, documentation issue, or topic.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context (Optional)
+      description: Links, setup details, MCP client, or screenshots if helpful.
