@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "browser": {
+      "command": "bash",
+      "args": [
+        "${PLUGIN_ROOT}/bin/start-server.sh",
+        "--data-dir=${PLUGIN_DATA}"
+      ]
+    }
+  }
+}

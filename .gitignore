@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+release/
+*.zip
+*.crx
+*.pem
