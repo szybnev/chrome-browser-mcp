@@ -149,7 +149,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
             content: [
               {
                 type: 'text',
-                text: 'No browser profiles connected yet. Load the Chrome Browser MCP extension and pair via http://127.0.0.1:43179/pair or `pnpm pair`.',
+                text: 'No browser profiles connected yet. Load the Chrome Browser MCP extension and pair via http://127.0.0.1:43179/pair.',
               },
             ],
           };

@@ -232,7 +232,7 @@ export async function startBrokerDaemon(options?: {
         if (!activePin || Date.now() > activePin.expiresAt) {
           activePin = null;
           res.writeHead(401, corsHeaders);
-          res.end(JSON.stringify({ ok: false, error: 'No active pairing PIN — open http://127.0.0.1:43179/pair or run `pnpm pair`' }));
+          res.end(JSON.stringify({ ok: false, error: 'No active pairing PIN — open http://127.0.0.1:43179/pair' }));
           return;
         }
         if (activePin.attempts >= MAX_PIN_ATTEMPTS) {

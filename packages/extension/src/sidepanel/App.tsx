@@ -254,6 +254,7 @@ export function App() {
       setPinDraft('');
       setStatusMsg(t('pair.pairedOk'));
       await refresh();
+      setTimeout(() => setActiveTab('control'), 650);
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
     }
@@ -271,6 +272,7 @@ export function App() {
     });
     setStatusMsg(t('pair.savedReconnecting'));
     await refresh();
+    setTimeout(() => setActiveTab('control'), 650);
   };
 
   const handlePolicyPatch = async (patch: Partial<ExtensionSettings['policy']>) => {
@@ -512,11 +514,7 @@ export function App() {
             {!runtime.connected && (
               <div className="card approval">
                 <div className="card-title">{t('status.offline')}</div>
-                <div className="inline-hint">
-                  <span>{t('pair.pinHintPrefix')}</span>
-                  <CopyableCode code="pnpm pair" locale={locale} />
-                  <span>{t('pair.pinHintSuffix')}</span>
-                </div>
+                <div className="muted">{t('pair.pinSimpleHint')}</div>
                 <button
                   type="button"
                   className="btn primary small"
@@ -1082,13 +1080,9 @@ export function App() {
                       : t('status.offline')}
                 </span>
               </div>
-              <div className="inline-hint">
-                <span>{t('pair.pinHintPrefix')}</span>
-                <CopyableCode code="pnpm pair" locale={locale} />
-                <span>{t('pair.pinHintSuffix')}</span>
-              </div>
-              {brokerDetected && (
-                <div className="row">
+              <div className="muted">{t('pair.pinSimpleHint')}</div>
+              <div className="pin-row" style={{ flexWrap: 'wrap' }}>
+                {brokerDetected && (
                   <button
                     type="button"
                     className="btn small"
@@ -1098,9 +1092,7 @@ export function App() {
                   >
                     {t('btn.openPairPage')}
                   </button>
-                </div>
-              )}
-              <div className="pin-row">
+                )}
                 <input
                   className="input pin-input"
                   inputMode="numeric"
@@ -1111,26 +1103,26 @@ export function App() {
                 />
                 <button
                   type="button"
-                  className="btn primary"
+                  className="btn primary small"
                   disabled={pinDraft.length < 6}
                   onClick={() => void handlePairPin()}
                 >
                   {t('pair.pinButton')}
                 </button>
               </div>
-              <label className="muted">
-                {t('pair.profileLabel')}
-                <input
-                  className="input"
-                  value={labelDraft}
-                  onChange={(e) => setLabelDraft(e.target.value)}
-                />
-              </label>
             </div>
 
             <details className="advanced-box">
               <summary>{t('section.advancedConnection')}</summary>
               <div className="advanced-body">
+                <label className="muted">
+                  {t('pair.profileLabel')}
+                  <input
+                    className="input"
+                    value={labelDraft}
+                    onChange={(e) => setLabelDraft(e.target.value)}
+                  />
+                </label>
                 <label className="muted">
                   {t('pair.wsUrl')}
                   <input
@@ -1140,8 +1132,8 @@ export function App() {
                   />
                 </label>
                 <div className="inline-hint">
-                  <span>{t('pair.token')}:</span>
-                  <CopyableCode code="pnpm token" locale={locale} />
+                  <span>{t('pair.cliRepoHint')}</span>
+                  <CopyableCode code="node packages/server/dist/cli.js token" locale={locale} />
                 </div>
                 <input
                   className="input"

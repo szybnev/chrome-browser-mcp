@@ -328,7 +328,7 @@ async function connectBroker(): Promise<void> {
   if (!settings.token.trim()) {
     await saveRuntimeState({
       connected: false,
-      lastError: 'Pair via http://127.0.0.1:43179/pair or run `pnpm pair` in the project folder',
+      lastError: 'Pair at http://127.0.0.1:43179/pair or run node packages/server/dist/cli.js pair in the repo',
     });
     await updateBadge();
     await notifySidePanel();
@@ -398,7 +398,7 @@ async function connectBroker(): Promise<void> {
       if (socket === ws) socket = null;
       const reason =
         ev.code === 4001
-          ? 'Invalid pairing token — pair at http://127.0.0.1:43179/pair or run `pnpm token`'
+          ? 'Invalid pairing token — pair at http://127.0.0.1:43179/pair or run node packages/server/dist/cli.js token in the repo'
           : ev.reason || 'Disconnected from local broker';
       await saveRuntimeState({ connected: false, lastError: reason });
       await updateBadge();

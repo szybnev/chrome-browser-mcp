@@ -95,6 +95,9 @@ export function WelcomeApp() {
       setPin('');
       setFeedback(t('pair.pairedOk'));
       await loadState();
+      setTimeout(() => {
+        setStep((cur) => (cur === 1 ? 2 : cur));
+      }, 650);
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : String(err));
     } finally {
@@ -111,8 +114,11 @@ export function WelcomeApp() {
         { token: tokenDraft.trim(), profileLabel: labelDraft.trim() || 'default' },
         true,
       );
-      setFeedback(t('pair.savedReconnecting'));
+      setFeedback(t('pair.pairedOk'));
       await loadState();
+      setTimeout(() => {
+        setStep((cur) => (cur === 1 ? 2 : cur));
+      }, 650);
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : String(err));
     } finally {
@@ -227,23 +233,13 @@ export function WelcomeApp() {
                         : t('pair.brokerOffline')}
                   </span>
                 </div>
-                <div className="inline-hint">
-                  <span>{t('pair.pinHintPrefix')}</span>
-                  <CopyableCode code="pnpm pair" locale={locale} />
-                  <span>{t('pair.pinHintSuffix')}</span>
-                </div>
-                {brokerAlive && (
-                  <div className="row">
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={handleOpenPairPage}
-                    >
-                      {t('btn.openPairPage')} ({brokerHttpBase}/pair)
+                <div className="muted">{t('pair.pinSimpleHint')}</div>
+                <div className="pin-row" style={{ flexWrap: 'wrap' }}>
+                  {brokerAlive && (
+                    <button type="button" className="btn" onClick={handleOpenPairPage}>
+                      {t('btn.openPairPage')}
                     </button>
-                  </div>
-                )}
-                <div className="pin-row">
+                  )}
                   <input
                     className="input pin-input"
                     inputMode="numeric"
@@ -251,12 +247,6 @@ export function WelcomeApp() {
                     placeholder={t('pair.pinPlaceholder')}
                     value={pin}
                     onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  />
-                  <input
-                    className="input"
-                    placeholder={t('pair.profileLabel')}
-                    value={labelDraft}
-                    onChange={(e) => setLabelDraft(e.target.value)}
                   />
                   <button
                     type="button"
@@ -273,9 +263,18 @@ export function WelcomeApp() {
               <details className="advanced-box">
                 <summary>{t('section.advancedConnection')}</summary>
                 <div className="advanced-body">
+                  <label className="muted">
+                    {t('pair.profileLabel')}
+                    <input
+                      className="input"
+                      placeholder={t('pair.profileLabel')}
+                      value={labelDraft}
+                      onChange={(e) => setLabelDraft(e.target.value)}
+                    />
+                  </label>
                   <div className="inline-hint">
-                    <span>{t('pair.token')}:</span>
-                    <CopyableCode code="pnpm token" locale={locale} />
+                    <span>{t('pair.cliRepoHint')}</span>
+                    <CopyableCode code="node packages/server/dist/cli.js token" locale={locale} />
                   </div>
                   <input
                     className="input"
@@ -301,10 +300,7 @@ export function WelcomeApp() {
             <>
               <div className="card">
                 <div className="security-row">
-                  <span>
-                    <strong>{t('setting.visualHud')}</strong>
-                    <div className="muted">{t('setting.visualHudDesc')}</div>
-                  </span>
+                  <strong>{t('setting.visualHud')}</strong>
                   <input
                     type="checkbox"
                     checked={settings.visualHudEnabled}

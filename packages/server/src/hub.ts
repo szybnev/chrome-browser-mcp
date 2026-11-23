@@ -334,7 +334,7 @@ export class BrowserBrokerHub implements BrowserHubInterface {
     const id = profileId || this.defaultProfileId;
     if (!id) {
       throw new Error(
-        'No Chrome Browser MCP extension is connected. Open Chrome, load the extension, and pair via http://127.0.0.1:43179/pair or `pnpm pair`.',
+        'No Chrome Browser MCP extension is connected. Open Chrome, load the extension, and pair via http://127.0.0.1:43179/pair.',
       );
     }
     const found = this.profiles.get(id);
