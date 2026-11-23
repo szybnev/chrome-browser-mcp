@@ -2,8 +2,6 @@
 
 <img src="./docs/assets/banner.png" alt="Chrome Browser MCP — 真实浏览器标签页的 AI 控制桥接" width="100%" />
 
-<br /><br />
-
 # Chrome Browser MCP
 
 **面向真实浏览器会话的新一代 Chrome 扩展 (MV3) 与 MCP v2 服务器**
@@ -40,6 +38,38 @@
 | **安全与人工可控** | 独立彩色 **AI Agent 标签组**、可编辑域名黑名单、敏感操作审批门控、**Prompt-Injection Shield**、`Alt+Shift+P` 一键紧急暂停 | 无隔离的全浏览器访问或过度弹窗干扰 |
 | **WebMCP 与工作流录制** | 原生发现并调用 `navigator.modelContext` 网页工具 + 侧边栏“手把手演示”工作流录制（自动掩码密码） | 只能逐元素手动点击 |
 | **Antigravity MCP App 面板** | 内置 **Browser Control Deck**（`ui://chrome-browser/deck.html`），支持 `aux_pane` 侧边栏与 `global` 全局视图 | 仅返回纯文本结果 |
+
+---
+
+## 与其他浏览器扩展的对比
+
+目前 AI 浏览器自动化生态中已有不少优秀的扩展和 MCP 桥接工具，各自针对不同场景做了权衡。下表按真实会话 AI 浏览最关键的技术维度进行客观对比：
+
+| 评估维度 | **Chrome Browser MCP** | **Claude for Chrome** | **ChatGPT for Chrome** | **omp browser relay** | **Kimi Browser Ext.** | **Playwright MCP** (`--extension`) | **BrowserMCP** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **开源与许可证** | ✅ MIT | ❌ 闭源 | ❌ 闭源 | ✅ 开源 | ❌ 闭源 *(社区有 MCP 封装)* | ✅ Apache-2.0 | ✅ 开源 |
+| **不绑定模型/Agent (MCP v2)** | ✅ 任意 MCP 宿主 *(HTTP + `stdio` + Apps)* | ⚠️ 仅限 Claude / Claude Code | ❌ 仅限 ChatGPT | ⚠️ `omp` CLI / 原始 CDP 中继 | ⚠️ Kimi 生态 *(+ 封装)* | ✅ 任意 MCP 宿主 | ✅ 任意 MCP 宿主 |
+| **真实登录会话** | ✅ 日常配置 *(Chrome/Arc/Brave/Edge)* | ✅ 日常配置 | ✅ 日常配置 | ✅ 日常配置 *(绕过 Chrome 136+ 限制)* | ✅ 日常配置 | ⚠️ 手动 *"Share This Tab"* *(默认隔离)* | ✅ 日常配置 |
+| **无常驻黄色调试横幅** | ✅ 混合 CS + WebMCP；**按需 CDP** 空闲断开 | ❌ 常驻 CDP 横幅 | ⚠️ 浏览器调试权限 | ❌ 常驻 `chrome.debugger` | ❌ 常驻 `chrome.debugger` | ❌ 常驻 `chrome.debugger` | ❌ 常驻 `chrome.debugger` |
+| **兼容手动打开 DevTools** | ✅ 自动回退至 Content Script | ❌ CDP 挂载冲突 | ⚠️ 受限 | ❌ 单调试器冲突 | ❌ 单调试器冲突 | ❌ 单调试器冲突 | ❌ 单调试器冲突 |
+| **Token 效率（Diff 与批量）** | ✅ 精简引用 + **增量 Diff** + **批量操作** | ⚠️ 全量快照 / 截图 | ⚠️ 服务端托管 | ⚠️ 原始 CDP *(取决于客户端)* | ⚠️ Markdown/CSV 提取；无 Diff | ⚠️ 每步全量无障碍树；单步单调用 | ⚠️ 全量 ARIA 快照；单步单调用 |
+| **多 Agent 与多配置并发** | ✅ 共享 Broker 守护进程 *(租约 + 命名配置)* | ❌ 单 Claude 会话 | ❌ 单 ChatGPT 会话 | ✅ 全局守护进程 + Puppeteer 复用 | ❌ 单本地桥接 | ⚠️ 桥接模式仅单共享标签 | ❌ 单 WS 端口 / 客户端 |
+| **标签页隔离与人工可控** | ✅ **AI Agent** 标签组、黑名单、审批、`Alt+Shift+P` | ⚠️ 标签组 + 频繁逐站确认弹窗 | ⚠️ 敏感页确认提示 | ❌ 基础中继挂载 | ⚠️ 基础侧边栏/桥接控制 | ⚠️ 仅手动共享单标签 | ⚠️ 弹窗手动连接 |
+| **提示词注入防护** | ✅ 本地非信任 DOM 净化 + 隐藏文本过滤 | ⚠️ 仅服务端模型侧防护 | ⚠️ 仅服务端模型侧防护 | ❌ 无 | ❌ 无 | ❌ 无 | ❌ 无 |
+| **原生 WebMCP (`navigator.modelContext`)** | ✅ 内置自动发现与调用 | ❌ 无 | ❌ 无 | ❌ 无 | ❌ 无 | ❌ 无 | ❌ 无 |
+| **工作流录制（“手把手演示”）** | ✅ 侧边栏录制 *(密码掩码 + MCP 回放)* | ⚠️ 保存提示词 / 快捷方式 | ❌ 无 | ❌ 无 | ✅ 可复用 Skills / CLI 流程 | ❌ 需另用 `codegen` | ❌ 无 |
+| **100% 纯本地 / 无需云账号** | ✅ `127.0.0.1` + 令牌，零遥测 | ❌ 需 Anthropic 账号 | ❌ 需 OpenAI 账号 | ✅ 100% 本地 | ⚠️ 本地桥接；侧边栏需 Kimi 账号 | ✅ 100% 本地 | ✅ 100% 本地 |
+
+### 如何选择
+
+- **选择 Chrome Browser MCP**：需要一个**开源、模型无关的 MCP v2** 真实浏览器扩展，兼顾多 Agent 并发、增量 Diff 与批量操作带来的低 Token 消耗、默认无常驻调试横幅、本地提示词注入防护、原生 WebMCP 与严格 `127.0.0.1` 隐私边界。
+- **选择 Claude for Chrome / ChatGPT for Chrome**：只使用 Anthropic 或 OpenAI 自家生态，更看重免本地守护进程配置的开箱即用体验，而不需要跨 Agent 的 MCP 互通。
+- **选择 omp browser relay**：深度使用 `oh-my-pi` (`omp`) 生态，且明确需要基于扩展的底层 CDP / Puppeteer 多路复用通道。
+- **选择 Kimi Browser Extension**：日常工作流以 Moonshot Kimi 侧边栏、Kimi Work 与 Kimi Skills 为核心。
+- **选择 Playwright MCP（隔离模式）**：用于可复现的无头/干净环境端到端测试与 CI 流水线，刻意*不*希望混入个人 Cookie 与登录态。
+- **选择 Chrome DevTools MCP (`chrome-devtools-mcp`)** *(非扩展 CLI/CDP 服务)*：核心需求是前端深度性能分析（Core Web Vitals 追踪、堆快照、Lighthouse 审计），而非日常已登录网页的自动化操作。
+
+> *对比基准截至 2026 年底。AI 浏览器工具迭代迅速，如表中信息有更新，欢迎提交 PR 保持准确。*
 
 ---
 

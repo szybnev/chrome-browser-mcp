@@ -2,8 +2,6 @@
 
 <img src="./docs/assets/banner.png" alt="Chrome Browser MCP — AI browser control, in your real tabs" width="100%" />
 
-<br /><br />
-
 # Chrome Browser MCP
 
 **Next-gen Chrome Extension (MV3) & MCP v2 Server for real-session AI browser use**
@@ -40,6 +38,38 @@ Most browser-use extensions force painful trade-offs: they either spin up logged
 | **Security & Control** | Dedicated colored **AI Agent Tab Group**, editable domain blocklist, risky-action approval gates, **Prompt-Injection Shield**, instant `Alt+Shift+P` Pause | Full unguarded browser access or constant friction |
 | **WebMCP & Workflow Recorder** | Native `navigator.modelContext` tool discovery + “Show by hand” workflow recorder with password masking | Manual clicking only |
 | **Antigravity MCP App UI** | Built-in **Browser Control Deck** (`ui://chrome-browser/deck.html`) in `aux_pane` & `global` views | Text-only tool output |
+
+---
+
+## Comparison with Other Browser Extensions
+
+There are several strong browser-automation extensions and MCP bridges in the ecosystem, each optimizing for a different workflow. Below is a technical comparison across the criteria that matter most for real-session AI browser use.
+
+| Criterion | **Chrome Browser MCP** | **Claude for Chrome** | **ChatGPT for Chrome** | **omp browser relay** | **Kimi Browser Ext.** | **Playwright MCP** (`--extension`) | **BrowserMCP** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Open Source & License** | ✅ MIT | ❌ Closed | ❌ Closed | ✅ Open source | ❌ Closed *(community MCP wrappers)* | ✅ Apache-2.0 | ✅ Open source |
+| **Agent-Agnostic MCP v2** | ✅ Any MCP host *(HTTP + `stdio` + Apps)* | ⚠️ Claude / Claude Code only | ❌ ChatGPT only | ⚠️ `omp` CLI / raw CDP relay | ⚠️ Kimi ecosystem *(+ wrappers)* | ✅ Any MCP host | ✅ Any MCP host |
+| **Real Logged-In Sessions** | ✅ Daily profile *(Chrome/Arc/Brave/Edge)* | ✅ Daily profile | ✅ Daily profile | ✅ Daily profile *(bypasses Chrome 136+ lock)* | ✅ Daily profile | ⚠️ Manual *"Share This Tab"* *(isolated by default)* | ✅ Daily profile |
+| **No Permanent Debugger Banner** | ✅ Hybrid CS + WebMCP; **on-demand CDP** auto-detach | ❌ Active CDP banner | ⚠️ Browser debugger perms | ❌ Always-on `chrome.debugger` | ❌ Always-on `chrome.debugger` | ❌ Always-on `chrome.debugger` | ❌ Always-on `chrome.debugger` |
+| **Works While DevTools Is Open** | ✅ Content Script fallback | ❌ CDP attach conflict | ⚠️ Limited | ❌ Single-debugger conflict | ❌ Single-debugger conflict | ❌ Single-debugger conflict | ❌ Single-debugger conflict |
+| **Token Efficiency (Diffs & Batching)** | ✅ Pruned refs + **incremental diffs** + **batch actions** | ⚠️ Full snapshots / screenshots | ⚠️ Backend-managed | ⚠️ Raw CDP *(depends on client)* | ⚠️ Markdown/CSV extract; no diffs | ⚠️ Full a11y tree per step; 1 action/call | ⚠️ Full ARIA snapshot; 1 action/call |
+| **Multi-Agent & Multi-Profile** | ✅ Shared Broker Daemon *(leases + named profiles)* | ❌ Single Claude session | ❌ Single ChatGPT session | ✅ Global daemon + Puppeteer mux | ❌ Single local bridge | ⚠️ Single shared tab in bridge mode | ❌ Single WS port / client |
+| **Tab Isolation & Human Controls** | ✅ **AI Agent** Tab Group, blocklist, approvals, `Alt+Shift+P` | ⚠️ Tab group + noisy per-site prompts | ⚠️ Prompts on sensitive pages | ❌ Basic relay attach | ⚠️ Basic sidebar/bridge controls | ⚠️ Manual per-tab share only | ⚠️ Manual popup connect |
+| **Prompt-Injection Shield** | ✅ Local untrusted-DOM sanitizer & hidden-text filter | ⚠️ Provider-side only | ⚠️ Provider-side only | ❌ None | ❌ None | ❌ None | ❌ None |
+| **Native WebMCP (`navigator.modelContext`)** | ✅ Built-in discovery & call | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
+| **Workflow Recorder ("Show by hand")** | ✅ Side Panel recorder *(password masking + replay)* | ⚠️ Saved prompts / shortcuts | ❌ No | ❌ No | ✅ Recorded Skills / CLI flows | ❌ Separate `codegen` tool | ❌ No |
+| **100% Local-First / No Cloud Account** | ✅ `127.0.0.1` + token, zero telemetry | ❌ Anthropic account | ❌ OpenAI account | ✅ 100% local | ⚠️ Local bridge; Kimi account for sidebar | ✅ 100% local | ✅ 100% local |
+
+### How to Choose
+
+- **Choose Chrome Browser MCP** if you want an **open-source, model-agnostic MCP v2** extension for your real logged-in browser — with multi-agent concurrency, token-saving diffs & batching, silent default execution (no permanent debugger banner), built-in Prompt-Injection Shield, native WebMCP, and strict `127.0.0.1` privacy.
+- **Choose Claude for Chrome** or **ChatGPT for Chrome** if you work exclusively inside Anthropic's or OpenAI's first-party UI and want zero local CLI/daemon setup rather than cross-agent MCP interoperability.
+- **Choose omp browser relay** if you live inside the `oh-my-pi` (`omp`) ecosystem and specifically need a raw CDP/Puppeteer multiplexer over your real Chrome profile.
+- **Choose Kimi Browser Extension** if your workflow centers on Moonshot's Kimi sidebar, Kimi Work, and Kimi Skill/CLI routines.
+- **Choose Playwright MCP (isolated mode)** for deterministic headless/clean-profile E2E testing and CI pipelines where you intentionally do *not* want personal cookies or active logins.
+- **Choose Chrome DevTools MCP (`chrome-devtools-mcp`)** *(non-extension CLI/CDP server)* when your primary goal is deep frontend performance tracing, Lighthouse audits, and heap/network profiling rather than everyday authenticated browsing.
+
+> *Comparison snapshot as of late 2026. Browser-agent tools evolve quickly — if something above is outdated, PRs to keep this matrix accurate are welcome.*
 
 ---
 
