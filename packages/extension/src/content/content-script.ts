@@ -792,7 +792,37 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
   // Quick Page Audit (a11y + Performance + Storage Keys)
   // -------------------------------------------------------------------------
 
-  function runAudit(tabId: number): AuditResult {
+  async function readBufferedPerfEntries<T extends PerformanceEntry>(type: string): Promise<T[]> {
+    if (typeof PerformanceObserver === 'undefined') return [];
+    const supported = PerformanceObserver.supportedEntryTypes;
+    if (Array.isArray(supported) && !supported.includes(type)) return [];
+
+    return await new Promise<T[]>((resolve) => {
+      const collected: T[] = [];
+      let done = false;
+      const finish = (obs?: PerformanceObserver) => {
+        if (done) return;
+        done = true;
+        try {
+          obs?.disconnect();
+        } catch {
+          // ignore
+        }
+        resolve(collected);
+      };
+      try {
+        const obs = new PerformanceObserver((list) => {
+          collected.push(...(list.getEntries() as T[]));
+        });
+        obs.observe({ type, buffered: true });
+        setTimeout(() => finish(obs), 30);
+      } catch {
+        finish();
+      }
+    });
+  }
+
+  async function runAudit(tabId: number): Promise<AuditResult> {
     const imgs = [...document.querySelectorAll('img')];
     const missingAltImages = imgs.filter((img) => !img.hasAttribute('alt')).length;
 
@@ -814,9 +844,11 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     if (duplicateIds > 0) issues.push(`${duplicateIds} duplicate id attribute(s) found`);
 
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-    const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
+    const [lcpEntries, layoutShifts] = await Promise.all([
+      readBufferedPerfEntries<PerformanceEntry>('largest-contentful-paint'),
+      readBufferedPerfEntries<PerformanceEntry & { value?: number; hadRecentInput?: boolean }>('layout-shift'),
+    ]);
     const lastLcp = lcpEntries[lcpEntries.length - 1];
-    const layoutShifts = performance.getEntriesByType('layout-shift') as Array<PerformanceEntry & { value?: number; hadRecentInput?: boolean }>;
     const clsScore =
       layoutShifts.length > 0
         ? Number(
@@ -990,7 +1022,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             return;
           }
           case 'cs.audit':
-            sendResponse({ ok: true, data: runAudit(msg.params.tabId) });
+            sendResponse({ ok: true, data: await runAudit(msg.params.tabId) });
             return;
           case 'cs.hud':
             setHudActive(Boolean(msg.params?.active), msg.params?.label, Boolean(msg.params?.recording));
