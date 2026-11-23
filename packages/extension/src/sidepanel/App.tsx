@@ -40,6 +40,9 @@ export function App() {
     try {
       const payload = await sendSw<SidePanelPayload>({ type: 'sp.getState' });
       setData(payload);
+      if (payload.runtime.connected) {
+        setStatusMsg((prev) => (prev?.includes('reconnecting') ? null : prev));
+      }
       setWsUrlDraft((prev) => prev || payload.settings.wsUrl);
       setTokenDraft((prev) => prev || payload.settings.token);
       setLabelDraft((prev) => prev || payload.settings.profileLabel);

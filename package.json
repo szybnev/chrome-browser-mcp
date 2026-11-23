@@ -11,7 +11,7 @@
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
     "build": "pnpm --filter @chrome-browser-mcp/protocol build && pnpm --filter @chrome-browser-mcp/mcp-app build && pnpm --filter chrome-browser-mcp build && pnpm --filter @chrome-browser-mcp/extension build",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm --filter @chrome-browser-mcp/protocol build && pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "security:staged": "node scripts/security-check.mjs --staged",

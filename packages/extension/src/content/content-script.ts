@@ -331,8 +331,6 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     let filteredHiddenCount = 0;
     let refCounter = 0;
 
-    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_ELEMENT);
-
     const visit = (el: Element) => {
       if (nodes.length >= maxNodes) return;
       const tag = el.tagName.toLowerCase();
@@ -425,12 +423,33 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       });
     };
 
-    let current = walker.nextNode();
-    while (current && nodes.length < maxNodes) {
-      if (current instanceof Element) {
-        visit(current);
+    const traverseRoot = (root: Document | ShadowRoot | Element) => {
+      if (nodes.length >= maxNodes) return;
+      const children = root.children;
+      for (let i = 0; i < children.length && nodes.length < maxNodes; i++) {
+        const child = children[i]!;
+        if (child.id === 'chrome-browser-mcp-hud-host') continue;
+        visit(child);
+        if (child.shadowRoot) {
+          traverseRoot(child.shadowRoot);
+        }
+        if (child instanceof HTMLIFrameElement) {
+          try {
+            if (child.contentDocument?.body) {
+              traverseRoot(child.contentDocument.body);
+            }
+          } catch {
+            // Cross-origin iframe — handled via CDP escalation when requested
+          }
+        }
+        traverseRoot(child);
       }
-      current = walker.nextNode();
+    };
+
+    if (document.body) {
+      traverseRoot(document.body);
+    } else if (document.documentElement) {
+      traverseRoot(document.documentElement);
     }
 
     return {
@@ -470,50 +489,130 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     if (!root) return { markdown: '', filteredHiddenCount: 0 };
 
     const lines: string[] = [];
+    let totalLen = 0;
     let filteredHiddenCount = 0;
 
+    const pushLine = (line: string) => {
+      if (!line || totalLen >= maxChars) return;
+      lines.push(line);
+      totalLen += line.length + 1;
+    };
+
+    const visibleInlineText = (el: Element): string => {
+      let buf = '';
+      for (const child of el.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          buf += child.textContent ?? '';
+        } else if (child instanceof Element) {
+          const t = child.tagName.toLowerCase();
+          if (['script', 'style', 'noscript', 'svg', 'template'].includes(t)) continue;
+          if (isElementHiddenOrTrap(child)) {
+            filteredHiddenCount += 1;
+            continue;
+          }
+          if (t === 'a' && child instanceof HTMLAnchorElement && child.href) {
+            const label = visibleInlineText(child).trim();
+            if (label) buf += `[${label}](${child.href})`;
+          } else {
+            buf += visibleInlineText(child);
+          }
+        }
+      }
+      return buf.replace(/\s+/g, ' ');
+    };
+
     const walk = (node: Node) => {
-      if (lines.join('\n').length >= maxChars) return;
-      if (node instanceof Element) {
-        const tag = node.tagName.toLowerCase();
-        if (['script', 'style', 'noscript', 'svg', 'iframe', 'template', 'nav', 'footer'].includes(tag)) {
-          return;
+      if (totalLen >= maxChars) return;
+      if (node.nodeType === Node.TEXT_NODE) {
+        const txt = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+        if (txt) pushLine(txt);
+        return;
+      }
+      if (!(node instanceof Element)) return;
+
+      const tag = node.tagName.toLowerCase();
+      if (
+        node.id === 'chrome-browser-mcp-hud-host' ||
+        ['script', 'style', 'noscript', 'svg', 'template', 'nav', 'footer'].includes(tag)
+      ) {
+        return;
+      }
+      if (isElementHiddenOrTrap(node)) {
+        filteredHiddenCount += 1;
+        return;
+      }
+
+      if (tag === 'iframe' && node instanceof HTMLIFrameElement) {
+        try {
+          if (node.contentDocument?.body) {
+            for (const c of node.contentDocument.body.childNodes) walk(c);
+          }
+        } catch {
+          // Cross-origin iframe
         }
-        if (isElementHiddenOrTrap(node)) {
-          filteredHiddenCount += 1;
-          return;
+        return;
+      }
+
+      if (node.shadowRoot) {
+        for (const c of node.shadowRoot.childNodes) walk(c);
+      }
+
+      if (/^h[1-6]$/.test(tag)) {
+        const level = Number(tag[1]);
+        const txt = visibleInlineText(node).trim();
+        if (txt) pushLine(`\n${'#'.repeat(level)} ${txt}\n`);
+        return;
+      }
+      if (tag === 'pre') {
+        const code = node.textContent?.trim();
+        if (code) pushLine(`\n\`\`\`\n${code}\n\`\`\`\n`);
+        return;
+      }
+      if (tag === 'table') {
+        const rows = [...node.querySelectorAll('tr')];
+        for (let r = 0; r < rows.length && totalLen < maxChars; r++) {
+          const row = rows[r]!;
+          if (isElementHiddenOrTrap(row)) continue;
+          const cells = [...row.querySelectorAll('th, td')].map((cell) =>
+            visibleInlineText(cell).trim().replace(/\|/g, '\\|'),
+          );
+          if (cells.length > 0) {
+            pushLine(`| ${cells.join(' | ')} |`);
+            if (r === 0) pushLine(`| ${cells.map(() => '---').join(' | ')} |`);
+          }
         }
-        if (/^h[1-6]$/.test(tag)) {
-          const level = Number(tag[1]);
-          const txt = node.textContent?.replace(/\s+/g, ' ').trim();
-          if (txt) lines.push(`\n${'#'.repeat(level)} ${txt}\n`);
-          return;
-        }
-        if (tag === 'pre') {
-          const code = node.textContent?.trim();
-          if (code) lines.push(`\n\`\`\`\n${code}\n\`\`\`\n`);
-          return;
-        }
-        if (tag === 'li') {
-          const txt = node.textContent?.replace(/\s+/g, ' ').trim();
-          if (txt) lines.push(`- ${txt}`);
-          return;
-        }
-        if (tag === 'p' || tag === 'blockquote') {
-          const txt = node.textContent?.replace(/\s+/g, ' ').trim();
-          if (txt) lines.push(tag === 'blockquote' ? `> ${txt}` : `\n${txt}`);
-          return;
-        }
-        for (const child of node.childNodes) {
-          walk(child);
-        }
+        return;
+      }
+      if (tag === 'li') {
+        const txt = visibleInlineText(node).trim();
+        if (txt) pushLine(`- ${txt}`);
+        return;
+      }
+      if (tag === 'dt') {
+        const txt = visibleInlineText(node).trim();
+        if (txt) pushLine(`\n**${txt}**`);
+        return;
+      }
+      if (tag === 'dd') {
+        const txt = visibleInlineText(node).trim();
+        if (txt) pushLine(`: ${txt}`);
+        return;
+      }
+      if (tag === 'p' || tag === 'blockquote') {
+        const txt = visibleInlineText(node).trim();
+        if (txt) pushLine(tag === 'blockquote' ? `> ${txt}` : `\n${txt}`);
+        return;
+      }
+
+      for (const child of node.childNodes) {
+        walk(child);
       }
     };
 
     walk(root);
     const out = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, maxChars);
     return {
-      markdown: out || (root.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, maxChars),
+      markdown: out,
       filteredHiddenCount,
     };
   }
