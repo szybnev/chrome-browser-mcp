@@ -1,5 +1,9 @@
 <div align="center">
 
+<img src="./docs/assets/banner.png" alt="Chrome Browser MCP — 真实浏览器标签页的 AI 控制桥接" width="100%" />
+
+<br /><br />
+
 # Chrome Browser MCP
 
 **面向真实浏览器会话的新一代 Chrome 扩展 (MV3) 与 MCP v2 服务器**

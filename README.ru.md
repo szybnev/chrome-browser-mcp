@@ -1,5 +1,9 @@
 <div align="center">
 
+<img src="./docs/assets/banner.png" alt="Chrome Browser MCP — управление реальными вкладками браузера для AI-агентов" width="100%" />
+
+<br /><br />
+
 # Chrome Browser MCP
 
 **Расширение Chrome (MV3) и MCP v2 сервер нового поколения для AI browser use в реальных сессиях**

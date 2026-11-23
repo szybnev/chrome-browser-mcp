@@ -1,5 +1,9 @@
 <div align="center">
 
+<img src="./docs/assets/banner.png" alt="Chrome Browser MCP — AI browser control, in your real tabs" width="100%" />
+
+<br /><br />
+
 # Chrome Browser MCP
 
 **Next-gen Chrome Extension (MV3) & MCP v2 Server for real-session AI browser use**
