@@ -1029,7 +1029,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         focus: 'tabs.focus',
         close: 'tabs.close',
       } as const;
-      await hub.callExtension(map[action], { tabId }, { profileId, skipPauseCheck: true });
+      await hub.callExtension(
+        map[action],
+        { tabId, userInitiated: true },
+        { profileId, skipPauseCheck: true },
+      );
       const state = await hub.getDeckState();
       return {
         content: [{ type: 'text', text: `tab ${tabId} ${action}` }],

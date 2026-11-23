@@ -663,7 +663,12 @@ async function dispatchRpc(
     }
 
     case 'tabs.focus': {
-      const tab = await resolveAccessibleTab(params.tabId as number | undefined);
+      const explicitId = params.tabId as number | undefined;
+      const tab =
+        params.userInitiated === true && explicitId !== undefined
+          ? await chrome.tabs.get(explicitId)
+          : await resolveAccessibleTab(explicitId);
+      if (tab.id === undefined) throw new Error('Tab not found');
       await chrome.tabs.update(tab.id, { active: true });
       await chrome.windows.update(tab.windowId, { focused: true });
       await pushTabsSnapshotToBroker();
