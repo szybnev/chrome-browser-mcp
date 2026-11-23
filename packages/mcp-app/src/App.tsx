@@ -911,6 +911,26 @@ export function App() {
                   }
                 />
               </div>
+
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sec-prefer-md">Prefer Markdown (Accept: text/markdown)</label>
+                  <InfoTip
+                    label="Prefer Markdown (Experimental)"
+                    text="Experimental (exp/content-negotiation branch): sends Accept: text/markdown on main-frame navigations inside agent tabs via declarativeNetRequest session rules. Tradeoffs: websites can fingerprint agent requests, serve cloaked or different content than HTML (split-view prompt-injection risk), or render raw Markdown instead of interactive HTML UI. Can also be overridden per navigation with preferMarkdown: false."
+                  />
+                </span>
+                <input
+                  id="sec-prefer-md"
+                  type="checkbox"
+                  checked={deckState.policy.preferMarkdown}
+                  onChange={(e) =>
+                    void callDeckTool('deck_update_policy', {
+                      preferMarkdown: e.target.checked,
+                    })
+                  }
+                />
+              </div>
             </div>
 
             {/* COLLAPSIBLE ADVANCED SETTINGS */}

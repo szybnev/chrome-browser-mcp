@@ -998,6 +998,21 @@ export function App() {
                   onChange={(e) => void handlePolicyPatch({ requireApprovalForPayments: e.target.checked })}
                 />
               </div>
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sp-sec-prefer-md">Prefer Markdown (Accept: text/markdown)</label>
+                  <InfoTip
+                    label="Prefer Markdown (Experimental)"
+                    text="Experimental (exp/content-negotiation): adds Accept: text/markdown to main-frame navigations inside AI Agent tabs via declarativeNetRequest session rules. Tradeoffs: sites can fingerprint agent traffic, serve cloaked content different from HTML (split-view prompt-injection risk), or return raw Markdown without interactive UI."
+                  />
+                </span>
+                <input
+                  id="sp-sec-prefer-md"
+                  type="checkbox"
+                  checked={settings.policy.preferMarkdown}
+                  onChange={(e) => void handlePolicyPatch({ preferMarkdown: e.target.checked })}
+                />
+              </div>
 
               <div className="security-row">
                 <span className="security-label-group">

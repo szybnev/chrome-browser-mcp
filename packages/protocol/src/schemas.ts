@@ -433,6 +433,7 @@ export const SecurityPolicySchema = z.object({
   cdpIdleDetachSec: z.number().int().min(10).max(600).default(60),
   promptInjectionShield: z.boolean().default(true),
   uiLocale: z.enum(['en', 'ru', 'zh-CN']).default('en'),
+  preferMarkdown: z.boolean().default(true),
 });
 export type SecurityPolicy = z.infer<typeof SecurityPolicySchema>;
 

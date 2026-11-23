@@ -349,10 +349,14 @@ export function createBrowserMcpServer(
           .boolean()
           .default(false)
           .describe('Also raise the browser window to foreground when focusing a tab'),
+        preferMarkdown: z
+          .boolean()
+          .optional()
+          .describe('Override Accept: text/markdown content negotiation for this tab'),
         profileId: z.string().optional(),
       }),
     },
-    async ({ action, tabId, url, active, bringToFront, profileId }) => {
+    async ({ action, tabId, url, active, bringToFront, preferMarkdown, profileId }) => {
       try {
         if (action === 'open' && url) {
           const policy = await hub.getLivePolicy();
@@ -372,7 +376,7 @@ export function createBrowserMcpServer(
 
         const { data } = await hub.callExtension<TabInfo | TabInfo[] | { closed: boolean }>(
           methodMap[action],
-          { tabId, url, active, bringToFront },
+          { tabId, url, active, bringToFront, preferMarkdown },
           { profileId, toolLabel: `browser_tabs:${action}` },
         );
 
@@ -421,10 +425,16 @@ export function createBrowserMcpServer(
         waitSelector: z.string().optional(),
         waitText: z.string().optional(),
         timeoutMs: z.number().int().min(500).max(30000).default(15000),
+        preferMarkdown: z
+          .boolean()
+          .optional()
+          .describe(
+            'Override Accept: text/markdown content negotiation for this navigation (set false to force HTML UI)',
+          ),
         profileId: z.string().optional(),
       }),
     },
-    async ({ action, url, tabId, waitSelector, waitText, timeoutMs, profileId }) => {
+    async ({ action, url, tabId, waitSelector, waitText, timeoutMs, preferMarkdown, profileId }) => {
       try {
         const policy = await hub.getLivePolicy();
         if (action === 'goto') {
@@ -440,7 +450,7 @@ export function createBrowserMcpServer(
           redirectedFrom?: string;
         }>(
           'page.navigate',
-          { action, url, tabId, waitSelector, waitText, timeoutMs },
+          { action, url, tabId, waitSelector, waitText, timeoutMs, preferMarkdown },
           { profileId, timeoutMs: timeoutMs + 5000, toolLabel: `browser_navigate:${action}` },
         );
 

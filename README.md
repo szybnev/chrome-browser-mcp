@@ -1,3 +1,5 @@
+> **Experimental Branch (`exp/content-negotiation`)**: This branch adds opt-in per-tab `Accept: text/markdown` HTTP Content Negotiation for AI Agent tabs. It is intentionally **not** merged into `main` and **will not be rebased against `main`** by the maintainer. See [CONTENT_NEGOTIATION.md](./CONTENT_NEGOTIATION.md) for architecture details, security tradeoffs, and a ready-to-paste **AI agent prompt** to rebase this branch onto the latest `main` yourself.
+
 <div align="center">
 
 <img src="./docs/assets/banner.png" alt="Chrome Browser MCP — AI browser control, in your real tabs" width="100%" />

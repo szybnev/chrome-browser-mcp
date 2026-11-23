@@ -835,6 +835,29 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       };
     }
 
+    // Native text/markdown or text/plain responses are wrapped by Chrome in <body><pre>...</pre></body>
+    const contentType = (document.contentType || '').toLowerCase();
+    if (
+      !options?.selector &&
+      (contentType === 'text/markdown' || contentType === 'text/x-markdown' || contentType === 'text/plain')
+    ) {
+      const rawText = (document.body?.innerText ?? document.body?.textContent ?? '').trim();
+      const totalChars = rawText.length;
+      const slice = rawText.slice(offset, offset + maxChars);
+      const hasMore = offset + slice.length < totalChars;
+      return {
+        markdown: slice,
+        totalChars,
+        offset,
+        returnedChars: slice.length,
+        hasMore,
+        nextOffset: hasMore ? offset + slice.length : null,
+        filteredHiddenCount: 0,
+        tabsSummary: [],
+        alternateLinks,
+      };
+    }
+
     const lines: string[] = [];
     let filteredHiddenCount = 0;
 

@@ -36,6 +36,8 @@ const EXTENSION_VERSION = APP_VERSION;
 const ALARM_WATCHDOG = 'chrome-browser-mcp-watchdog';
 const CONTEXT_MENU_TOGGLE_TAB = 'chrome-browser-mcp-toggle-tab';
 const AGENT_GROUP_TITLE = 'AI Agent';
+const DNR_MARKDOWN_RULE_ID = 43179;
+const MARKDOWN_ACCEPT_HEADER = 'text/markdown, text/html;q=0.9, application/xhtml+xml;q=0.9, */*;q=0.8';
 
 let socket: WebSocket | null = null;
 let nativePort: chrome.runtime.Port | null = null;
@@ -44,6 +46,7 @@ let tabSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let lastTabsFingerprint = '';
 const injectedTabs = new Set<number>();
 const sidePanelPorts = new Set<chrome.runtime.Port>();
+const htmlOnlyTabOverrides = new Set<number>();
 let activeRecordingSteps: RecordedStep[] = [];
 let activeRecordingStartUrl = '';
 
@@ -196,6 +199,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 chrome.tabs.onCreated.addListener(() => scheduleTabSync());
 chrome.tabs.onRemoved.addListener((tabId) => {
   injectedTabs.delete(tabId);
+  htmlOnlyTabOverrides.delete(tabId);
   scheduleTabSync();
 });
 chrome.tabs.onActivated.addListener(() => scheduleTabSync());
@@ -445,6 +449,7 @@ async function handleBrokerMessage(
   if (msg.type === 'broker.welcome') {
     await saveSettings({ policy: msg.policy });
     await saveRuntimeState({ paused: msg.paused, connected: true, lastError: null });
+    await syncMarkdownNegotiationRules();
     await updateBadge();
     await notifySidePanel();
     return;
@@ -561,6 +566,7 @@ async function attachTabToAgentGroup(tabId: number): Promise<number> {
 }
 
 async function detachTabFromAgentGroup(tabId: number): Promise<void> {
+  htmlOnlyTabOverrides.delete(tabId);
   try {
     await chrome.tabs.ungroup([tabId]);
   } catch {
@@ -601,11 +607,65 @@ function computeTabsFingerprint(tabs: TabInfo[], groupId: number | null, allowAl
   return fp;
 }
 
+async function syncMarkdownNegotiationRules(tabsOverride?: TabInfo[]): Promise<void> {
+  if (!chrome.declarativeNetRequest?.updateSessionRules) return;
+  try {
+    const settings = await loadSettings();
+    const enabled = settings.policy.preferMarkdown;
+    if (!enabled) {
+      await chrome.declarativeNetRequest.updateSessionRules({
+        removeRuleIds: [DNR_MARKDOWN_RULE_ID],
+      });
+      return;
+    }
+
+    const tabs = tabsOverride ?? (await listScopedTabs(true));
+    const allowAll = settings.policy.scopeMode === 'all-tabs';
+    const targetTabIds = tabs
+      .filter((t) => (allowAll || t.inAgentGroup) && !htmlOnlyTabOverrides.has(t.tabId))
+      .map((t) => t.tabId);
+
+    if (targetTabIds.length === 0) {
+      await chrome.declarativeNetRequest.updateSessionRules({
+        removeRuleIds: [DNR_MARKDOWN_RULE_ID],
+      });
+      return;
+    }
+
+    await chrome.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: [DNR_MARKDOWN_RULE_ID],
+      addRules: [
+        {
+          id: DNR_MARKDOWN_RULE_ID,
+          priority: 1,
+          action: {
+            type: chrome.declarativeNetRequest.RuleActionType.MODIFY_HEADERS,
+            requestHeaders: [
+              {
+                header: 'accept',
+                operation: chrome.declarativeNetRequest.HeaderOperation.SET,
+                value: MARKDOWN_ACCEPT_HEADER,
+              },
+            ],
+          },
+          condition: {
+            tabIds: targetTabIds,
+            resourceTypes: [chrome.declarativeNetRequest.ResourceType.MAIN_FRAME],
+          },
+        },
+      ],
+    });
+  } catch {
+    // Ignore if declarativeNetRequest session rules are unavailable
+  }
+}
+
 async function pushTabsSnapshotToBroker(force = false): Promise<void> {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
   const settings = await loadSettings();
   const groupId = await getValidAgentGroupId();
   const tabs = await listScopedTabs(true);
+  await syncMarkdownNegotiationRules(tabs);
+  if ((!socket || socket.readyState !== WebSocket.OPEN) && !nativePort) return;
   const allowAllTabs = settings.policy.scopeMode === 'all-tabs';
   const fp = computeTabsFingerprint(tabs, groupId, allowAllTabs);
   if (!force && fp === lastTabsFingerprint) return;
@@ -935,10 +995,24 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
         }
       }
       const active = params.active !== false;
-      const tab = await chrome.tabs.create({ url, active });
+      const preferMarkdownOverride =
+        typeof params.preferMarkdown === 'boolean' ? params.preferMarkdown : undefined;
+
+      // Open about:blank first, attach to AI Agent group + apply DNR session rule, then navigate
+      // so the very first HTTP request to `url` already carries Accept: text/markdown (1 fetch only).
+      const tab = await chrome.tabs.create({ url: 'about:blank', active });
       if (tab.id !== undefined) {
         await attachTabToAgentGroup(tab.id);
-        await waitForTabLoad(tab.id, 12_000);
+        if (preferMarkdownOverride === false) {
+          htmlOnlyTabOverrides.add(tab.id);
+        } else {
+          htmlOnlyTabOverrides.delete(tab.id);
+        }
+        await syncMarkdownNegotiationRules();
+        if (url && url !== 'about:blank') {
+          await chrome.tabs.update(tab.id, { url });
+          await waitForTabLoad(tab.id, 12_000);
+        }
         const refreshed = await chrome.tabs.get(tab.id);
         const finalUrl = refreshed.url ?? url;
         if (finalUrl && finalUrl !== 'about:blank') {
@@ -1041,6 +1115,14 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
       const action = String(params.action ?? 'goto');
       const timeoutMs = Number(params.timeoutMs ?? 15_000);
       const requestedUrl = action === 'goto' ? String(params.url) : undefined;
+      if (typeof params.preferMarkdown === 'boolean') {
+        if (params.preferMarkdown) {
+          htmlOnlyTabOverrides.delete(tab.id);
+        } else {
+          htmlOnlyTabOverrides.add(tab.id);
+        }
+        await syncMarkdownNegotiationRules();
+      }
       if (action === 'goto' && requestedUrl) {
         const preCheck = isUrlBlocked(
           requestedUrl,

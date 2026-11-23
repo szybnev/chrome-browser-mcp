@@ -32,7 +32,8 @@
     "alarms",
     "scripting",
     "debugger",
-    "contextMenus"
+    "contextMenus",
+    "declarativeNetRequest"
   ],
   "optional_permissions": ["downloads", "nativeMessaging"],
   "host_permissions": ["<all_urls>"],
