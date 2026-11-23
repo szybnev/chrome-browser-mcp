@@ -17,12 +17,16 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
   const refMap = new Map<string, Element>();
   let recordingActive = false;
+  let visualHudEnabled = true;
   let hudHost: HTMLDivElement | null = null;
   let hudShadow: ShadowRoot | null = null;
   let somContainer: HTMLDivElement | null = null;
+  let cursorEl: HTMLDivElement | null = null;
+  let spotlightEl: HTMLDivElement | null = null;
+  let spotlightTimer: ReturnType<typeof setTimeout> | null = null;
 
   // -------------------------------------------------------------------------
-  // Isolated Shadow DOM Visual HUD (batched with requestAnimationFrame)
+  // Isolated Shadow DOM Visual HUD (optional, enabled by default)
   // -------------------------------------------------------------------------
 
   function ensureHud(): ShadowRoot {
@@ -36,23 +40,47 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     style.textContent = `
       .frame {
         position: fixed; inset: 0; pointer-events: none;
-        border: 3px solid rgba(56, 228, 212, 0.78);
-        box-shadow: inset 0 0 18px rgba(56, 228, 212, 0.22);
+        border: 2.5px solid rgba(56, 228, 212, 0.72);
+        box-shadow: inset 0 0 18px rgba(56, 228, 212, 0.18);
         opacity: 0; transition: opacity 180ms ease;
       }
       .frame.active { opacity: 1; }
       .badge {
-        position: fixed; top: 10px; right: 12px;
-        background: rgba(15, 23, 42, 0.9); color: #e2f8f5;
-        border: 1px solid rgba(56, 228, 212, 0.6);
+        position: fixed; top: 10px; right: 12px; pointer-events: none;
+        background: rgba(15, 23, 42, 0.92); color: #e2f8f5;
+        border: 1px solid rgba(56, 228, 212, 0.55);
         border-radius: 999px; padding: 4px 10px;
         font: 600 11px/1.3 system-ui, -apple-system, sans-serif;
-        letter-spacing: 0.02em; display: none; align-items: center; gap: 6px;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+        letter-spacing: 0.02em; display: none; align-items: center; gap: 7px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.32);
       }
       .badge.visible { display: inline-flex; }
+      .badge-pause {
+        pointer-events: auto; cursor: pointer;
+        border: 1px solid rgba(248, 113, 113, 0.6);
+        background: rgba(239, 68, 68, 0.18); color: #fecaca;
+        border-radius: 999px; padding: 1px 7px;
+        font: 700 10px/1.3 system-ui, -apple-system, sans-serif;
+      }
+      .badge-pause:hover { background: rgba(239, 68, 68, 0.35); color: #fff; }
       .dot { width: 7px; height: 7px; border-radius: 50%; background: #38e4d4; }
       .dot.rec { background: #ef4444; }
+      .agent-cursor {
+        position: fixed; top: 0; left: 0; width: 22px; height: 22px;
+        pointer-events: none; opacity: 0;
+        transform: translate3d(-40px, -40px, 0);
+        transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease;
+        filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+      }
+      .agent-cursor.visible { opacity: 1; }
+      .target-spotlight {
+        position: fixed; pointer-events: none; opacity: 0;
+        border: 2px solid #38e4d4; border-radius: 6px;
+        background: rgba(56, 228, 212, 0.12);
+        box-shadow: 0 0 0 3px rgba(56, 228, 212, 0.16);
+        transition: opacity 150ms ease, left 180ms ease, top 180ms ease, width 180ms ease, height 180ms ease;
+      }
+      .target-spotlight.visible { opacity: 1; }
       .ripple {
         position: fixed; width: 28px; height: 28px; margin: -14px 0 0 -14px;
         border-radius: 50%; border: 2px solid #38e4d4;
@@ -80,39 +108,106 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         padding: 1px 4px; font: 700 10px/1.2 ui-monospace, monospace;
         box-shadow: 0 2px 6px rgba(0,0,0,0.4);
       }
+      @media (prefers-reduced-motion: reduce) {
+        .agent-cursor, .target-spotlight, .ripple, .frame, .toast { transition: none !important; }
+      }
     `;
     const frame = document.createElement('div');
     frame.className = 'frame';
     const badge = document.createElement('div');
     badge.className = 'badge';
+    spotlightEl = document.createElement('div');
+    spotlightEl.className = 'target-spotlight';
+    cursorEl = document.createElement('div');
+    cursorEl.className = 'agent-cursor';
+    const svgNs = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '22');
+    svg.setAttribute('height', '22');
+    const path = document.createElementNS(svgNs, 'path');
+    path.setAttribute('d', 'M4 3 L19 11.5 L12.2 13.6 L9.5 20.5 Z');
+    path.setAttribute('fill', '#38e4d4');
+    path.setAttribute('stroke', '#0f172a');
+    path.setAttribute('stroke-width', '1.8');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    cursorEl.appendChild(svg);
     somContainer = document.createElement('div');
     somContainer.className = 'som-layer';
-    hudShadow.append(style, frame, badge, somContainer);
+    hudShadow.append(style, frame, spotlightEl, cursorEl, badge, somContainer);
     document.documentElement.appendChild(hudHost);
     return hudShadow;
   }
 
+  function hideVisualCursor(): void {
+    cursorEl?.classList.remove('visible');
+    spotlightEl?.classList.remove('visible');
+    if (spotlightTimer) {
+      clearTimeout(spotlightTimer);
+      spotlightTimer = null;
+    }
+  }
+
   function setHudActive(active: boolean, label?: string, isRecording = false): void {
     requestAnimationFrame(() => {
+      const show = active && (visualHudEnabled || isRecording);
+      if (!show && !hudShadow) return;
       const shadow = ensureHud();
       const frame = shadow.querySelector('.frame');
       const badge = shadow.querySelector('.badge');
-      frame?.classList.toggle('active', active);
+      frame?.classList.toggle('active', show);
+      if (!show) hideVisualCursor();
       if (badge) {
-        badge.classList.toggle('visible', active && Boolean(label));
+        badge.classList.toggle('visible', show && Boolean(label));
         badge.textContent = '';
-        if (active && label) {
+        if (show && label) {
           const dot = document.createElement('span');
           dot.className = isRecording ? 'dot rec' : 'dot';
           const text = document.createElement('span');
           text.textContent = label;
           badge.append(dot, text);
+          if (!isRecording) {
+            const pauseBtn = document.createElement('button');
+            pauseBtn.type = 'button';
+            pauseBtn.className = 'badge-pause';
+            pauseBtn.textContent = 'Pause';
+            pauseBtn.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              void chrome.runtime.sendMessage({ type: 'cs.togglePause' }).catch(() => {});
+            });
+            badge.append(pauseBtn);
+          }
         }
       }
     });
   }
 
-  function showClickPulse(x: number, y: number): void {
+  function moveAgentCursor(x: number, y: number, rect?: DOMRect): void {
+    if (!visualHudEnabled) return;
+    requestAnimationFrame(() => {
+      ensureHud();
+      if (cursorEl) {
+        cursorEl.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+        cursorEl.classList.add('visible');
+      }
+      if (spotlightEl && rect && rect.width > 1 && rect.height > 1) {
+        spotlightEl.style.left = `${Math.max(0, Math.round(rect.left - 3))}px`;
+        spotlightEl.style.top = `${Math.max(0, Math.round(rect.top - 3))}px`;
+        spotlightEl.style.width = `${Math.round(rect.width + 6)}px`;
+        spotlightEl.style.height = `${Math.round(rect.height + 6)}px`;
+        spotlightEl.classList.add('visible');
+        if (spotlightTimer) clearTimeout(spotlightTimer);
+        spotlightTimer = setTimeout(() => {
+          spotlightEl?.classList.remove('visible');
+        }, 700);
+      }
+    });
+  }
+
+  function showClickPulse(x: number, y: number, rect?: DOMRect): void {
+    if (!visualHudEnabled) return;
+    moveAgentCursor(x, y, rect);
     requestAnimationFrame(() => {
       const shadow = ensureHud();
       const ripple = document.createElement('div');
@@ -346,15 +441,19 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     tabId: number;
     includeOffscreen?: boolean;
     maxNodes?: number;
+    refPrefix?: string;
+    frameId?: number;
   }): PageSnapshot {
     refMap.clear();
     const maxNodes = options.maxNodes ?? 220;
     const includeOffscreen = options.includeOffscreen ?? false;
+    const refPrefix = options.refPrefix ?? '';
+    const frameId = options.frameId ?? 0;
     const nodes: SnapshotNode[] = [];
     let filteredHiddenCount = 0;
     let refCounter = 0;
 
-    const visit = (el: Element) => {
+    const visit = (el: Element, inShadowDom: boolean) => {
       if (nodes.length >= maxNodes) return;
       const tag = el.tagName.toLowerCase();
       if (['script', 'style', 'noscript', 'template', 'svg', 'path'].includes(tag)) return;
@@ -383,7 +482,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       if (!interactive && !name) return;
 
       refCounter += 1;
-      const ref = `e${refCounter}`;
+      const ref = `${refPrefix}e${refCounter}`;
       refMap.set(ref, el);
 
       let depth = 0;
@@ -443,36 +542,38 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
           height: Math.round(rect.height),
         },
         selectorHint: buildSelectorHint(el),
+        ...(frameId > 0 ? { frameId, frameUrl: location.href } : {}),
+        ...(inShadowDom ? { inShadowDom: true } : {}),
       });
     };
 
-    const traverseRoot = (root: Document | ShadowRoot | Element) => {
+    const traverseRoot = (root: Document | ShadowRoot | Element, inShadowDom = false) => {
       if (nodes.length >= maxNodes) return;
       const children = root.children;
       for (let i = 0; i < children.length && nodes.length < maxNodes; i++) {
         const child = children[i]!;
         if (child.id === 'chrome-browser-mcp-hud-host') continue;
-        visit(child);
+        visit(child, inShadowDom);
         if (child.shadowRoot) {
-          traverseRoot(child.shadowRoot);
+          traverseRoot(child.shadowRoot, true);
         }
         if (child instanceof HTMLIFrameElement) {
           try {
             if (child.contentDocument?.body) {
-              traverseRoot(child.contentDocument.body);
+              traverseRoot(child.contentDocument.body, inShadowDom);
             }
           } catch {
-            // Cross-origin iframe — handled via CDP escalation when requested
+            // Cross-origin iframe — collected via service worker multi-frame injection
           }
         }
-        traverseRoot(child);
+        traverseRoot(child, inShadowDom);
       }
     };
 
     if (document.body) {
-      traverseRoot(document.body);
+      traverseRoot(document.body, false);
     } else if (document.documentElement) {
-      traverseRoot(document.documentElement);
+      traverseRoot(document.documentElement, false);
     }
 
     return {
@@ -749,8 +850,142 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
   }
 
   // -------------------------------------------------------------------------
+  // Structured Table & PDF Extraction (v2.0)
+  // -------------------------------------------------------------------------
+
+  interface ExtractedTable {
+    caption?: string;
+    headers: string[];
+    rows: string[][];
+  }
+
+  function extractTablesFromRoot(root: Document | ShadowRoot | Element): ExtractedTable[] {
+    const tables: ExtractedTable[] = [];
+    const seen = new Set<Element>();
+
+    const collect = (container: Document | ShadowRoot | Element) => {
+      const found = container.querySelectorAll('table');
+      for (const table of found) {
+        if (seen.has(table) || isElementHiddenOrTrap(table)) continue;
+        seen.add(table);
+        const caption = table.querySelector('caption')?.textContent?.trim() || undefined;
+        const trList = [...table.querySelectorAll('tr')].filter((r) => !isElementHiddenOrTrap(r));
+        if (trList.length === 0) continue;
+        let headers: string[] = [];
+        const rows: string[][] = [];
+        for (let i = 0; i < trList.length; i++) {
+          const row = trList[i]!;
+          const cells = [...row.querySelectorAll('th, td')].map((c) =>
+            ((c as HTMLElement).innerText || c.textContent || '').replace(/\s+/g, ' ').trim(),
+          );
+          if (cells.length === 0) continue;
+          if (i === 0 && (row.querySelector('th') !== null || row.parentElement?.tagName === 'THEAD')) {
+            headers = cells;
+          } else {
+            rows.push(cells);
+          }
+        }
+        if (headers.length === 0 && rows.length > 0) {
+          headers = rows.shift()!;
+        }
+        if (headers.length > 0 || rows.length > 0) {
+          tables.push({ caption, headers, rows });
+        }
+      }
+
+      for (const el of container.querySelectorAll('*')) {
+        if (el.id === 'chrome-browser-mcp-hud-host') continue;
+        if (el.shadowRoot) collect(el.shadowRoot);
+      }
+    };
+
+    collect(root);
+    return tables;
+  }
+
+  function csvEscape(cell: string): string {
+    if (/[",\n\r]/.test(cell)) {
+      return `"${cell.replace(/"/g, '""')}"`;
+    }
+    return cell;
+  }
+
+  function formatTablesAsCsv(tables: ExtractedTable[]): string {
+    return tables
+      .map((t, idx) => {
+        const headerLine = t.headers.map(csvEscape).join(',');
+        const bodyLines = t.rows.map((r) => r.map(csvEscape).join(','));
+        const prefix = tables.length > 1 ? `# Table ${idx + 1}${t.caption ? `: ${t.caption}` : ''}\n` : '';
+        return `${prefix}${[headerLine, ...bodyLines].filter(Boolean).join('\n')}`;
+      })
+      .join('\n\n');
+  }
+
+  async function tryExtractPdfText(maxChars: number): Promise<string | null> {
+    const isPdf =
+      document.contentType === 'application/pdf' ||
+      Boolean(document.querySelector('embed[type="application/pdf"]'));
+    if (!isPdf) return null;
+
+    // 1. Check PDF.js or embedded text layers first
+    const textLayer = document.querySelector('.textLayer, #viewer');
+    if (textLayer && textLayer.textContent && textLayer.textContent.trim().length > 20) {
+      return textLayer.textContent.replace(/\s+/g, ' ').trim().slice(0, maxChars);
+    }
+
+    // 2. Lightweight same-origin PDF literal-string text extraction
+    try {
+      const resp = await fetch(location.href, { credentials: 'include' });
+      if (!resp.ok) return null;
+      const buf = new Uint8Array(await resp.arrayBuffer());
+      const latin = new TextDecoder('latin1').decode(buf.subarray(0, Math.min(buf.length, 2_000_000)));
+      const chunks: string[] = [];
+      const btBlocks = latin.match(/BT[\s\S]*?ET/g) ?? [];
+      for (const block of btBlocks) {
+        const matches = block.match(/\((?:\\.|[^()\\]){1,240}\)/g) ?? [];
+        for (const m of matches) {
+          const decoded = m
+            .slice(1, -1)
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '')
+            .replace(/\\t/g, ' ')
+            .replace(/\\\(/g, '(')
+            .replace(/\\\)/g, ')')
+            .replace(/\\\\/g, '\\');
+          if (/[\p{L}\p{N}]/u.test(decoded)) chunks.push(decoded);
+        }
+      }
+      const combined = chunks.join(' ').replace(/\s+/g, ' ').trim();
+      if (combined.length > 20) {
+        return combined.slice(0, maxChars);
+      }
+      return '[PDF detected: document uses compressed/image streams; download the PDF via browser_downloads or inspect visually with browser_screenshot.]';
+    } catch {
+      return '[PDF detected: unable to fetch raw PDF bytes in page context; use browser_screenshot or browser_downloads.]';
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Action Helpers (Hybrid: resolves coords for CDP + fallback JS execution)
   // -------------------------------------------------------------------------
+
+  function querySelectorDeep(selector: string, root: Document | ShadowRoot = document): Element | null {
+    try {
+      const direct = root.querySelector(selector);
+      if (direct) return direct;
+    } catch {
+      return null;
+    }
+    const all = root.querySelectorAll('*');
+    for (const el of all) {
+      if (el.id === 'chrome-browser-mcp-hud-host') continue;
+      if (el.shadowRoot) {
+        const hit = querySelectorDeep(selector, el.shadowRoot);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  }
 
   function resolveTarget(ref?: string, selector?: string): Element | null {
     if (ref) {
@@ -758,7 +993,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       if (el && el.isConnected) return el;
     }
     if (selector) {
-      return document.querySelector(selector);
+      return querySelectorDeep(selector);
     }
     return null;
   }
@@ -849,7 +1084,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       const rect = el.getBoundingClientRect();
       const x = Math.round(rect.left + rect.width / 2);
       const y = Math.round(rect.top + rect.height / 2);
-      showClickPulse(x, y);
+      showClickPulse(x, y, rect);
       if (step.useCdp) {
         return { ok: true, coords: { x, y }, needsCdpClick: true, detail: `Target (${x}, ${y})` };
       }
@@ -869,6 +1104,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       const rect = el.getBoundingClientRect();
       const x = Math.round(rect.left + rect.width / 2);
       const y = Math.round(rect.top + rect.height / 2);
+      moveAgentCursor(x, y, rect);
       el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: x, clientY: y }));
       el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false, clientX: x, clientY: y }));
       return { ok: true, coords: { x, y }, detail: `Hovered ${step.ref || step.selector}` };
@@ -880,7 +1116,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
       if (el instanceof HTMLElement) el.focus();
       const rect = el.getBoundingClientRect();
-      showClickPulse(Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.height / 2));
+      showClickPulse(Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.height / 2), rect);
 
       const textVal = (step.kind === 'fill' ? step.value : step.text) ?? '';
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
@@ -1146,13 +1382,67 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
           case 'cs.snapshot':
             sendResponse({ ok: true, data: buildSnapshot(msg.params) });
             return;
-          case 'cs.read':
+          case 'cs.read': {
+            const format = String(msg.params?.format ?? 'markdown');
+            const maxChars = Number(msg.params?.maxChars ?? 30_000);
+            if (format === 'tables_json' || format === 'tables_csv') {
+              const root = pickReadRoot(msg.params?.selector, msg.params?.scope === 'body' ? 'body' : 'main') ?? document;
+              const tables = extractTablesFromRoot(root);
+              const rendered =
+                format === 'tables_json'
+                  ? JSON.stringify(tables, null, 2)
+                  : formatTablesAsCsv(tables);
+              const slice = rendered.slice(0, maxChars);
+              sendResponse({
+                ok: true,
+                data: {
+                  markdown: slice,
+                  totalChars: rendered.length,
+                  offset: 0,
+                  returnedChars: slice.length,
+                  hasMore: slice.length < rendered.length,
+                  nextOffset: slice.length < rendered.length ? slice.length : null,
+                  filteredHiddenCount: 0,
+                  tabsSummary: [],
+                  alternateLinks: [],
+                  tableCount: tables.length,
+                  url: location.href,
+                  origin: location.origin,
+                  title: document.title,
+                },
+              });
+              return;
+            }
+
+            const pdfText = await tryExtractPdfText(maxChars);
+            if (pdfText !== null) {
+              sendResponse({
+                ok: true,
+                data: {
+                  markdown: pdfText,
+                  totalChars: pdfText.length,
+                  offset: 0,
+                  returnedChars: pdfText.length,
+                  hasMore: false,
+                  nextOffset: null,
+                  filteredHiddenCount: 0,
+                  tabsSummary: [],
+                  alternateLinks: [],
+                  isPdf: true,
+                  url: location.href,
+                  origin: location.origin,
+                  title: document.title || 'PDF Document',
+                },
+              });
+              return;
+            }
+
             sendResponse({
               ok: true,
               data: {
                 ...extractMarkdown({
                   selector: msg.params?.selector,
-                  maxChars: msg.params?.maxChars,
+                  maxChars,
                   offset: msg.params?.offset,
                   scope: msg.params?.scope,
                 }),
@@ -1162,7 +1452,11 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
               },
             });
             return;
+          }
           case 'cs.resolveCoords': {
+            if (typeof msg.params?.hudEnabled === 'boolean') {
+              visualHudEnabled = msg.params.hudEnabled;
+            }
             const el = resolveTarget(msg.params?.ref, msg.params?.selector);
             if (!el) {
               sendResponse({ ok: false, error: 'Element not found' });
@@ -1173,12 +1467,16 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             const coords = {
               x: Math.round(rect.left + rect.width / 2),
               y: Math.round(rect.top + rect.height / 2),
+              selectorHint: buildSelectorHint(el),
             };
-            showClickPulse(coords.x, coords.y);
+            showClickPulse(coords.x, coords.y, rect);
             sendResponse({ ok: true, data: coords });
             return;
           }
           case 'cs.actStep': {
+            if (typeof msg.params?.hudEnabled === 'boolean') {
+              visualHudEnabled = msg.params.hudEnabled;
+            }
             const res = await executeContentStep(msg.params.step as ActionStep);
             sendResponse({ ok: true, data: res });
             return;
@@ -1187,7 +1485,17 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             sendResponse({ ok: true, data: await runAudit(msg.params.tabId) });
             return;
           case 'cs.hud':
+            if (typeof msg.params?.hudEnabled === 'boolean') {
+              visualHudEnabled = msg.params.hudEnabled;
+            }
             setHudActive(Boolean(msg.params?.active), msg.params?.label, Boolean(msg.params?.recording));
+            sendResponse({ ok: true });
+            return;
+          case 'cs.setHudEnabled':
+            visualHudEnabled = Boolean(msg.params?.enabled);
+            if (!visualHudEnabled) {
+              setHudActive(false);
+            }
             sendResponse({ ok: true });
             return;
           case 'cs.toast':

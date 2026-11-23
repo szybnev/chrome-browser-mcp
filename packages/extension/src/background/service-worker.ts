@@ -1,15 +1,20 @@
 import {
   APP_VERSION,
   BrokerToExtensionMessageSchema,
+  EmulationConfigSchema,
   ExtensionActParamsSchema,
   isUrlBlocked,
+  isUrlReadOnly,
   SecurityPolicySchema,
   type ActivityEvent,
   type ApprovalRequest,
   type BatchActResult,
+  type DownloadItem,
   type ExtensionRpcMethod,
   type ExtensionToBrokerMessage,
+  type FrameSummary,
   type PageSnapshot,
+  type PendingDialog,
   type RecordedStep,
   type RecordedWorkflow,
   type StepOutcome,
@@ -32,6 +37,7 @@ const CONTEXT_MENU_TOGGLE_TAB = 'chrome-browser-mcp-toggle-tab';
 const AGENT_GROUP_TITLE = 'AI Agent';
 
 let socket: WebSocket | null = null;
+let nativePort: chrome.runtime.Port | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
 let tabSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let lastTabsFingerprint = '';
@@ -51,7 +57,38 @@ const cdp = new CdpManager({
     void pushTabsSnapshotToBroker();
     void notifySidePanel();
   },
+  onDialog: (tabId, dialog) => {
+    void handleDialogEvent(tabId, dialog);
+  },
 });
+
+async function handleDialogEvent(tabId: number, dialog: PendingDialog | null): Promise<void> {
+  const settings = await loadSettings();
+  if (dialog && settings.policy.dialogPolicy === 'auto-dismiss') {
+    await cdp.handleDialog(tabId, false).catch(() => {});
+    return;
+  }
+  const runtime = await loadRuntimeState();
+  const nextDialogs = { ...runtime.pendingDialogs };
+  if (dialog) {
+    nextDialogs[String(tabId)] = dialog;
+  } else {
+    delete nextDialogs[String(tabId)];
+  }
+  await saveRuntimeState({ pendingDialogs: nextDialogs });
+  sendToBroker({ type: 'event.dialog', tabId, dialog });
+  await notifySidePanel();
+}
+
+async function openWelcomeTourIfNeeded(): Promise<void> {
+  const settings = await loadSettings();
+  if (settings.onboardingCompleted) return;
+  try {
+    await chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html'), active: true });
+  } catch {
+    // Ignore if browser window is not ready
+  }
+}
 
 cdp.initListeners();
 
@@ -78,8 +115,11 @@ async function initializeExtension(): Promise<void> {
   await connectBroker();
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   void initializeExtension();
+  if (details.reason === 'install') {
+    void openWelcomeTourIfNeeded();
+  }
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -216,12 +256,74 @@ async function notifySidePanel(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function sendToBroker(msg: ExtensionToBrokerMessage): void {
+  if (nativePort) {
+    try {
+      nativePort.postMessage(msg);
+      return;
+    } catch {
+      nativePort = null;
+    }
+  }
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(msg));
   }
 }
 
+async function tryConnectNativeHost(): Promise<boolean> {
+  const settings = await loadSettings();
+  if (!settings.nativeMessagingEnabled) return false;
+  try {
+    const hasPerm = await chrome.permissions.contains({ permissions: ['nativeMessaging'] });
+    if (!hasPerm) return false;
+    if (nativePort) return true;
+
+    const port = chrome.runtime.connectNative('com.chromebrowsermcp.host');
+    nativePort = port;
+    port.onMessage.addListener((raw: unknown) => {
+      const parsed = BrokerToExtensionMessageSchema.safeParse(raw);
+      if (parsed.success) {
+        void handleBrokerMessage(parsed.data);
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      nativePort = null;
+      void saveRuntimeState({ connected: false, lastError: 'Native Messaging Host disconnected' });
+      void updateBadge();
+      void notifySidePanel();
+    });
+
+    const runtime = await loadRuntimeState();
+    const tabs = await listScopedTabs(true);
+    port.postMessage({
+      type: 'hello',
+      token: settings.token.trim(),
+      profile: {
+        profileId: settings.profileId,
+        browserName: settings.browserName,
+        label: settings.profileLabel,
+        extensionVersion: EXTENSION_VERSION,
+        connectedAt: Date.now(),
+        lastSeenAt: Date.now(),
+        tabGroupId: runtime.agentGroupId,
+        allowAllTabs: settings.policy.scopeMode === 'all-tabs',
+        paused: runtime.paused,
+        tabCount: tabs.length,
+      },
+    } satisfies ExtensionToBrokerMessage);
+    await saveRuntimeState({ connected: true, lastError: null });
+    await updateBadge();
+    await pushTabsSnapshotToBroker();
+    await notifySidePanel();
+    return true;
+  } catch {
+    nativePort = null;
+    return false;
+  }
+}
+
 async function connectBroker(): Promise<void> {
+  if (await tryConnectNativeHost()) return;
+
   const settings = await loadSettings();
   if (!settings.token.trim()) {
     await saveRuntimeState({
@@ -550,10 +652,10 @@ async function resolveAccessibleTab(explicitTabId?: number): Promise<chrome.tabs
   return tab as chrome.tabs.Tab & { id: number };
 }
 
-async function ensureContentScript(tabId: number): Promise<void> {
-  if (injectedTabs.has(tabId)) return;
+async function ensureContentScript(tabId: number, allFrames = false): Promise<void> {
+  if (!allFrames && injectedTabs.has(tabId)) return;
   await chrome.scripting.executeScript({
-    target: { tabId },
+    target: allFrames ? { tabId, allFrames: true } : { tabId },
     files: ['content-script.js'],
   });
   injectedTabs.add(tabId);
@@ -563,28 +665,29 @@ async function callContentScript<T = unknown>(
   tabId: number,
   type: string,
   params: Record<string, unknown> = {},
+  frameId = 0,
 ): Promise<T> {
   // Optimistic single-hop IPC when tab is already injected; fall back to lazy inject on miss
   const sendOnce = async () =>
-    (await chrome.tabs.sendMessage(tabId, { type, params })) as
+    (await chrome.tabs.sendMessage(tabId, { type, params }, { frameId })) as
       | { ok: boolean; data?: T; error?: string }
       | undefined;
 
   let res: { ok: boolean; data?: T; error?: string } | undefined;
-  if (injectedTabs.has(tabId)) {
+  if (frameId === 0 && injectedTabs.has(tabId)) {
     try {
       res = await sendOnce();
     } catch {
       injectedTabs.delete(tabId);
-      await ensureContentScript(tabId);
+      await ensureContentScript(tabId, false);
       res = await sendOnce();
     }
   } else {
     try {
       res = await sendOnce();
-      injectedTabs.add(tabId);
+      if (frameId === 0) injectedTabs.add(tabId);
     } catch {
-      await ensureContentScript(tabId);
+      await ensureContentScript(tabId, frameId > 0);
       res = await sendOnce();
     }
   }
@@ -593,6 +696,28 @@ async function callContentScript<T = unknown>(
     throw new Error(res?.error || `Content script error on ${type}`);
   }
   return res.data as T;
+}
+
+function parseFrameRef(ref?: string): { frameId: number; ref?: string } {
+  if (!ref) return { frameId: 0, ref };
+  const match = /^f(\d+):(e\d+)$/.exec(ref);
+  if (!match) return { frameId: 0, ref };
+  return { frameId: Number(match[1]), ref };
+}
+
+const MUTATING_CDP_METHOD_PREFIXES = [
+  'Input.',
+  'DOM.setFileInputFiles',
+  'DOM.setAttributeValue',
+  'DOM.removeNode',
+  'Runtime.evaluate',
+  'Runtime.callFunctionOn',
+  'Page.navigate',
+  'Page.reload',
+];
+
+function isMutatingCdpMethod(method: string): boolean {
+  return MUTATING_CDP_METHOD_PREFIXES.some((prefix) => method.startsWith(prefix));
 }
 
 async function sendToastToTab(tabId: number, message: string): Promise<void> {
@@ -853,11 +978,68 @@ async function dispatchRpc(
 
     case 'page.snapshot': {
       const tab = await resolveAccessibleTab(params.tabId as number | undefined);
+      const maxNodes = Number(params.maxNodes ?? 220);
+      const includeOffscreen = Boolean(params.includeOffscreen);
+      const includeIframes = params.includeIframes !== false;
+      const includeClosedShadow = Boolean(params.includeClosedShadow);
+
       const snapshot = await callContentScript<PageSnapshot>(tab.id, 'cs.snapshot', {
         tabId: tab.id,
-        includeOffscreen: Boolean(params.includeOffscreen),
-        maxNodes: Number(params.maxNodes ?? 220),
+        includeOffscreen,
+        maxNodes,
+        frameId: 0,
+        refPrefix: '',
       });
+
+      const frames: FrameSummary[] = [
+        { frameId: 0, url: snapshot.url, title: snapshot.title },
+      ];
+
+      // Multi-frame traversal (including cross-origin iframes)
+      if (includeIframes && snapshot.nodes.length < maxNodes) {
+        try {
+          const probe = await chrome.scripting.executeScript({
+            target: { tabId: tab.id, allFrames: true },
+            func: () => ({ url: location.href, title: document.title }),
+          });
+          const childFrames = probe.filter(
+            (r) => typeof r.frameId === 'number' && r.frameId > 0 && r.result,
+          );
+          if (childFrames.length > 0) {
+            await ensureContentScript(tab.id, true).catch(() => {});
+            for (const f of childFrames) {
+              const remaining = maxNodes - snapshot.nodes.length;
+              if (remaining <= 0) break;
+              const info = f.result as { url: string; title: string };
+              frames.push({ frameId: f.frameId, url: info.url, title: info.title });
+              try {
+                const childSnap = await callContentScript<PageSnapshot>(
+                  tab.id,
+                  'cs.snapshot',
+                  {
+                    tabId: tab.id,
+                    includeOffscreen,
+                    maxNodes: Math.min(remaining, 80),
+                    frameId: f.frameId,
+                    refPrefix: `f${f.frameId}:`,
+                  },
+                  f.frameId,
+                );
+                snapshot.nodes.push(...childSnap.nodes);
+                snapshot.filteredHiddenCount += childSnap.filteredHiddenCount;
+              } catch {
+                // Restricted/sandboxed subframe
+              }
+            }
+          }
+        } catch {
+          // Ignore frame probe error on restricted pages
+        }
+      }
+
+      if (frames.length > 1) {
+        snapshot.frames = frames;
+      }
 
       // Check WebMCP tool count silently so agent knows native tools exist
       try {
@@ -867,11 +1049,23 @@ async function dispatchRpc(
         // ignore
       }
 
-      // Optional CDP Accessibility escalation for deep iframes/shadow DOM
-      if (params.useCdp) {
+      // Optional CDP Accessibility escalation for closed Shadow DOM
+      if (params.useCdp || includeClosedShadow) {
         const attached = await cdp.ensureAttached(tab.id);
         if (attached) {
           snapshot.engine = 'hybrid';
+          if (includeClosedShadow && snapshot.nodes.length < maxNodes) {
+            const axNodes = await cdp.getClosedShadowSnapshotNodes(
+              tab.id,
+              Math.min(60, maxNodes - snapshot.nodes.length),
+            );
+            const existingNames = new Set(snapshot.nodes.map((n) => `${n.role}:${n.name}`));
+            for (const axNode of axNodes) {
+              if (!existingNames.has(`${axNode.role}:${axNode.name}`)) {
+                snapshot.nodes.push(axNode);
+              }
+            }
+          }
         }
       }
 
@@ -890,6 +1084,8 @@ async function dispatchRpc(
         filteredHiddenCount: number;
         tabsSummary: string[];
         alternateLinks: string[];
+        tableCount?: number;
+        isPdf?: boolean;
         url: string;
         origin: string;
         title: string;
@@ -898,6 +1094,7 @@ async function dispatchRpc(
         maxChars: Number(params.maxChars ?? 30_000),
         offset: Number(params.offset ?? 0),
         scope: params.scope === 'body' ? 'body' : 'main',
+        format: typeof params.format === 'string' ? params.format : 'markdown',
       });
       return { tabId: tab.id, ...data };
     }
@@ -956,27 +1153,89 @@ async function dispatchRpc(
     case 'page.act': {
       const parsed = ExtensionActParamsSchema.parse(params);
       const tab = await resolveAccessibleTab(parsed.tabId);
+      const settings = await loadSettings();
+      const hudEnabled = settings.visualHudEnabled;
       const outcomes: StepOutcome[] = [];
       let allOk = true;
+      let pendingDialog: PendingDialog | undefined;
 
-      await callContentScript(tab.id, 'cs.hud', { active: true, label: 'AI Agent active' }).catch(() => {});
+      await callContentScript(tab.id, 'cs.hud', {
+        active: true,
+        label: 'AI Agent active',
+        hudEnabled,
+      }).catch(() => {});
+
       try {
         for (let i = 0; i < parsed.steps.length; i++) {
           const step = parsed.steps[i]!;
           const started = Date.now();
+          const targetRef =
+            'ref' in step ? step.ref : 'sourceRef' in step ? step.sourceRef : undefined;
+          const { frameId } = parseFrameRef(targetRef);
+
+          if (hudEnabled) {
+            const label =
+              step.kind === 'click'
+                ? `Agent: Clicking ${step.ref || step.selector || 'point'}`
+                : step.kind === 'fill' || step.kind === 'type'
+                  ? `Agent: Typing into ${step.ref || step.selector || 'input'}`
+                  : step.kind === 'upload'
+                    ? `Agent: Uploading ${step.files.length} file(s)`
+                    : `Agent: ${step.kind}`;
+            await callContentScript(tab.id, 'cs.hud', {
+              active: true,
+              label,
+              hudEnabled,
+            }).catch(() => {});
+          }
+
           try {
+            if (step.kind === 'upload') {
+              let selector = step.selector;
+              if (!selector && step.ref) {
+                const resolved = await callContentScript<{
+                  x: number;
+                  y: number;
+                  selectorHint?: string;
+                }>(
+                  tab.id,
+                  'cs.resolveCoords',
+                  { ref: step.ref, selector: step.selector, hudEnabled },
+                  frameId,
+                );
+                selector = resolved.selectorHint;
+              }
+              if (!selector) {
+                throw new Error('Could not resolve CSS selector for file input upload');
+              }
+              const upRes = await cdp.setFileInputFiles(tab.id, selector, step.files);
+              outcomes.push({
+                index: i,
+                kind: step.kind,
+                ok: upRes.ok,
+                engine: 'cdp',
+                detail: `Uploaded ${upRes.fileCount} file(s) to ${step.ref || selector}`,
+                durationMs: Date.now() - started,
+              });
+              continue;
+            }
+
             const wantsCdpClick =
-              step.kind === 'click' && (parsed.forceCdp || step.useCdp || step.button !== 'left' || step.clickCount > 1);
+              frameId === 0 &&
+              step.kind === 'click' &&
+              (parsed.forceCdp || step.useCdp || step.button !== 'left' || step.clickCount > 1);
             const wantsCdpKey = step.kind === 'press' && parsed.forceCdp;
 
             if (wantsCdpClick) {
               const coords =
                 step.x !== undefined && step.y !== undefined
                   ? { x: step.x, y: step.y }
-                  : await callContentScript<{ x: number; y: number }>(tab.id, 'cs.resolveCoords', {
-                      ref: step.ref,
-                      selector: step.selector,
-                    });
+                  : await callContentScript<{ x: number; y: number }>(
+                      tab.id,
+                      'cs.resolveCoords',
+                      { ref: step.ref, selector: step.selector, hudEnabled },
+                      frameId,
+                    );
               const attached = await cdp.ensureAttached(tab.id);
               if (attached) {
                 await cdp.dispatchClick(tab.id, coords.x, coords.y, step.button, step.clickCount);
@@ -988,6 +1247,11 @@ async function dispatchRpc(
                   detail: `Trusted CDP click (${coords.x}, ${coords.y})`,
                   durationMs: Date.now() - started,
                 });
+                const dialog = cdp.getPendingDialog(tab.id);
+                if (dialog) {
+                  pendingDialog = dialog;
+                  break;
+                }
                 continue;
               }
             }
@@ -1014,9 +1278,9 @@ async function dispatchRpc(
               error?: string;
               coords?: { x: number; y: number };
               needsCdpClick?: boolean;
-            }>(tab.id, 'cs.actStep', { step });
+            }>(tab.id, 'cs.actStep', { step, hudEnabled }, frameId);
 
-            if (res.needsCdpClick && res.coords) {
+            if (res.needsCdpClick && res.coords && frameId === 0) {
               const attached = await cdp.ensureAttached(tab.id);
               if (attached) {
                 await cdp.dispatchClick(tab.id, res.coords.x, res.coords.y);
@@ -1028,6 +1292,11 @@ async function dispatchRpc(
                   detail: `CDP click (${res.coords.x}, ${res.coords.y})`,
                   durationMs: Date.now() - started,
                 });
+                const dialog = cdp.getPendingDialog(tab.id);
+                if (dialog) {
+                  pendingDialog = dialog;
+                  break;
+                }
                 continue;
               }
             }
@@ -1045,6 +1314,11 @@ async function dispatchRpc(
               allOk = false;
               break;
             }
+            const dialog = cdp.getPendingDialog(tab.id);
+            if (dialog) {
+              pendingDialog = dialog;
+              break;
+            }
           } catch (err) {
             allOk = false;
             outcomes.push({
@@ -1059,7 +1333,7 @@ async function dispatchRpc(
         }
 
         let snapshot: PageSnapshot | undefined;
-        if (parsed.returnSnapshot !== 'none') {
+        if (parsed.returnSnapshot !== 'none' && !pendingDialog) {
           await new Promise((r) => setTimeout(r, 120));
           try {
             snapshot = await callContentScript<PageSnapshot>(tab.id, 'cs.snapshot', {
@@ -1079,12 +1353,120 @@ async function dispatchRpc(
           totalSteps: parsed.steps.length,
           outcomes,
           snapshot,
+          ...(pendingDialog ? { pendingDialog } : {}),
         } satisfies BatchActResult;
       } finally {
         setTimeout(() => {
-          void callContentScript(tab.id, 'cs.hud', { active: false }).catch(() => {});
+          void callContentScript(tab.id, 'cs.hud', { active: false, hudEnabled }).catch(() => {});
         }, 700);
       }
+    }
+
+    case 'page.dialog': {
+      const tab = await resolveAccessibleTab(params.tabId as number | undefined);
+      const action = String(params.action ?? 'status');
+      if (action === 'status') {
+        await cdp.ensureAttached(tab.id);
+        return { tabId: tab.id, dialog: cdp.getPendingDialog(tab.id) };
+      }
+      const accept = action === 'accept';
+      const promptText = typeof params.promptText === 'string' ? params.promptText : undefined;
+      return await cdp.handleDialog(tab.id, accept, promptText);
+    }
+
+    case 'page.emulate': {
+      const tab = await resolveAccessibleTab(params.tabId as number | undefined);
+      const config = EmulationConfigSchema.parse(params);
+      const applied = await cdp.setEmulation(tab.id, config);
+      return { tabId: tab.id, ...applied };
+    }
+
+    case 'devtools.networkBody': {
+      const tab = await resolveAccessibleTab(params.tabId as number | undefined);
+      const requestId = String(params.requestId ?? '');
+      if (!requestId) throw new Error('requestId is required');
+      const maxChars = typeof params.maxChars === 'number' ? params.maxChars : 65_536;
+      return await cdp.getResponseBody(tab.id, requestId, maxChars);
+    }
+
+    case 'browser.downloads': {
+      const hasPerm = await chrome.permissions.contains({ permissions: ['downloads'] });
+      if (!hasPerm || !chrome.downloads) {
+        return {
+          permissionRequired: true,
+          downloads: [] as DownloadItem[],
+          hint: 'Enable optional "Downloads tracking" permission in Chrome Browser MCP Side Panel -> Security -> Advanced Settings.',
+        };
+      }
+      const action = String(params.action ?? 'list');
+      const limit = Number(params.limit ?? 15);
+      if (action === 'wait') {
+        const timeoutMs = Number(params.timeoutMs ?? 15_000);
+        const startTs = Date.now();
+        const completed = await new Promise<DownloadItem | null>((resolve) => {
+          const timer = setTimeout(() => {
+            chrome.downloads.onChanged.removeListener(listener);
+            resolve(null);
+          }, timeoutMs);
+          const listener = async (delta: chrome.downloads.DownloadDelta) => {
+            if (delta.state?.current === 'complete' || delta.state?.current === 'interrupted') {
+              const [item] = await chrome.downloads.search({ id: delta.id });
+              if (item && new Date(item.startTime).getTime() >= startTs - 10_000) {
+                clearTimeout(timer);
+                chrome.downloads.onChanged.removeListener(listener);
+                resolve({
+                  id: item.id,
+                  filename: item.filename,
+                  url: item.url,
+                  state: item.state as DownloadItem['state'],
+                  bytesReceived: item.bytesReceived,
+                  totalBytes: item.totalBytes,
+                  mime: item.mime,
+                  startTime: item.startTime,
+                });
+              }
+            }
+          };
+          chrome.downloads.onChanged.addListener(listener);
+        });
+        return { permissionRequired: false, completed };
+      }
+
+      const items = await chrome.downloads.search({
+        orderBy: ['-startTime'],
+        limit,
+      });
+      const downloads: DownloadItem[] = items.map((item) => ({
+        id: item.id,
+        filename: item.filename,
+        url: item.url,
+        state: item.state as DownloadItem['state'],
+        bytesReceived: item.bytesReceived,
+        totalBytes: item.totalBytes,
+        mime: item.mime,
+        startTime: item.startTime,
+      }));
+      return { permissionRequired: false, downloads };
+    }
+
+    case 'cdp.raw': {
+      const runtime = await loadRuntimeState();
+      if (runtime.paused) {
+        throw new Error('Automation is paused (Alt+Shift+P)');
+      }
+      const tab = await resolveAccessibleTab(params.tabId as number | undefined);
+      const settings = await loadSettings();
+      const methodName = String(params.method ?? '');
+      if (!methodName) throw new Error('CDP method is required');
+      const ro = isUrlReadOnly(tab.url ?? '', settings.policy.readOnlyDomains);
+      if (ro.readOnly && isMutatingCdpMethod(methodName)) {
+        throw new Error(`CDP method "${methodName}" blocked by read-only rule: ${ro.reason}`);
+      }
+      return await cdp.sendRaw(
+        tab.id,
+        methodName,
+        (params.params as Record<string, unknown> | undefined) ?? undefined,
+      );
     }
 
     case 'devtools.console': {
@@ -1277,6 +1659,97 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const step = msg.step as RecordedStep;
           activeRecordingSteps.push(step);
           await notifySidePanel();
+          sendResponse({ ok: true });
+          return;
+        }
+
+        case 'cs.togglePause': {
+          const runtime = await loadRuntimeState();
+          const nextPaused = !runtime.paused;
+          await saveRuntimeState({ paused: nextPaused });
+          sendToBroker({ type: 'event.paused', paused: nextPaused });
+          await updateBadge();
+          await notifySidePanel();
+          sendResponse({ ok: true, paused: nextPaused });
+          return;
+        }
+
+        case 'sp.setVisualHud': {
+          const enabled = Boolean(msg.enabled);
+          const next = await saveSettings({ visualHudEnabled: enabled });
+          const allTabs = await chrome.tabs.query({});
+          for (const t of allTabs) {
+            if (t.id !== undefined && injectedTabs.has(t.id)) {
+              void callContentScript(t.id, 'cs.setHudEnabled', { enabled }).catch(() => {});
+            }
+          }
+          await notifySidePanel();
+          sendResponse({ ok: true, data: next });
+          return;
+        }
+
+        case 'sp.pairWithPin': {
+          const pin = String(msg.pin ?? '').trim();
+          const settings = await loadSettings();
+          const baseHttp = settings.wsUrl
+            .replace(/^ws:/i, 'http:')
+            .replace(/^wss:/i, 'https:')
+            .replace(/\/ws\/?$/, '');
+          const resp = await fetch(`${baseHttp}/pair/exchange`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ pin }),
+          });
+          const payload = (await resp.json()) as {
+            ok: boolean;
+            data?: { token: string; wsUrl?: string };
+            error?: string;
+          };
+          if (!resp.ok || !payload.ok || !payload.data?.token) {
+            throw new Error(payload.error || 'Invalid or expired pairing PIN');
+          }
+          const next = await saveSettings({
+            token: payload.data.token,
+            ...(payload.data.wsUrl ? { wsUrl: payload.data.wsUrl } : {}),
+            ...(typeof msg.profileLabel === 'string' && msg.profileLabel.trim()
+              ? { profileLabel: msg.profileLabel.trim() }
+              : {}),
+          });
+          if (socket) {
+            try {
+              socket.close(1000, 'Reconnecting after PIN pair');
+            } catch {
+              // ignore
+            }
+            socket = null;
+          }
+          await connectBroker();
+          await notifySidePanel();
+          sendResponse({ ok: true, data: next });
+          return;
+        }
+
+        case 'sp.updateWorkflow': {
+          const updated = msg.workflow as RecordedWorkflow;
+          const list = (await loadWorkflows()).map((w) => (w.id === updated.id ? updated : w));
+          await saveWorkflows(list);
+          sendToBroker({ type: 'event.workflowSaved', workflow: updated });
+          await notifySidePanel();
+          sendResponse({ ok: true, data: updated });
+          return;
+        }
+
+        case 'sp.openWelcome': {
+          await chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html'), active: true });
+          sendResponse({ ok: true });
+          return;
+        }
+
+        case 'sp.handleDialog': {
+          const tabId = Number(msg.tabId);
+          const accept = Boolean(msg.accept);
+          const promptText = typeof msg.promptText === 'string' ? msg.promptText : undefined;
+          await cdp.handleDialog(tabId, accept, promptText);
           sendResponse({ ok: true });
           return;
         }

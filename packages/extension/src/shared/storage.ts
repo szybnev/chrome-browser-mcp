@@ -4,6 +4,8 @@ import {
   SecurityPolicySchema,
   type ActivityEvent,
   type ApprovalRequest,
+  type LocalePreference,
+  type PendingDialog,
   type RecordedWorkflow,
   type SecurityPolicy,
 } from '@chrome-browser-mcp/protocol';
@@ -15,6 +17,11 @@ export interface ExtensionSettings {
   profileLabel: string;
   browserName: string;
   theme?: 'light' | 'dark' | null;
+  locale: LocalePreference;
+  visualHudEnabled: boolean;
+  onboardingCompleted: boolean;
+  sidePanelTourPending: boolean;
+  nativeMessagingEnabled: boolean;
   policy: SecurityPolicy;
 }
 
@@ -24,6 +31,7 @@ export interface ExtensionRuntimeState {
   paused: boolean;
   agentGroupId: number | null;
   pendingApprovals: ApprovalRequest[];
+  pendingDialogs: Record<string, PendingDialog>;
   recentActivity: ActivityEvent[];
   recordingTabId: number | null;
 }
@@ -70,6 +78,11 @@ export async function loadSettings(): Promise<ExtensionSettings> {
     profileId: existing?.profileId || generateProfileId(),
     profileLabel: existing?.profileLabel || 'default',
     browserName: existing?.browserName || detectBrowserName(),
+    locale: existing?.locale ?? 'auto',
+    visualHudEnabled: existing?.visualHudEnabled ?? true,
+    onboardingCompleted: existing?.onboardingCompleted ?? false,
+    sidePanelTourPending: existing?.sidePanelTourPending ?? false,
+    nativeMessagingEnabled: existing?.nativeMessagingEnabled ?? false,
     policy: SecurityPolicySchema.parse(existing?.policy ?? {}),
   };
 
@@ -111,6 +124,7 @@ export async function loadRuntimeState(): Promise<ExtensionRuntimeState> {
     paused: existing?.paused ?? false,
     agentGroupId: existing?.agentGroupId ?? null,
     pendingApprovals: existing?.pendingApprovals ?? [],
+    pendingDialogs: existing?.pendingDialogs ?? {},
     recentActivity: existing?.recentActivity ?? [],
     recordingTabId: existing?.recordingTabId ?? null,
   };
