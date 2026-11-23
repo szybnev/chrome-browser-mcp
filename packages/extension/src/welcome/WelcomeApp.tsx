@@ -1,0 +1,376 @@
+import { useCallback, useEffect, useState } from 'react';
+import {
+  READ_ONLY_DOMAIN_PRESETS,
+  resolveLocale,
+  translate,
+  type I18nKey,
+  type LocalePreference,
+} from '@chrome-browser-mcp/protocol';
+import type { ExtensionRuntimeState, ExtensionSettings } from '../shared/storage.js';
+import { ThemeToggle, type ThemeOverride } from '../sidepanel/ThemeToggle.js';
+
+interface StatePayload {
+  settings: ExtensionSettings;
+  runtime: ExtensionRuntimeState;
+}
+
+async function sendSw<T = unknown>(message: Record<string, unknown>): Promise<T> {
+  const res = (await chrome.runtime.sendMessage(message)) as {
+    ok: boolean;
+    data?: T;
+    error?: string;
+  };
+  if (!res?.ok) throw new Error(res?.error || 'Background request failed');
+  return res.data as T;
+}
+
+export function WelcomeApp() {
+  const [step, setStep] = useState(0);
+  const [settings, setSettings] = useState<ExtensionSettings | null>(null);
+  const [runtime, setRuntime] = useState<ExtensionRuntimeState | null>(null);
+  const [brokerAlive, setBrokerAlive] = useState<boolean | null>(null);
+  const [pin, setPin] = useState('');
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [labelDraft, setLabelDraft] = useState('default');
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadState = useCallback(async () => {
+    const payload = await sendSw<StatePayload>({ type: 'sp.getState' });
+    setSettings(payload.settings);
+    setRuntime(payload.runtime);
+    setLabelDraft((prev) => (prev === 'default' ? payload.settings.profileLabel : prev));
+    const httpBase = payload.settings.wsUrl
+      .replace(/^ws:/i, 'http:')
+      .replace(/^wss:/i, 'https:')
+      .replace(/\/ws\/?$/, '');
+    try {
+      const resp = await fetch(`${httpBase}/health`, { signal: AbortSignal.timeout(1200) });
+      setBrokerAlive(resp.ok);
+    } catch {
+      setBrokerAlive(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadState();
+  }, [loadState]);
+
+  const locale = resolveLocale(settings?.locale ?? 'auto', chrome.i18n?.getUILanguage?.());
+  const t = (key: I18nKey) => translate(locale, key);
+
+  if (!settings || !runtime) {
+    return (
+      <div className="welcome-page">
+        <div className="welcome-shell">Loading…</div>
+      </div>
+    );
+  }
+
+  const updateSettings = async (patch: Partial<ExtensionSettings>, reconnect = false) => {
+    const next = await sendSw<ExtensionSettings>({ type: 'sp.saveSettings', patch, reconnect });
+    setSettings(next);
+  };
+
+  const handlePairPin = async () => {
+    if (!pin.trim()) return;
+    setBusy(true);
+    setFeedback(null);
+    try {
+      await sendSw({ type: 'sp.pairWithPin', pin: pin.trim(), profileLabel: labelDraft.trim() || 'default' });
+      setPin('');
+      setFeedback('Connected to local broker!');
+      await loadState();
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleManualToken = async () => {
+    if (!tokenDraft.trim()) return;
+    setBusy(true);
+    setFeedback(null);
+    try {
+      await updateSettings({ token: tokenDraft.trim(), profileLabel: labelDraft.trim() || 'default' }, true);
+      setFeedback('Token saved — connecting…');
+      await loadState();
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleReadOnlyPreset = async (domain: string) => {
+    const cur = settings.policy.readOnlyDomains;
+    const next = cur.includes(domain) ? cur.filter((d) => d !== domain) : [...cur, domain];
+    await updateSettings({ policy: { ...settings.policy, readOnlyDomains: next } });
+  };
+
+  const handleOpenHud = async () => {
+    await updateSettings({ onboardingCompleted: true, sidePanelTourPending: true });
+    try {
+      const win = await chrome.windows.getCurrent();
+      if (win.id !== undefined) {
+        await chrome.sidePanel.open({ windowId: win.id });
+      }
+    } catch {
+      // User can also click toolbar icon
+    }
+    window.close();
+  };
+
+  const steps = [
+    t('welcome.step1'),
+    t('welcome.step2'),
+    t('welcome.step3'),
+    t('welcome.step4'),
+  ];
+
+  return (
+    <div className="welcome-page">
+      <div className="welcome-shell">
+        <header className="welcome-top">
+          <div className="welcome-brand">
+            <img src="/icons/icon-48.png" alt="Chrome Browser MCP" />
+            <div>
+              <h1>{t('welcome.heroTitle')}</h1>
+              <p>{t('welcome.heroSub')}</p>
+            </div>
+          </div>
+          <ThemeToggle
+            persistedTheme={settings.theme ?? null}
+            onPersist={(next: ThemeOverride) => void updateSettings({ theme: next })}
+          />
+        </header>
+
+        <nav className="welcome-stepper" aria-label="Onboarding steps">
+          {steps.map((label, idx) => (
+            <button
+              key={label}
+              type="button"
+              className={`step-pill ${step === idx ? 'active' : idx < step ? 'done' : ''}`}
+              onClick={() => setStep(idx)}
+            >
+              {idx + 1}. {label}
+            </button>
+          ))}
+        </nav>
+
+        <section className="welcome-body">
+          {step === 0 && (
+            <>
+              <div className="welcome-grid">
+                <div className="card">
+                  <div className="card-title">{t('setting.language')}</div>
+                  <select
+                    className="input"
+                    value={settings.locale}
+                    onChange={(e) =>
+                      void updateSettings({ locale: e.target.value as LocalePreference })
+                    }
+                  >
+                    <option value="auto">Auto ({locale})</option>
+                    <option value="en">English</option>
+                    <option value="ru">Русский</option>
+                    <option value="zh-CN">简体中文</option>
+                  </select>
+                </div>
+                <div className="card">
+                  <div className="card-title">100% Local-First</div>
+                  <div className="muted">
+                    Strict <code>127.0.0.1</code> loopback connection. Zero cloud servers, zero
+                    telemetry, and dedicated <strong>AI Agent</strong> tab isolation.
+                  </div>
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-title">How it works in 30 seconds</div>
+                <div className="muted">
+                  1. Connect to your local MCP Broker Daemon (works with Antigravity, Claude Code,
+                  Cursor, Codex).<br />
+                  2. Attach only the tabs you want AI to access.<br />
+                  3. Press <code>Alt+Shift+P</code> anytime for instant emergency pause.
+                </div>
+              </div>
+            </>
+          )}
+
+          {step === 1 && (
+            <>
+              <div className="card">
+                <div className="card-header">
+                  <span className="card-title">{t('pair.pinTitle')}</span>
+                  <span className={`pill ${runtime.connected || brokerAlive ? 'accent' : 'warn'}`}>
+                    {runtime.connected
+                      ? t('status.connected')
+                      : brokerAlive
+                        ? t('pair.brokerDetected')
+                        : t('pair.brokerOffline')}
+                  </span>
+                </div>
+                <div className="muted">{t('pair.pinHint')}</div>
+                <div className="pin-row">
+                  <input
+                    className="input pin-input"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder={t('pair.pinPlaceholder')}
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  />
+                  <input
+                    className="input"
+                    placeholder={t('pair.profileLabel')}
+                    value={labelDraft}
+                    onChange={(e) => setLabelDraft(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={busy || pin.length < 6}
+                    onClick={() => void handlePairPin()}
+                  >
+                    {t('pair.pinButton')}
+                  </button>
+                </div>
+                {feedback && <div className="muted">{feedback}</div>}
+              </div>
+
+              <details className="advanced-box">
+                <summary>{t('section.advancedConnection')}</summary>
+                <div className="advanced-body">
+                  <label className="muted">
+                    {t('pair.token')}
+                    <input
+                      className="input"
+                      type="password"
+                      placeholder="Paste token from `npx chrome-browser-mcp token`"
+                      value={tokenDraft}
+                      onChange={(e) => setTokenDraft(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={busy || !tokenDraft.trim()}
+                    onClick={() => void handleManualToken()}
+                  >
+                    {t('pair.saveConnect')}
+                  </button>
+                </div>
+              </details>
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <div className="card">
+                <div className="security-row">
+                  <span>
+                    <strong>{t('setting.visualHud')}</strong>
+                    <div className="muted">{t('setting.visualHudDesc')}</div>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={settings.visualHudEnabled}
+                    onChange={(e) =>
+                      void sendSw({ type: 'sp.setVisualHud', enabled: e.target.checked }).then(() =>
+                        loadState(),
+                      )
+                    }
+                  />
+                </div>
+                <div className="cursor-preview">
+                  <span className="muted">
+                    {settings.visualHudEnabled
+                      ? 'Active: animated cursor + target spotlight + clickable Pause pill'
+                      : 'Silent mode: no on-page cursor or highlights during actions'}
+                  </span>
+                  <span className={`pill ${settings.visualHudEnabled ? 'accent' : ''}`}>
+                    {settings.visualHudEnabled ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-title">{t('setting.readOnlyDomains')}</div>
+                <div className="muted">{t('setting.readOnlyHint')}</div>
+                <div className="preset-chips">
+                  {READ_ONLY_DOMAIN_PRESETS.map((domain) => {
+                    const active = settings.policy.readOnlyDomains.includes(domain);
+                    return (
+                      <button
+                        key={domain}
+                        type="button"
+                        className={`preset-chip ${active ? 'active' : ''}`}
+                        onClick={() => void toggleReadOnlyPreset(domain)}
+                      >
+                        {active ? '✓ ' : '+ '}
+                        {domain}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {step === 3 && (
+            <div className="card">
+              <div className="card-title">You&apos;re all set!</div>
+              <div className="muted">
+                Click the button below to open the <strong>Control HUD Side Panel</strong> and take
+                a quick 4-step spotlight walkthrough of Tab Isolation, Emergency Pause, Workflow
+                Recorder, and Security settings.
+              </div>
+              <div className="row" style={{ marginTop: 8 }}>
+                <button type="button" className="btn primary" onClick={() => void handleOpenHud()}>
+                  {t('welcome.openHud')}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <footer className="welcome-footer">
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => {
+              void updateSettings({ onboardingCompleted: true }).then(() => window.close());
+            }}
+          >
+            {t('btn.skip')}
+          </button>
+          <div className="row">
+            {step > 0 && (
+              <button type="button" className="btn small" onClick={() => setStep((s) => s - 1)}>
+                {t('btn.back')}
+              </button>
+            )}
+            {step < steps.length - 1 ? (
+              <button
+                type="button"
+                className="btn primary small"
+                onClick={() => setStep((s) => s + 1)}
+              >
+                {t('btn.next')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn primary small"
+                onClick={() => void handleOpenHud()}
+              >
+                {t('btn.finish')}
+              </button>
+            )}
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}

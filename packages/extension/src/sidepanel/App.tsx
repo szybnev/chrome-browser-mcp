@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type {
-  RecordedStep,
-  RecordedWorkflow,
-  TabInfo,
+import {
+  exportWorkflowToPlaywright,
+  extractWorkflowParamNames,
+  READ_ONLY_DOMAIN_PRESETS,
+  resolveLocale,
+  translate,
+  type I18nKey,
+  type LocalePreference,
+  type RecordedStep,
+  type RecordedWorkflow,
+  type TabInfo,
 } from '@chrome-browser-mcp/protocol';
 import type { ExtensionRuntimeState, ExtensionSettings } from '../shared/storage.js';
 import { VirtualList } from './VirtualList.js';
 import { InfoTip } from './InfoTip.js';
 import { ThemeToggle, type ThemeOverride } from './ThemeToggle.js';
+import { OnboardingTour, SIDE_PANEL_TOUR_STEPS } from './OnboardingTour.js';
 
 interface SidePanelPayload {
   settings: ExtensionSettings;
@@ -29,6 +37,18 @@ async function sendSw<T = unknown>(message: Record<string, unknown>): Promise<T>
   return res.data as T;
 }
 
+function downloadTextFile(filename: string, content: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function App() {
   const [data, setData] = useState<SidePanelPayload | null>(null);
   const [activeTab, setActiveTab] = useState<PanelTab>('control');
@@ -37,8 +57,27 @@ export function App() {
   const [wsUrlDraft, setWsUrlDraft] = useState('');
   const [tokenDraft, setTokenDraft] = useState('');
   const [labelDraft, setLabelDraft] = useState('');
+  const [pinDraft, setPinDraft] = useState('');
   const [blockedDraft, setBlockedDraft] = useState('');
+  const [readOnlyDraft, setReadOnlyDraft] = useState('');
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [tourStep, setTourStep] = useState<number | null>(null);
+  const [hasDownloadsPerm, setHasDownloadsPerm] = useState(false);
+  const [hasNativePerm, setHasNativePerm] = useState(false);
+  const [brokerDetected, setBrokerDetected] = useState<boolean | null>(null);
+
+  const checkOptionalPerms = useCallback(async () => {
+    try {
+      const [dl, nm] = await Promise.all([
+        chrome.permissions.contains({ permissions: ['downloads'] }),
+        chrome.permissions.contains({ permissions: ['nativeMessaging'] }),
+      ]);
+      setHasDownloadsPerm(dl);
+      setHasNativePerm(nm);
+    } catch {
+      // ignore in non-extension preview
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -46,11 +85,24 @@ export function App() {
       setData(payload);
       if (payload.runtime.connected) {
         setStatusMsg((prev) => (prev?.includes('reconnecting') ? null : prev));
+        setBrokerDetected(true);
+      } else {
+        const httpBase = payload.settings.wsUrl
+          .replace(/^ws:/i, 'http:')
+          .replace(/^wss:/i, 'https:')
+          .replace(/\/ws\/?$/, '');
+        fetch(`${httpBase}/health`, { signal: AbortSignal.timeout(800) })
+          .then((r) => setBrokerDetected(r.ok))
+          .catch(() => setBrokerDetected(false));
       }
       setWsUrlDraft((prev) => prev || payload.settings.wsUrl);
       setTokenDraft((prev) => prev || payload.settings.token);
       setLabelDraft((prev) => prev || payload.settings.profileLabel);
       setBlockedDraft((prev) => prev || payload.settings.policy.blockedDomains.join('\n'));
+      setReadOnlyDraft((prev) => prev || payload.settings.policy.readOnlyDomains.join('\n'));
+      if (payload.settings.sidePanelTourPending) {
+        setTourStep((cur) => (cur === null ? 0 : cur));
+      }
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
     }
@@ -58,8 +110,8 @@ export function App() {
 
   useEffect(() => {
     void refresh();
+    void checkOptionalPerms();
 
-    // Event-driven push port to Service Worker (eliminates 3s polling)
     let port: chrome.runtime.Port | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
@@ -95,7 +147,6 @@ export function App() {
     };
     chrome.runtime.onMessage.addListener(listener);
 
-    // Calm 15s safety sync only if background SW slept/restarted
     const safetyInterval = setInterval(() => {
       if (!port) void refresh();
     }, 15_000);
@@ -111,7 +162,7 @@ export function App() {
         // ignore
       }
     };
-  }, [refresh]);
+  }, [refresh, checkOptionalPerms]);
 
   const attachedTabs = useMemo(
     () => (data ? data.tabs.filter((t) => t.inAgentGroup) : []),
@@ -142,14 +193,23 @@ export function App() {
   }
 
   const { settings, runtime, tabs, workflows, recordingSteps } = data;
+  const locale = resolveLocale(settings.locale, chrome.i18n?.getUILanguage?.());
+  const t = (key: I18nKey) => translate(locale, key);
   const isRecording = runtime.recordingTabId !== null;
+  const pendingDialogs = Object.values(runtime.pendingDialogs ?? {});
 
   const handleThemePersist = async (next: ThemeOverride) => {
-    await sendSw({
-      type: 'sp.saveSettings',
-      patch: { theme: next },
-      reconnect: false,
-    });
+    await sendSw({ type: 'sp.saveSettings', patch: { theme: next }, reconnect: false });
+    await refresh();
+  };
+
+  const handleLocaleChange = async (next: LocalePreference) => {
+    await sendSw({ type: 'sp.saveSettings', patch: { locale: next }, reconnect: false });
+    await refresh();
+  };
+
+  const handleVisualHudToggle = async (enabled: boolean) => {
+    await sendSw({ type: 'sp.setVisualHud', enabled });
     await refresh();
   };
 
@@ -171,6 +231,27 @@ export function App() {
   const handleApproval = async (approvalId: string, decision: 'approved' | 'rejected') => {
     await sendSw({ type: 'sp.resolveApproval', approvalId, decision });
     await refresh();
+  };
+
+  const handleDialogAction = async (tabId: number, accept: boolean) => {
+    await sendSw({ type: 'sp.handleDialog', tabId, accept });
+    await refresh();
+  };
+
+  const handlePairPin = async () => {
+    if (pinDraft.trim().length < 6) return;
+    try {
+      await sendSw({
+        type: 'sp.pairWithPin',
+        pin: pinDraft.trim(),
+        profileLabel: labelDraft.trim() || 'default',
+      });
+      setPinDraft('');
+      setStatusMsg('Paired successfully via 6-digit PIN!');
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleSaveConnection = async () => {
@@ -205,6 +286,50 @@ export function App() {
     setStatusMsg(`Saved ${blockedDomains.length} blocked domain rule(s).`);
   };
 
+  const handleSaveReadOnly = async () => {
+    const readOnlyDomains = readOnlyDraft
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    await handlePolicyPatch({ readOnlyDomains });
+    setStatusMsg(`Saved ${readOnlyDomains.length} read-only domain rule(s).`);
+  };
+
+  const handleToggleReadOnlyPreset = async (domain: string) => {
+    const cur = settings.policy.readOnlyDomains;
+    const next = cur.includes(domain) ? cur.filter((d) => d !== domain) : [...cur, domain];
+    setReadOnlyDraft(next.join('\n'));
+    await handlePolicyPatch({ readOnlyDomains: next });
+  };
+
+  const handleToggleOptionalPerm = async (perm: 'downloads' | 'nativeMessaging', enable: boolean) => {
+    try {
+      if (enable) {
+        const granted = await chrome.permissions.request({ permissions: [perm] });
+        if (granted && perm === 'nativeMessaging') {
+          await sendSw({
+            type: 'sp.saveSettings',
+            patch: { nativeMessagingEnabled: true },
+            reconnect: true,
+          });
+        }
+      } else {
+        await chrome.permissions.remove({ permissions: [perm] });
+        if (perm === 'nativeMessaging') {
+          await sendSw({
+            type: 'sp.saveSettings',
+            patch: { nativeMessagingEnabled: false },
+            reconnect: true,
+          });
+        }
+      }
+      await checkOptionalPerms();
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const handleStartRecording = async () => {
     await sendSw({ type: 'sp.startRecording' });
     await refresh();
@@ -225,29 +350,81 @@ export function App() {
     await refresh();
   };
 
+  const handleExportPlaywright = (wf: RecordedWorkflow) => {
+    const code = exportWorkflowToPlaywright(wf);
+    const slug = wf.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || wf.id;
+    downloadTextFile(`${slug}.spec.ts`, code, 'text/typescript;charset=utf-8');
+  };
+
+  const handleExportTimeline = (format: 'json' | 'html') => {
+    const exportedAt = new Date().toISOString();
+    if (format === 'json') {
+      downloadTextFile(
+        `chrome-browser-mcp-timeline.json`,
+        JSON.stringify({ exportedAt, profile: settings.profileLabel, events: runtime.recentActivity }, null, 2),
+        'application/json;charset=utf-8',
+      );
+      return;
+    }
+    const esc = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const items = runtime.recentActivity
+      .map(
+        (ev) =>
+          `<div style="border:1px solid #2a2f3a;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+            <strong>${esc(ev.tool)}</strong> <span>[${esc(ev.status)}]</span>
+            <div style="color:#9aa3b2;font-size:12px;">${esc(ev.summary)}${ev.durationMs !== undefined ? ` · ${ev.durationMs}ms` : ''}</div>
+          </div>`,
+      )
+      .join('\n');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Chrome Browser MCP Audit</title></head><body style="background:#111317;color:#e6e9ef;font:14px/1.5 system-ui,sans-serif;padding:24px;"><h2>Chrome Browser MCP — Session Audit (${esc(exportedAt)})</h2>${items || '<p>No events recorded.</p>'}</body></html>`;
+    downloadTextFile('chrome-browser-mcp-timeline.html', html, 'text/html;charset=utf-8');
+  };
+
+  const handleTourStepChange = (nextIdx: number) => {
+    setTourStep(nextIdx);
+    const target = SIDE_PANEL_TOUR_STEPS[nextIdx]?.targetTab;
+    if (target) setActiveTab(target);
+  };
+
+  const handleTourClose = async () => {
+    setTourStep(null);
+    await sendSw({
+      type: 'sp.saveSettings',
+      patch: { onboardingCompleted: true, sidePanelTourPending: false },
+      reconnect: false,
+    });
+    await refresh();
+  };
+
+  const handleReplayTour = () => {
+    setActiveTab('control');
+    setTourStep(0);
+  };
+
   const tabItems: Array<{ id: PanelTab; label: string }> = [
-    { id: 'control', label: `Control (${attachedTabs.length})` },
-    { id: 'timeline', label: `Timeline (${runtime.recentActivity.length})` },
-    { id: 'workflows', label: `Recorder (${workflows.length})` },
-    { id: 'security', label: 'Security' },
-    { id: 'connect', label: runtime.connected ? 'Connected' : 'Pair' },
+    { id: 'control', label: `${t('tab.control')} (${attachedTabs.length})` },
+    { id: 'timeline', label: `${t('tab.timeline')} (${runtime.recentActivity.length})` },
+    { id: 'workflows', label: `${t('tab.recorder')} (${workflows.length})` },
+    { id: 'security', label: t('tab.security') },
+    { id: 'connect', label: runtime.connected ? t('status.connected') : t('tab.connect') },
   ];
 
-  const renderTabRow = (t: TabInfo) => (
-    <div key={t.tabId} className="tab-row">
+  const renderTabRow = (tab: TabInfo) => (
+    <div key={tab.tabId} className="tab-row">
       <div className="tab-meta">
         <div className="tab-title">
-          {t.title || '(untitled)'}{' '}
-          {t.cdpAttached && <span className="pill accent">CDP</span>}
+          {tab.title || '(untitled)'}{' '}
+          {tab.cdpAttached && <span className="pill accent">CDP</span>}
         </div>
-        <div className="tab-url">{t.url}</div>
+        <div className="tab-url">{tab.url}</div>
       </div>
       <button
         type="button"
-        className={`btn small ${t.inAgentGroup ? '' : 'primary'}`}
-        onClick={() => void handleToggleTab(t.tabId, !t.inAgentGroup)}
+        className={`btn small ${tab.inAgentGroup ? '' : 'primary'}`}
+        onClick={() => void handleToggleTab(tab.tabId, !tab.inAgentGroup)}
       >
-        {t.inAgentGroup ? 'Detach' : 'Attach'}
+        {tab.inAgentGroup ? t('btn.detach') : t('btn.attach')}
       </button>
     </div>
   );
@@ -258,7 +435,7 @@ export function App() {
         <div className="brand">
           <span className={`brand-dot ${runtime.connected ? 'online' : ''}`} />
           <div>
-            <div className="brand-title">Chrome Browser MCP</div>
+            <div className="brand-title">{t('app.title')}</div>
             <div className="brand-sub">
               {settings.browserName} · {settings.profileLabel} · {tabs.length} tabs
             </div>
@@ -275,7 +452,7 @@ export function App() {
             onClick={handleTogglePause}
             title="Shortcut: Alt+Shift+P"
           >
-            {runtime.paused ? 'Resume' : 'Pause'}
+            {runtime.paused ? t('btn.resume') : t('btn.pause')}
           </button>
         </div>
       </header>
@@ -301,6 +478,15 @@ export function App() {
         ))}
       </div>
 
+      {tourStep !== null && (
+        <OnboardingTour
+          stepIndex={tourStep}
+          locale={locale}
+          onStepChange={handleTourStepChange}
+          onClose={() => void handleTourClose()}
+        />
+      )}
+
       <main className="scroller sp-main">
         {/* CONTROL TAB */}
         <section
@@ -311,7 +497,7 @@ export function App() {
           <div className="tab-panel-inner panel-fill">
             {runtime.paused && (
               <div className="card paused-banner">
-                <div className="card-title">Automation Paused</div>
+                <div className="card-title">{t('status.paused')}</div>
                 <div className="muted">
                   All external MCP actions are blocked until you resume (Alt+Shift+P).
                 </div>
@@ -320,25 +506,50 @@ export function App() {
 
             {!runtime.connected && (
               <div className="card approval">
-                <div className="card-title">Not connected to local broker</div>
+                <div className="card-title">{t('status.offline')}</div>
                 <div className="muted">
-                  {runtime.lastError ||
-                    'Run `npx chrome-browser-mcp token`, open the Pair tab, and paste the token.'}
+                  {runtime.lastError || t('pair.pinHint')}
                 </div>
                 <button
                   type="button"
                   className="btn primary small"
                   onClick={() => setActiveTab('connect')}
                 >
-                  Open Pair Settings
+                  {t('pair.pinButton')}
                 </button>
               </div>
             )}
 
+            {pendingDialogs.map((dlg) => (
+              <div key={`dlg-${dlg.tabId}`} className="card approval">
+                <div className="card-header">
+                  <span className="card-title">{t('section.pendingDialog')}</span>
+                  <span className="pill warn">{dlg.type.toUpperCase()}</span>
+                </div>
+                <div className="muted">{dlg.message}</div>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn primary small"
+                    onClick={() => void handleDialogAction(dlg.tabId, true)}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    className="btn danger small"
+                    onClick={() => void handleDialogAction(dlg.tabId, false)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+
             {runtime.pendingApprovals.map((req) => (
               <div key={req.id} className="card approval">
                 <div className="card-header">
-                  <span className="card-title">Approval Needed</span>
+                  <span className="card-title">{t('section.approvals')}</span>
                   <span className="pill warn">{req.risk.toUpperCase()}</span>
                 </div>
                 <div className="muted">{req.reason}</div>
@@ -349,14 +560,14 @@ export function App() {
                     className="btn primary small"
                     onClick={() => void handleApproval(req.id, 'approved')}
                   >
-                    Approve
+                    {t('btn.approve')}
                   </button>
                   <button
                     type="button"
                     className="btn danger small"
                     onClick={() => void handleApproval(req.id, 'rejected')}
                   >
-                    Reject
+                    {t('btn.reject')}
                   </button>
                 </div>
               </div>
@@ -365,13 +576,15 @@ export function App() {
             {/* DEDICATED AI AGENT TABS BLOCK */}
             <div className="card agent-box">
               <div className="card-header">
-                <span className="card-title">AI Agent Tabs ({attachedTabs.length})</span>
+                <span className="card-title">
+                  {t('section.agentTabs')} ({attachedTabs.length})
+                </span>
                 <button type="button" className="btn primary small" onClick={handleAttachCurrent}>
-                  + Attach Active
+                  {t('btn.attachActive')}
                 </button>
               </div>
               <label className="toggle-label">
-                <span>Allow all tabs in window</span>
+                <span>{t('setting.allowAllTabs')}</span>
                 <input
                   type="checkbox"
                   checked={settings.policy.scopeMode === 'all-tabs'}
@@ -386,11 +599,11 @@ export function App() {
               {attachedTabs.length === 0 ? (
                 <div className="muted">
                   No tabs in the AI Agent group. Drag a tab into the cyan &ldquo;AI Agent&rdquo;
-                  group or click <strong>Attach</strong> below.
+                  group or click <strong>{t('btn.attach')}</strong> below.
                 </div>
               ) : (
                 <div className="scroller agent-tabs-scroll">
-                  {attachedTabs.map((t) => renderTabRow(t))}
+                  {attachedTabs.map((item) => renderTabRow(item))}
                 </div>
               )}
             </div>
@@ -399,7 +612,7 @@ export function App() {
             <div className={`card ${otherTabs.length > 0 ? 'fill-card' : ''}`}>
               <div className="card-header">
                 <span className="card-title">
-                  All Browser Tabs ({otherTabs.length}
+                  {t('section.otherTabs')} ({otherTabs.length}
                   {tabQuery ? ` / ${tabs.length - attachedTabs.length}` : ''})
                 </span>
               </div>
@@ -414,8 +627,8 @@ export function App() {
                 items={otherTabs}
                 rowHeight={52}
                 fillHeight
-                getKey={(t) => t.tabId}
-                renderRow={(t) => renderTabRow(t)}
+                getKey={(item) => item.tabId}
+                renderRow={(item) => renderTabRow(item)}
                 emptyState={<div className="muted">No matching tabs.</div>}
               />
             </div>
@@ -431,8 +644,23 @@ export function App() {
           <div className="tab-panel-inner panel-fill">
             <div className={`card ${runtime.recentActivity.length > 0 ? 'fill-card' : ''}`}>
               <div className="card-header">
-                <span className="card-title">Live Action Timeline</span>
-                <span className="muted">{runtime.recentActivity.length} events</span>
+                <span className="card-title">{t('tab.timeline')}</span>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => handleExportTimeline('json')}
+                  >
+                    {t('btn.exportJson')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => handleExportTimeline('html')}
+                  >
+                    {t('btn.exportHtml')}
+                  </button>
+                </div>
               </div>
               {runtime.recentActivity.length === 0 ? (
                 <div className="muted">No actions recorded in this session yet.</div>
@@ -471,26 +699,23 @@ export function App() {
           <div className="tab-panel-inner">
             <div className="card">
               <div className="card-header">
-                <span className="card-title">Workflow Recorder (“Show by hand”)</span>
+                <span className="card-title">{t('tab.recorder')}</span>
                 {isRecording ? (
                   <span className="pill warn">REC ({recordingSteps.length})</span>
                 ) : (
                   <span className="pill">Idle</span>
                 )}
               </div>
-              <div className="muted">
-                Record clicks, inputs, and selects on the active tab. Passwords are automatically
-                masked as <code>{'{{PASSWORD}}'}</code>.
-              </div>
+              <div className="muted">{t('recorder.varsHint')}</div>
               {!isRecording ? (
                 <button type="button" className="btn primary" onClick={handleStartRecording}>
-                  Start Recording Active Tab
+                  {t('recorder.start')}
                 </button>
               ) : (
                 <>
                   <input
                     className="input"
-                    placeholder="Workflow name (e.g. Deploy preview)"
+                    placeholder={t('recorder.namePlaceholder')}
                     value={workflowName}
                     onChange={(e) => setWorkflowName(e.target.value)}
                   />
@@ -500,7 +725,7 @@ export function App() {
                       className="btn primary"
                       onClick={() => void handleStopRecording(true)}
                     >
-                      Stop &amp; Save ({recordingSteps.length})
+                      {t('recorder.stop')} ({recordingSteps.length})
                     </button>
                     <button
                       type="button"
@@ -520,35 +745,52 @@ export function App() {
             </div>
 
             <div className="card">
-              <div className="card-title">Saved Workflows</div>
+              <div className="card-title">{t('tab.workflows')}</div>
               {workflows.length === 0 ? (
                 <div className="muted">No saved workflows yet.</div>
               ) : (
                 <div className="list">
-                  {workflows.map((wf) => (
-                    <div key={wf.id} className="tab-row">
-                      <div className="tab-meta">
-                        <div className="tab-title">{wf.name}</div>
-                        <div className="tab-url">
-                          {wf.steps.length} steps · {wf.startUrl}
+                  {workflows.map((wf) => {
+                    const paramNames = extractWorkflowParamNames(wf);
+                    return (
+                      <div key={wf.id} className="tab-row">
+                        <div className="tab-meta">
+                          <div className="tab-title">
+                            {wf.name}{' '}
+                            {paramNames.length > 0 && (
+                              <span className="pill accent">{paramNames.length} vars</span>
+                            )}
+                          </div>
+                          <div className="tab-url">
+                            {wf.steps.length} steps · {wf.startUrl}
+                          </div>
+                        </div>
+                        <div className="row">
+                          <button
+                            type="button"
+                            className="btn small"
+                            onClick={() => handleExportPlaywright(wf)}
+                          >
+                            {t('btn.exportPlaywright')}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn small"
+                            onClick={() => void handleDeleteWorkflow(wf.id)}
+                          >
+                            {t('btn.delete')}
+                          </button>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() => void handleDeleteWorkflow(wf.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
         </section>
 
-        {/* SECURITY TAB */}
+        {/* SECURITY & SETTINGS TAB (with Progressive Disclosure Advanced Settings) */}
         <section
           role="tabpanel"
           aria-labelledby="tab-security"
@@ -556,12 +798,30 @@ export function App() {
         >
           <div className="tab-panel-inner">
             <div className="card security-card">
-              <div className="card-title">Protection &amp; Approval Gates</div>
+              <div className="card-title">{t('tab.security')}</div>
+
+              {/* Optional Visual Agent Cursor & HUD (ON by default) */}
               <div className="security-row">
                 <span className="security-label-group">
-                  <label htmlFor="sp-sec-shield">Prompt-Injection Shield</label>
+                  <label htmlFor="sp-sec-hud">{t('setting.visualHud')}</label>
                   <InfoTip
-                    label="Prompt-Injection Shield"
+                    label={t('setting.visualHud')}
+                    text={t('setting.visualHudDesc')}
+                  />
+                </span>
+                <input
+                  id="sp-sec-hud"
+                  type="checkbox"
+                  checked={settings.visualHudEnabled}
+                  onChange={(e) => void handleVisualHudToggle(e.target.checked)}
+                />
+              </div>
+
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sp-sec-shield">{t('setting.shield')}</label>
+                  <InfoTip
+                    label={t('setting.shield')}
                     text="Filters hidden/zero-opacity/offscreen DOM nodes, strips invisible zero-width/bidi characters, and frames page text with UNTRUSTED_PAGE_CONTENT boundaries."
                   />
                 </span>
@@ -577,11 +837,7 @@ export function App() {
 
               <div className="security-row">
                 <span className="security-label-group">
-                  <label htmlFor="sp-sec-eval">Confirm JS eval on new origins</label>
-                  <InfoTip
-                    label="Confirm JS eval on new origins"
-                    text="Requires Approve/Reject confirmation the first time an agent runs browser_eval on a domain."
-                  />
+                  <label htmlFor="sp-sec-eval">{t('setting.approvalEval')}</label>
                 </span>
                 <input
                   id="sp-sec-eval"
@@ -595,11 +851,7 @@ export function App() {
 
               <div className="security-row">
                 <span className="security-label-group">
-                  <label htmlFor="sp-sec-pass">Confirm password field input</label>
-                  <InfoTip
-                    label="Confirm password field input"
-                    text="Pauses for explicit confirmation before filling or typing into any password field."
-                  />
+                  <label htmlFor="sp-sec-pass">{t('setting.approvalPasswords')}</label>
                 </span>
                 <input
                   id="sp-sec-pass"
@@ -613,11 +865,7 @@ export function App() {
 
               <div className="security-row">
                 <span className="security-label-group">
-                  <label htmlFor="sp-sec-pay">Confirm payment / delete submits</label>
-                  <InfoTip
-                    label="Confirm payment and delete submits"
-                    text="Requires explicit approval before clicking controls related to checkout, payments, transfers, or account deletion."
-                  />
+                  <label htmlFor="sp-sec-pay">{t('setting.approvalPayments')}</label>
                 </span>
                 <input
                   id="sp-sec-pay"
@@ -628,29 +876,193 @@ export function App() {
                   }
                 />
               </div>
-            </div>
 
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">Blocked Domains (one per line)</span>
-                <InfoTip
-                  label="Blocked Domains"
-                  text="Wildcard rules (e.g. chrome://*, *.paypal.com, *.stripe.com/dashboard*) that hard-block agent access even when “Allow all tabs” is enabled."
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sp-sec-upload">{t('setting.approvalUploads')}</label>
+                </span>
+                <input
+                  id="sp-sec-upload"
+                  type="checkbox"
+                  checked={settings.policy.requireApprovalForUploads}
+                  onChange={(e) =>
+                    void handlePolicyPatch({ requireApprovalForUploads: e.target.checked })
+                  }
                 />
               </div>
-              <textarea
-                className="textarea"
-                value={blockedDraft}
-                onChange={(e) => setBlockedDraft(e.target.value)}
-              />
-              <button type="button" className="btn primary small" onClick={handleSaveBlocklist}>
-                Save Blocklist
-              </button>
+
+              <div className="security-row">
+                <label htmlFor="sp-sec-lang">{t('setting.language')}</label>
+                <select
+                  id="sp-sec-lang"
+                  className="input"
+                  style={{ width: 'auto', minWidth: 112 }}
+                  value={settings.locale}
+                  onChange={(e) => void handleLocaleChange(e.target.value as LocalePreference)}
+                >
+                  <option value="auto">Auto ({locale})</option>
+                  <option value="en">English</option>
+                  <option value="ru">Русский</option>
+                  <option value="zh-CN">简体中文</option>
+                </select>
+              </div>
+
+              <div className="row">
+                <button type="button" className="btn small" onClick={handleReplayTour}>
+                  {t('btn.replayTour')}
+                </button>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => void sendSw({ type: 'sp.openWelcome' })}
+                >
+                  Welcome Wizard
+                </button>
+              </div>
             </div>
+
+            {/* COLLAPSIBLE ADVANCED SETTINGS */}
+            <details className="advanced-box">
+              <summary>{t('section.advancedSettings')}</summary>
+              <div className="advanced-body">
+                <div>
+                  <div className="card-title">{t('setting.readOnlyDomains')}</div>
+                  <div className="muted" style={{ marginBottom: 6 }}>
+                    {t('setting.readOnlyHint')}
+                  </div>
+                  <div className="preset-chips" style={{ marginBottom: 6 }}>
+                    {READ_ONLY_DOMAIN_PRESETS.map((domain) => {
+                      const active = settings.policy.readOnlyDomains.includes(domain);
+                      return (
+                        <button
+                          key={domain}
+                          type="button"
+                          className={`preset-chip ${active ? 'active' : ''}`}
+                          onClick={() => void handleToggleReadOnlyPreset(domain)}
+                        >
+                          {active ? '✓ ' : '+ '}
+                          {domain}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <textarea
+                    className="textarea"
+                    rows={3}
+                    value={readOnlyDraft}
+                    onChange={(e) => setReadOnlyDraft(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn small"
+                    style={{ marginTop: 6 }}
+                    onClick={() => void handleSaveReadOnly()}
+                  >
+                    {t('btn.save')}
+                  </button>
+                </div>
+
+                <div>
+                  <div className="card-title">{t('setting.blockedDomains')}</div>
+                  <textarea
+                    className="textarea"
+                    rows={4}
+                    value={blockedDraft}
+                    onChange={(e) => setBlockedDraft(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn small"
+                    style={{ marginTop: 6 }}
+                    onClick={() => void handleSaveBlocklist()}
+                  >
+                    {t('btn.save')}
+                  </button>
+                </div>
+
+                <div className="security-row">
+                  <label htmlFor="sp-adv-dialog">{t('setting.dialogPolicy')}</label>
+                  <select
+                    id="sp-adv-dialog"
+                    className="input"
+                    style={{ width: 'auto' }}
+                    value={settings.policy.dialogPolicy}
+                    onChange={(e) =>
+                      void handlePolicyPatch({
+                        dialogPolicy: e.target.value as ExtensionSettings['policy']['dialogPolicy'],
+                      })
+                    }
+                  >
+                    <option value="ask-agent">ask-agent</option>
+                    <option value="auto-dismiss">auto-dismiss</option>
+                    <option value="approval">approval</option>
+                  </select>
+                </div>
+
+                <div className="security-row">
+                  <label htmlFor="sp-adv-cdp-idle">{t('setting.cdpDetach')}</label>
+                  <input
+                    id="sp-adv-cdp-idle"
+                    type="number"
+                    min={10}
+                    max={600}
+                    className="input"
+                    style={{ width: 84 }}
+                    value={settings.policy.cdpIdleDetachSec}
+                    onChange={(e) =>
+                      void handlePolicyPatch({
+                        cdpIdleDetachSec: Math.max(10, Math.min(600, Number(e.target.value) || 60)),
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="security-row">
+                  <span className="security-label-group">
+                    <label htmlFor="sp-adv-cdp-proxy">{t('setting.cdpProxy')}</label>
+                    <InfoTip label={t('setting.cdpProxy')} text={t('setting.cdpProxyDesc')} />
+                  </span>
+                  <input
+                    id="sp-adv-cdp-proxy"
+                    type="checkbox"
+                    checked={settings.policy.cdpProxyEnabled}
+                    onChange={(e) =>
+                      void handlePolicyPatch({ cdpProxyEnabled: e.target.checked })
+                    }
+                  />
+                </div>
+
+                <div className="card-title" style={{ marginTop: 4 }}>
+                  {t('section.optionalPermissions')}
+                </div>
+                <div className="security-row">
+                  <label htmlFor="sp-perm-dl">{t('setting.downloadsPerm')}</label>
+                  <input
+                    id="sp-perm-dl"
+                    type="checkbox"
+                    checked={hasDownloadsPerm}
+                    onChange={(e) => void handleToggleOptionalPerm('downloads', e.target.checked)}
+                  />
+                </div>
+                <div className="security-row">
+                  <label htmlFor="sp-perm-nm">{t('setting.nativeHostPerm')}</label>
+                  <input
+                    id="sp-perm-nm"
+                    type="checkbox"
+                    checked={hasNativePerm}
+                    onChange={(e) =>
+                      void handleToggleOptionalPerm('nativeMessaging', e.target.checked)
+                    }
+                  />
+                </div>
+              </div>
+            </details>
+
+            {statusMsg && <div className="muted">{statusMsg}</div>}
           </div>
         </section>
 
-        {/* PAIR / CONNECT TAB */}
+        {/* PAIR / CONNECT TAB (with Progressive Disclosure Advanced Connection) */}
         <section
           role="tabpanel"
           aria-labelledby="tab-connect"
@@ -658,42 +1070,73 @@ export function App() {
         >
           <div className="tab-panel-inner">
             <div className="card">
-              <div className="card-title">Local Broker Connection</div>
-              <div className="muted">
-                Run <code>npx chrome-browser-mcp token</code> in your terminal to get your local
-                loopback pairing token.
+              <div className="card-header">
+                <span className="card-title">{t('pair.pinTitle')}</span>
+                <span className={`pill ${runtime.connected || brokerDetected ? 'accent' : 'warn'}`}>
+                  {runtime.connected
+                    ? t('status.connected')
+                    : brokerDetected
+                      ? '127.0.0.1 OK'
+                      : t('status.offline')}
+                </span>
+              </div>
+              <div className="muted">{t('pair.pinHint')}</div>
+              <div className="pin-row">
+                <input
+                  className="input pin-input"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder={t('pair.pinPlaceholder')}
+                  value={pinDraft}
+                  onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                />
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={pinDraft.length < 6}
+                  onClick={() => void handlePairPin()}
+                >
+                  {t('pair.pinButton')}
+                </button>
               </div>
               <label className="muted">
-                Profile Label (e.g. work, personal)
+                {t('pair.profileLabel')}
                 <input
                   className="input"
                   value={labelDraft}
                   onChange={(e) => setLabelDraft(e.target.value)}
                 />
               </label>
-              <label className="muted">
-                Local Broker WebSocket URL
-                <input
-                  className="input"
-                  value={wsUrlDraft}
-                  onChange={(e) => setWsUrlDraft(e.target.value)}
-                />
-              </label>
-              <label className="muted">
-                Pairing Token
-                <input
-                  className="input"
-                  type="password"
-                  placeholder="Paste token from CLI"
-                  value={tokenDraft}
-                  onChange={(e) => setTokenDraft(e.target.value)}
-                />
-              </label>
-              <button type="button" className="btn primary" onClick={handleSaveConnection}>
-                Save &amp; Connect
-              </button>
-              {statusMsg && <div className="muted">{statusMsg}</div>}
             </div>
+
+            <details className="advanced-box">
+              <summary>{t('section.advancedConnection')}</summary>
+              <div className="advanced-body">
+                <label className="muted">
+                  {t('pair.wsUrl')}
+                  <input
+                    className="input"
+                    value={wsUrlDraft}
+                    onChange={(e) => setWsUrlDraft(e.target.value)}
+                  />
+                </label>
+                <label className="muted">
+                  {t('pair.token')}
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder="Paste token from CLI"
+                    value={tokenDraft}
+                    onChange={(e) => setTokenDraft(e.target.value)}
+                  />
+                </label>
+                <button type="button" className="btn primary small" onClick={handleSaveConnection}>
+                  {t('pair.saveConnect')}
+                </button>
+              </div>
+            </details>
+
+            {statusMsg && <div className="muted">{statusMsg}</div>}
           </div>
         </section>
       </main>
