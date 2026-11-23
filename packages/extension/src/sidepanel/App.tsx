@@ -58,16 +58,58 @@ export function App() {
 
   useEffect(() => {
     void refresh();
+
+    // Event-driven push port to Service Worker (eliminates 3s polling)
+    let port: chrome.runtime.Port | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+
+    const connectPort = () => {
+      if (disposed) return;
+      try {
+        port = chrome.runtime.connect({ name: 'sidepanel' });
+        port.onMessage.addListener((msg: { type?: string }) => {
+          if (msg?.type === 'sp.stateChanged') {
+            void refresh();
+          }
+        });
+        port.onDisconnect.addListener(() => {
+          port = null;
+          if (!disposed) {
+            reconnectTimer = setTimeout(() => {
+              connectPort();
+              void refresh();
+            }, 1500);
+          }
+        });
+      } catch {
+        // Fallback to runtime.onMessage below
+      }
+    };
+    connectPort();
+
     const listener = (msg: { type?: string }) => {
       if (msg.type === 'sp.stateChanged') {
         void refresh();
       }
     };
     chrome.runtime.onMessage.addListener(listener);
-    const interval = setInterval(() => void refresh(), 3000);
+
+    // Calm 15s safety sync only if background SW slept/restarted
+    const safetyInterval = setInterval(() => {
+      if (!port) void refresh();
+    }, 15_000);
+
     return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      clearInterval(safetyInterval);
       chrome.runtime.onMessage.removeListener(listener);
-      clearInterval(interval);
+      try {
+        port?.disconnect();
+      } catch {
+        // ignore
+      }
     };
   }, [refresh]);
 

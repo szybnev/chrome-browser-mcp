@@ -206,8 +206,8 @@ export async function startBrokerDaemon(options?: {
     }
   });
 
-  // WebSocket server strictly on /ws for Chrome Extensions
-  const wss = new WebSocketServer({ noServer: true });
+  // WebSocket server strictly on /ws for Chrome Extensions (no deflate overhead on loopback)
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   httpServer.on('upgrade', (req, socket, head) => {
     const remote = req.socket.remoteAddress;

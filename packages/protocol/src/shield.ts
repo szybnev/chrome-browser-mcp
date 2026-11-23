@@ -5,20 +5,27 @@
 const INVISIBLE_UNICODE_REGEX =
   /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\u034F]/g;
 
+// Non-global test skips regex replacement + string allocation on 99.9% of clean pages
+const INVISIBLE_UNICODE_TEST =
+  /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00AD\u034F]/;
+
 const INJECTION_PATTERNS: Array<{ id: string; pattern: RegExp; note: string }> = [
   {
     id: 'ignore-instructions',
-    pattern: /\b(ignore|disregard|forget)\s+(all\s+)?(previous|prior|above|system)\s+(instructions|prompts|rules)\b/i,
+    pattern:
+      /\b(ignore|disregard|forget)\s+(all\s+)?(previous|prior|above|system)\s+(instructions|prompts|rules)\b/i,
     note: 'Possible prompt-override phrase detected in page content',
   },
   {
     id: 'role-hijack',
-    pattern: /(^|\n)\s*(system|assistant|developer)\s*:\s*(you must|override|execute|send|exfiltrate)/i,
+    pattern:
+      /(^|\n)\s*(system|assistant|developer)\s*:\s*(you must|override|execute|send|exfiltrate)/i,
     note: 'Possible role-impersonation instruction detected in page content',
   },
   {
     id: 'tool-exfil',
-    pattern: /\b(exfiltrate|send\s+(cookies|tokens|passwords|secrets)|call\s+browser_eval\s+to\s+steal)\b/i,
+    pattern:
+      /\b(exfiltrate|send\s+(cookies|tokens|passwords|secrets)|call\s+browser_eval\s+to\s+steal)\b/i,
     note: 'Suspicious credential/exfiltration instruction detected in page content',
   },
   {
@@ -28,6 +35,35 @@ const INJECTION_PATTERNS: Array<{ id: string; pattern: RegExp; note: string }> =
   },
 ];
 
+// Single-pass pre-filter: skips individual pattern scans on benign pages
+const COMBINED_INJECTION_PREFILTER = new RegExp(
+  INJECTION_PATTERNS.map((r) => `(?:${r.pattern.source})`).join('|'),
+  'i',
+);
+
+const SENSITIVE_HEADER_NAMES = new Set([
+  'authorization',
+  'cookie',
+  'set-cookie',
+  'x-api-key',
+  'proxy-authorization',
+]);
+
+// Compiled wildcard RegExp cache (bounded to avoid unbounded growth)
+const compiledPatternCache = new Map<string, RegExp>();
+
+function getWildcardRegex(pattern: string): RegExp {
+  let cached = compiledPatternCache.get(pattern);
+  if (cached) return cached;
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  cached = new RegExp(`^${escaped}$`, 'i');
+  if (compiledPatternCache.size > 512) {
+    compiledPatternCache.clear();
+  }
+  compiledPatternCache.set(pattern, cached);
+  return cached;
+}
+
 export interface ShieldScanResult {
   sanitized: string;
   strippedInvisibleChars: number;
@@ -36,15 +72,21 @@ export interface ShieldScanResult {
 
 export function sanitizePageText(raw: string): ShieldScanResult {
   let strippedInvisibleChars = 0;
-  const sanitized = raw.replace(INVISIBLE_UNICODE_REGEX, () => {
-    strippedInvisibleChars += 1;
-    return '';
-  });
+  let sanitized = raw;
+
+  if (INVISIBLE_UNICODE_TEST.test(raw)) {
+    sanitized = raw.replace(INVISIBLE_UNICODE_REGEX, () => {
+      strippedInvisibleChars += 1;
+      return '';
+    });
+  }
 
   const warnings: string[] = [];
-  for (const rule of INJECTION_PATTERNS) {
-    if (rule.pattern.test(sanitized)) {
-      warnings.push(`[${rule.id}] ${rule.note}`);
+  if (COMBINED_INJECTION_PREFILTER.test(sanitized)) {
+    for (const rule of INJECTION_PATTERNS) {
+      if (rule.pattern.test(sanitized)) {
+        warnings.push(`[${rule.id}] ${rule.note}`);
+      }
     }
   }
   if (strippedInvisibleChars >= 12) {
@@ -77,7 +119,9 @@ export function frameUntrustedPageContent(options: {
   ];
 
   if (filteredHiddenCount > 0) {
-    headerLines.push(`[SHIELD: Filtered ${filteredHiddenCount} hidden/zero-opacity/offscreen DOM nodes.]`);
+    headerLines.push(
+      `[SHIELD: Filtered ${filteredHiddenCount} hidden/zero-opacity/offscreen DOM nodes.]`,
+    );
   }
   if (scan.warnings.length > 0) {
     headerLines.push(`[SHIELD_WARNINGS: ${scan.warnings.join('; ')}]`);
@@ -96,11 +140,7 @@ export function redactSensitiveHeaders(
   for (const [k, v] of Object.entries(headers)) {
     const lower = k.toLowerCase();
     if (
-      lower === 'authorization' ||
-      lower === 'cookie' ||
-      lower === 'set-cookie' ||
-      lower === 'x-api-key' ||
-      lower === 'proxy-authorization' ||
+      SENSITIVE_HEADER_NAMES.has(lower) ||
       lower.includes('token') ||
       lower.includes('secret')
     ) {
@@ -112,45 +152,56 @@ export function redactSensitiveHeaders(
   return redacted;
 }
 
-export function matchDomainPattern(urlString: string, pattern: string): boolean {
+interface ParsedUrlParts {
+  lowerUrl: string;
+  hostname: string | null;
+  hostAndPath: string | null;
+}
+
+function parseUrlOnce(urlString: string): ParsedUrlParts {
+  const lowerUrl = urlString.toLowerCase();
+  try {
+    const parsed = new URL(urlString);
+    const hostname = parsed.hostname.toLowerCase();
+    return {
+      lowerUrl,
+      hostname,
+      hostAndPath: `${hostname}${parsed.pathname.toLowerCase()}`,
+    };
+  } catch {
+    return { lowerUrl, hostname: null, hostAndPath: null };
+  }
+}
+
+function matchDomainPatternParsed(parts: ParsedUrlParts, pattern: string): boolean {
   const trimmed = pattern.trim().toLowerCase();
   if (!trimmed) return false;
 
-  const lowerUrl = urlString.toLowerCase();
-
   // Scheme wildcard like chrome://* or about:*
   if (trimmed.includes('://') || trimmed.startsWith('about:')) {
-    const escaped = trimmed
-      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '.*');
-    return new RegExp(`^${escaped}$`, 'i').test(lowerUrl);
+    return getWildcardRegex(trimmed).test(parts.lowerUrl);
   }
 
-  let hostname = '';
-  let hostAndPath = '';
-  try {
-    const parsed = new URL(urlString);
-    hostname = parsed.hostname.toLowerCase();
-    hostAndPath = `${hostname}${parsed.pathname.toLowerCase()}`;
-  } catch {
+  if (parts.hostname === null || parts.hostAndPath === null) {
     return false;
   }
 
   // Pattern with path (e.g., *.stripe.com/dashboard*)
   if (trimmed.includes('/')) {
-    const escaped = trimmed
-      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '.*');
-    return new RegExp(`^${escaped}$`, 'i').test(hostAndPath);
+    return getWildcardRegex(trimmed).test(parts.hostAndPath);
   }
 
   // Wildcard subdomain (e.g., *.paypal.com)
   if (trimmed.startsWith('*.')) {
     const suffix = trimmed.slice(2);
-    return hostname === suffix || hostname.endsWith(`.${suffix}`);
+    return parts.hostname === suffix || parts.hostname.endsWith(`.${suffix}`);
   }
 
-  return hostname === trimmed || hostname.endsWith(`.${trimmed}`);
+  return parts.hostname === trimmed || parts.hostname.endsWith(`.${trimmed}`);
+}
+
+export function matchDomainPattern(urlString: string, pattern: string): boolean {
+  return matchDomainPatternParsed(parseUrlOnce(urlString), pattern);
 }
 
 export function isUrlBlocked(
@@ -158,13 +209,14 @@ export function isUrlBlocked(
   blockedDomains: string[],
   allowedDomains: string[] = [],
 ): { blocked: boolean; reason?: string } {
+  const parts = parseUrlOnce(urlString);
   for (const pattern of blockedDomains) {
-    if (matchDomainPattern(urlString, pattern)) {
+    if (matchDomainPatternParsed(parts, pattern)) {
       return { blocked: true, reason: `URL matches blocked rule "${pattern}"` };
     }
   }
   if (allowedDomains.length > 0) {
-    const allowed = allowedDomains.some((pattern) => matchDomainPattern(urlString, pattern));
+    const allowed = allowedDomains.some((pattern) => matchDomainPatternParsed(parts, pattern));
     if (!allowed) {
       return { blocked: true, reason: 'URL is not in configured allowedDomains allowlist' };
     }

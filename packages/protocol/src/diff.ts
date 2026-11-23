@@ -1,17 +1,18 @@
 import type { PageSnapshot, SnapshotNode } from './schemas.js';
 
-function nodeSignature(node: SnapshotNode): string {
-  return [
-    node.role,
-    node.name,
-    node.value ?? '',
-    node.href ?? '',
-    node.checked === undefined ? '' : String(node.checked),
-    node.disabled ? 'dis' : '',
-    node.expanded === undefined ? '' : String(node.expanded),
-    node.selected ? 'sel' : '',
-    node.focused ? 'foc' : '',
-  ].join('|');
+// Zero-allocation field comparison instead of building joined signature strings
+function areNodesEqual(a: SnapshotNode, b: SnapshotNode): boolean {
+  return (
+    a.role === b.role &&
+    a.name === b.name &&
+    (a.value ?? '') === (b.value ?? '') &&
+    (a.href ?? '') === (b.href ?? '') &&
+    a.checked === b.checked &&
+    Boolean(a.disabled) === Boolean(b.disabled) &&
+    a.expanded === b.expanded &&
+    Boolean(a.selected) === Boolean(b.selected) &&
+    Boolean(a.focused) === Boolean(b.focused)
+  );
 }
 
 export function formatSnapshotNodeLine(node: SnapshotNode): string {
@@ -58,12 +59,14 @@ export function formatFullSnapshot(snapshot: PageSnapshot, maxNodes = 250): stri
     `VIEWPORT: ${viewport.width}x${viewport.height} scroll=${scrollPct}% engine=${snapshot.engine} nodes=${snapshot.nodes.length}${snapshot.webMcpToolCount > 0 ? ` webmcp_tools=${snapshot.webMcpToolCount}` : ''}`,
   ];
 
-  const sliced = snapshot.nodes.slice(0, maxNodes);
-  for (const node of sliced) {
-    lines.push(formatSnapshotNodeLine(node));
+  const limit = Math.min(snapshot.nodes.length, maxNodes);
+  for (let i = 0; i < limit; i++) {
+    lines.push(formatSnapshotNodeLine(snapshot.nodes[i]!));
   }
   if (snapshot.nodes.length > maxNodes) {
-    lines.push(`... (${snapshot.nodes.length - maxNodes} more nodes truncated; scroll or narrow query)`);
+    lines.push(
+      `... (${snapshot.nodes.length - maxNodes} more nodes truncated; scroll or narrow query)`,
+    );
   }
   return lines.join('\n');
 }
@@ -91,31 +94,28 @@ export function computeSnapshotDiff(
     };
   }
 
-  const prevByRef = new Map<string, SnapshotNode>();
+  // Single-map diff: deleting matched refs leaves removedRefs with half the allocations
+  const remainingPrev = new Map<string, SnapshotNode>();
   for (const node of previous.nodes) {
-    prevByRef.set(node.ref, node);
+    remainingPrev.set(node.ref, node);
   }
 
-  const curByRef = new Map<string, SnapshotNode>();
   const added: SnapshotNode[] = [];
   const changed: SnapshotNode[] = [];
 
   for (const node of current.nodes) {
-    curByRef.set(node.ref, node);
-    const old = prevByRef.get(node.ref);
+    const old = remainingPrev.get(node.ref);
     if (!old) {
       added.push(node);
-    } else if (nodeSignature(old) !== nodeSignature(node)) {
-      changed.push(node);
+    } else {
+      remainingPrev.delete(node.ref);
+      if (!areNodesEqual(old, node)) {
+        changed.push(node);
+      }
     }
   }
 
-  const removedRefs: string[] = [];
-  for (const node of previous.nodes) {
-    if (!curByRef.has(node.ref)) {
-      removedRefs.push(node.ref);
-    }
-  }
+  const removedRefs = remainingPrev.size > 0 ? Array.from(remainingPrev.keys()) : [];
 
   // If >60% of the page changed, emit full snapshot instead of a noisy diff
   const deltaSize = added.length + changed.length + removedRefs.length;
@@ -143,7 +143,9 @@ export function computeSnapshotDiff(
       lines.push(`~ ${formatSnapshotNodeLine(node).trimStart()}`);
     }
     if (removedRefs.length > 0) {
-      lines.push(`- removed refs: ${removedRefs.slice(0, 40).join(', ')}${removedRefs.length > 40 ? ' ...' : ''}`);
+      lines.push(
+        `- removed refs: ${removedRefs.slice(0, 40).join(', ')}${removedRefs.length > 40 ? ' ...' : ''}`,
+      );
     }
   }
 

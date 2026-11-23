@@ -28,6 +28,23 @@ export interface ExtensionRuntimeState {
   recordingTabId: number | null;
 }
 
+// In-memory write-through caches invalidated on chrome.storage.onChanged
+// Eliminates redundant async chrome.storage reads on every RPC call.
+let cachedSettings: ExtensionSettings | null = null;
+let cachedRuntime: ExtensionRuntimeState | null = null;
+let cachedWorkflows: RecordedWorkflow[] | null = null;
+
+if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local') {
+      if ('settings' in changes) cachedSettings = null;
+      if ('workflows' in changes) cachedWorkflows = null;
+    } else if (areaName === 'session') {
+      if ('runtime' in changes) cachedRuntime = null;
+    }
+  });
+}
+
 function detectBrowserName(): string {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
   if (ua.includes('Edg/')) return 'Edge';
@@ -43,6 +60,8 @@ function generateProfileId(): string {
 }
 
 export async function loadSettings(): Promise<ExtensionSettings> {
+  if (cachedSettings) return cachedSettings;
+
   const stored = await chrome.storage.local.get('settings');
   const existing = stored.settings as Partial<ExtensionSettings> | undefined;
   const defaults: ExtensionSettings = {
@@ -60,6 +79,7 @@ export async function loadSettings(): Promise<ExtensionSettings> {
     policy: SecurityPolicySchema.parse(existing?.policy ?? defaults.policy),
   };
 
+  cachedSettings = merged;
   if (!existing?.profileId) {
     await chrome.storage.local.set({ settings: merged });
   }
@@ -71,16 +91,21 @@ export async function saveSettings(patch: Partial<ExtensionSettings>): Promise<E
   const next: ExtensionSettings = {
     ...current,
     ...patch,
-    policy: SecurityPolicySchema.parse(patch.policy ? { ...current.policy, ...patch.policy } : current.policy),
+    policy: SecurityPolicySchema.parse(
+      patch.policy ? { ...current.policy, ...patch.policy } : current.policy,
+    ),
   };
+  cachedSettings = next;
   await chrome.storage.local.set({ settings: next });
   return next;
 }
 
 export async function loadRuntimeState(): Promise<ExtensionRuntimeState> {
+  if (cachedRuntime) return cachedRuntime;
+
   const stored = await chrome.storage.session.get('runtime');
   const existing = stored.runtime as Partial<ExtensionRuntimeState> | undefined;
-  return {
+  cachedRuntime = {
     connected: existing?.connected ?? false,
     lastError: existing?.lastError ?? null,
     paused: existing?.paused ?? false,
@@ -89,6 +114,7 @@ export async function loadRuntimeState(): Promise<ExtensionRuntimeState> {
     recentActivity: existing?.recentActivity ?? [],
     recordingTabId: existing?.recordingTabId ?? null,
   };
+  return cachedRuntime;
 }
 
 export async function saveRuntimeState(
@@ -96,15 +122,19 @@ export async function saveRuntimeState(
 ): Promise<ExtensionRuntimeState> {
   const current = await loadRuntimeState();
   const next: ExtensionRuntimeState = { ...current, ...patch };
+  cachedRuntime = next;
   await chrome.storage.session.set({ runtime: next });
   return next;
 }
 
 export async function loadWorkflows(): Promise<RecordedWorkflow[]> {
+  if (cachedWorkflows) return cachedWorkflows;
   const stored = await chrome.storage.local.get('workflows');
-  return (stored.workflows as RecordedWorkflow[] | undefined) ?? [];
+  cachedWorkflows = (stored.workflows as RecordedWorkflow[] | undefined) ?? [];
+  return cachedWorkflows;
 }
 
 export async function saveWorkflows(workflows: RecordedWorkflow[]): Promise<void> {
+  cachedWorkflows = workflows;
   await chrome.storage.local.set({ workflows });
 }

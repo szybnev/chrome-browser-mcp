@@ -444,11 +444,18 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         setOfMark: z.boolean().default(false).describe('Overlay element ref badges on interactive elements before capture'),
         fullPage: z.boolean().default(false),
         format: z.enum(['jpeg', 'webp', 'png']).default('webp'),
-        quality: z.number().int().min(30).max(95).default(75),
+        quality: z.number().int().min(30).max(95).default(70),
+        maxWidth: z
+          .number()
+          .int()
+          .min(320)
+          .max(3840)
+          .optional()
+          .describe('Optional max width in pixels to downscale screenshot in-browser for faster vision inference'),
         profileId: z.string().optional(),
       }),
     },
-    async ({ tabId, setOfMark, fullPage, format, quality, profileId }) => {
+    async ({ tabId, setOfMark, fullPage, format, quality, maxWidth, profileId }) => {
       try {
         const { data } = await hub.callExtension<{
           tabId: number;
@@ -459,7 +466,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           height?: number;
         }>(
           'page.screenshot',
-          { tabId, setOfMark, fullPage, format, quality },
+          { tabId, setOfMark, fullPage, format, quality, maxWidth },
           { profileId, toolLabel: 'browser_screenshot' },
         );
 

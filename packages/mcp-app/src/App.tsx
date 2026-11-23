@@ -53,8 +53,35 @@ export function App() {
   useEffect(() => {
     if (!isConnected || !app) return;
     void callDeckTool('deck_get_state');
-    const timer = setInterval(() => void callDeckTool('deck_get_state'), 3000);
-    return () => clearInterval(timer);
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+
+    const scheduleNext = () => {
+      if (disposed) return;
+      if (timer) clearTimeout(timer);
+      // Poll faster while visible, drop to 10s idle cadence when hidden
+      const delay = document.visibilityState === 'visible' ? 3000 : 10_000;
+      timer = setTimeout(async () => {
+        await callDeckTool('deck_get_state');
+        scheduleNext();
+      }, delay);
+    };
+    scheduleNext();
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void callDeckTool('deck_get_state');
+      }
+      scheduleNext();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [isConnected, app, callDeckTool]);
 
   const activeProfileId = deckState?.defaultProfileId ?? deckState?.profiles[0]?.profileId ?? '';

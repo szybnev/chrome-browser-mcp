@@ -34,6 +34,9 @@ const AGENT_GROUP_TITLE = 'AI Agent';
 let socket: WebSocket | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
 let tabSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let lastTabsFingerprint = '';
+const injectedTabs = new Set<number>();
+const sidePanelPorts = new Set<chrome.runtime.Port>();
 let activeRecordingSteps: RecordedStep[] = [];
 let activeRecordingStartUrl = '';
 
@@ -136,7 +139,10 @@ function scheduleTabSync(): void {
   }, 150);
 }
 
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading' || changeInfo.url !== undefined) {
+    injectedTabs.delete(tabId);
+  }
   if (
     changeInfo.status === 'complete' ||
     changeInfo.title !== undefined ||
@@ -147,7 +153,10 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
   }
 });
 chrome.tabs.onCreated.addListener(() => scheduleTabSync());
-chrome.tabs.onRemoved.addListener(() => scheduleTabSync());
+chrome.tabs.onRemoved.addListener((tabId) => {
+  injectedTabs.delete(tabId);
+  scheduleTabSync();
+});
 chrome.tabs.onActivated.addListener(() => scheduleTabSync());
 chrome.tabs.onAttached.addListener(() => scheduleTabSync());
 chrome.tabs.onDetached.addListener(() => scheduleTabSync());
@@ -176,7 +185,25 @@ async function updateBadge(): Promise<void> {
   }
 }
 
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'sidepanel') return;
+  sidePanelPorts.add(port);
+  port.onDisconnect.addListener(() => {
+    sidePanelPorts.delete(port);
+  });
+});
+
 async function notifySidePanel(): Promise<void> {
+  if (sidePanelPorts.size > 0) {
+    for (const port of sidePanelPorts) {
+      try {
+        port.postMessage({ type: 'sp.stateChanged' });
+      } catch {
+        sidePanelPorts.delete(port);
+      }
+    }
+    return;
+  }
   try {
     await chrome.runtime.sendMessage({ type: 'sp.stateChanged' });
   } catch {
@@ -243,9 +270,10 @@ async function connectBroker(): Promise<void> {
         }
       }, 20_000);
 
+      lastTabsFingerprint = '';
       await saveRuntimeState({ connected: true, lastError: null });
       await updateBadge();
-      await pushTabsSnapshotToBroker();
+      await pushTabsSnapshotToBroker(true);
       await notifySidePanel();
     });
 
@@ -448,16 +476,33 @@ async function listScopedTabs(includeUnattached = false): Promise<TabInfo[]> {
   return mapped.filter((t) => t.inAgentGroup);
 }
 
-async function pushTabsSnapshotToBroker(): Promise<void> {
+function computeTabsFingerprint(
+  tabs: TabInfo[],
+  groupId: number | null,
+  allowAllTabs: boolean,
+): string {
+  let fp = `${groupId ?? -1}|${allowAllTabs ? 1 : 0}|${tabs.length}`;
+  for (let i = 0; i < tabs.length; i++) {
+    const t = tabs[i]!;
+    fp += `;${t.tabId}:${t.active ? 1 : 0}${t.inAgentGroup ? 1 : 0}${t.cdpAttached ? 1 : 0}${t.status === 'loading' ? 1 : 0}:${t.title}:${t.url}`;
+  }
+  return fp;
+}
+
+async function pushTabsSnapshotToBroker(force = false): Promise<void> {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   const settings = await loadSettings();
   const groupId = await getValidAgentGroupId();
   const tabs = await listScopedTabs(true);
+  const allowAllTabs = settings.policy.scopeMode === 'all-tabs';
+  const fp = computeTabsFingerprint(tabs, groupId, allowAllTabs);
+  if (!force && fp === lastTabsFingerprint) return;
+  lastTabsFingerprint = fp;
   sendToBroker({
     type: 'event.tabs',
     tabs,
     tabGroupId: groupId,
-    allowAllTabs: settings.policy.scopeMode === 'all-tabs',
+    allowAllTabs,
   });
 }
 
@@ -506,16 +551,12 @@ async function resolveAccessibleTab(explicitTabId?: number): Promise<chrome.tabs
 }
 
 async function ensureContentScript(tabId: number): Promise<void> {
-  try {
-    const ping = await chrome.tabs.sendMessage(tabId, { type: 'cs.ping' });
-    if (ping?.ok) return;
-  } catch {
-    // Not injected yet
-  }
+  if (injectedTabs.has(tabId)) return;
   await chrome.scripting.executeScript({
     target: { tabId },
     files: ['content-script.js'],
   });
+  injectedTabs.add(tabId);
 }
 
 async function callContentScript<T = unknown>(
@@ -523,10 +564,31 @@ async function callContentScript<T = unknown>(
   type: string,
   params: Record<string, unknown> = {},
 ): Promise<T> {
-  await ensureContentScript(tabId);
-  const res = (await chrome.tabs.sendMessage(tabId, { type, params })) as
-    | { ok: boolean; data?: T; error?: string }
-    | undefined;
+  // Optimistic single-hop IPC when tab is already injected; fall back to lazy inject on miss
+  const sendOnce = async () =>
+    (await chrome.tabs.sendMessage(tabId, { type, params })) as
+      | { ok: boolean; data?: T; error?: string }
+      | undefined;
+
+  let res: { ok: boolean; data?: T; error?: string } | undefined;
+  if (injectedTabs.has(tabId)) {
+    try {
+      res = await sendOnce();
+    } catch {
+      injectedTabs.delete(tabId);
+      await ensureContentScript(tabId);
+      res = await sendOnce();
+    }
+  } else {
+    try {
+      res = await sendOnce();
+      injectedTabs.add(tabId);
+    } catch {
+      await ensureContentScript(tabId);
+      res = await sendOnce();
+    }
+  }
+
   if (!res?.ok) {
     throw new Error(res?.error || `Content script error on ${type}`);
   }
@@ -565,6 +627,48 @@ async function waitForTabLoad(tabId: number, timeoutMs = 15_000): Promise<chrome
 // ---------------------------------------------------------------------------
 // WebMCP Discovery & Invocation in Page MAIN World
 // ---------------------------------------------------------------------------
+
+async function downscaleBase64Image(
+  base64: string,
+  mimeType: string,
+  maxWidth: number,
+  quality: number,
+): Promise<{ base64: string; mimeType: string; width?: number; height?: number }> {
+  if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') {
+    return { base64, mimeType };
+  }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  const bitmap = await createImageBitmap(new Blob([bytes], { type: mimeType }));
+  try {
+    if (bitmap.width <= maxWidth) {
+      return { base64, mimeType, width: bitmap.width, height: bitmap.height };
+    }
+    const scale = maxWidth / bitmap.width;
+    const targetW = Math.max(1, Math.round(bitmap.width * scale));
+    const targetH = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = new OffscreenCanvas(targetW, targetH);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return { base64, mimeType, width: bitmap.width, height: bitmap.height };
+    ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+    const blob = await canvas.convertToBlob({
+      type: mimeType,
+      quality: mimeType === 'image/png' ? undefined : Math.max(0.3, Math.min(0.95, quality / 100)),
+    });
+    const outBuf = new Uint8Array(await blob.arrayBuffer());
+    let outBin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < outBuf.length; i += chunk) {
+      outBin += String.fromCharCode(...outBuf.subarray(i, i + chunk));
+    }
+    return { base64: btoa(outBin), mimeType: blob.type || mimeType, width: targetW, height: targetH };
+  } finally {
+    bitmap.close();
+  }
+}
 
 async function discoverWebMcp(tabId: number): Promise<{ supported: boolean; tools: WebMcpToolInfo[] }> {
   const [result] = await chrome.scripting.executeScript({
@@ -803,31 +907,45 @@ async function dispatchRpc(
       const setOfMark = Boolean(params.setOfMark);
       const fullPage = Boolean(params.fullPage);
       const format = (params.format as 'jpeg' | 'webp' | 'png') ?? 'webp';
-      const quality = Number(params.quality ?? 75);
+      const quality = Number(params.quality ?? 70);
+      const maxWidth = typeof params.maxWidth === 'number' ? params.maxWidth : undefined;
 
       if (setOfMark) {
         await callContentScript(tab.id, 'cs.setOfMark', { show: true });
       }
       try {
+        let mimeType: string;
+        let base64: string;
+        let width: number | undefined;
+        let height: number | undefined;
+
         const attached = await cdp.ensureAttached(tab.id);
         if (attached) {
           const shot = await cdp.captureScreenshot(tab.id, { format, quality, fullPage });
-          return { tabId: tab.id, url: tab.url ?? '', ...shot };
+          mimeType = shot.mimeType;
+          base64 = shot.base64;
+        } else {
+          // Fallback to captureVisibleTab if user has DevTools open
+          await chrome.tabs.update(tab.id, { active: true });
+          const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+            format: format === 'png' ? 'png' : 'jpeg',
+            quality,
+          });
+          const [prefix, rawB64] = dataUrl.split(',');
+          const mimeMatch = prefix?.match(/data:(.*?);base64/);
+          mimeType = mimeMatch?.[1] ?? 'image/jpeg';
+          base64 = rawB64 ?? '';
         }
-        // Fallback to captureVisibleTab if user has DevTools open
-        await chrome.tabs.update(tab.id, { active: true });
-        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
-          format: format === 'png' ? 'png' : 'jpeg',
-          quality,
-        });
-        const [prefix, base64] = dataUrl.split(',');
-        const mimeMatch = prefix?.match(/data:(.*?);base64/);
-        return {
-          tabId: tab.id,
-          url: tab.url ?? '',
-          mimeType: mimeMatch?.[1] ?? 'image/jpeg',
-          base64: base64 ?? '',
-        };
+
+        if (maxWidth && base64) {
+          const resized = await downscaleBase64Image(base64, mimeType, maxWidth, quality);
+          base64 = resized.base64;
+          mimeType = resized.mimeType;
+          width = resized.width;
+          height = resized.height;
+        }
+
+        return { tabId: tab.id, url: tab.url ?? '', mimeType, base64, width, height };
       } finally {
         if (setOfMark) {
           await callContentScript(tab.id, 'cs.setOfMark', { show: false }).catch(() => {});

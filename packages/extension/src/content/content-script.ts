@@ -184,9 +184,42 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
   // Visibility & Prompt-Injection Shield Filtering
   // -------------------------------------------------------------------------
 
+  const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea', 'summary']);
+  const INTERACTIVE_ROLES = new Set([
+    'button',
+    'link',
+    'textbox',
+    'searchbox',
+    'combobox',
+    'checkbox',
+    'radio',
+    'switch',
+    'tab',
+    'menuitem',
+    'option',
+    'slider',
+  ]);
+  const LANDMARK_ROLES = new Set(['heading', 'dialog', 'alert', 'status']);
+  const HEADING_TAG_RE = /^h[1-6]$/;
+
   function isElementHiddenOrTrap(el: Element): boolean {
     if (el.id === 'chrome-browser-mcp-hud-host') return true;
     if (el.getAttribute('aria-hidden') === 'true') return true;
+
+    // Native fast path (Chrome 105+): rejects display:none, visibility:hidden, opacity:0,
+    // and content-visibility:hidden without calling getComputedStyle() or getBoundingClientRect().
+    if (typeof (el as Element & { checkVisibility?: (opts?: Record<string, boolean>) => boolean }).checkVisibility === 'function') {
+      const visible = (el as Element & { checkVisibility: (opts?: Record<string, boolean>) => boolean }).checkVisibility({
+        checkOpacity: true,
+        checkVisibilityCSS: true,
+      });
+      if (!visible) {
+        // Double-check display:contents which checkVisibility reports as false even when children are visible
+        if (window.getComputedStyle(el).display === 'contents') return false;
+        return true;
+      }
+    }
+
     const style = window.getComputedStyle(el);
     if (style.display === 'contents') return false;
     if (
@@ -217,29 +250,9 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
   function isInteractive(el: Element): boolean {
     const tag = el.tagName.toLowerCase();
-    if (['a', 'button', 'input', 'select', 'textarea', 'summary'].includes(tag)) {
-      return true;
-    }
+    if (INTERACTIVE_TAGS.has(tag)) return true;
     const role = el.getAttribute('role');
-    if (
-      role &&
-      [
-        'button',
-        'link',
-        'textbox',
-        'searchbox',
-        'combobox',
-        'checkbox',
-        'radio',
-        'switch',
-        'tab',
-        'menuitem',
-        'option',
-        'slider',
-      ].includes(role)
-    ) {
-      return true;
-    }
+    if (role && INTERACTIVE_ROLES.has(role)) return true;
     if (el.getAttribute('contenteditable') === 'true') return true;
     const tabIndex = el.getAttribute('tabindex');
     if (tabIndex !== null && Number(tabIndex) >= 0) return true;
@@ -248,9 +261,9 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
   function isLandmarkOrHeading(el: Element): boolean {
     const tag = el.tagName.toLowerCase();
-    if (/^h[1-6]$/.test(tag)) return true;
+    if (HEADING_TAG_RE.test(tag)) return true;
     const role = el.getAttribute('role');
-    return Boolean(role && ['heading', 'dialog', 'alert', 'status'].includes(role));
+    return Boolean(role && LANDMARK_ROLES.has(role));
   }
 
   function inferRole(el: Element): string {
@@ -774,17 +787,43 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         await new Promise((r) => setTimeout(r, step.ms));
         return { ok: true, detail: `Waited ${step.ms}ms` };
       }
-      const deadline = Date.now() + (step.timeoutMs ?? 5000);
-      while (Date.now() < deadline) {
+      const checkMatch = (): string | null => {
         if (step.selector && document.querySelector(step.selector)) {
-          return { ok: true, detail: `Selector "${step.selector}" appeared` };
+          return `Selector "${step.selector}" appeared`;
         }
         if (step.text && document.body?.innerText.includes(step.text)) {
-          return { ok: true, detail: `Text "${step.text}" appeared` };
+          return `Text "${step.text}" appeared`;
         }
-        await new Promise((r) => setTimeout(r, 120));
-      }
-      return { ok: false, error: `Wait timed out after ${step.timeoutMs}ms` };
+        return null;
+      };
+      const immediate = checkMatch();
+      if (immediate) return { ok: true, detail: immediate };
+
+      const timeoutMs = step.timeoutMs ?? 5000;
+      const matched = await new Promise<string | null>((resolve) => {
+        let settled = false;
+        const finish = (val: string | null) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          observer.disconnect();
+          resolve(val);
+        };
+        const observer = new MutationObserver(() => {
+          const hit = checkMatch();
+          if (hit) finish(hit);
+        });
+        const root = document.documentElement || document;
+        observer.observe(root, {
+          childList: true,
+          subtree: true,
+          characterData: Boolean(step.text),
+          attributes: Boolean(step.selector),
+        });
+        const timer = setTimeout(() => finish(checkMatch()), timeoutMs);
+      });
+      if (matched) return { ok: true, detail: matched };
+      return { ok: false, error: `Wait timed out after ${timeoutMs}ms` };
     }
 
     if (step.kind === 'scroll') {
