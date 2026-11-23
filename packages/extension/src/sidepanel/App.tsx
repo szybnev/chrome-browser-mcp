@@ -183,6 +183,12 @@ export function App() {
     };
   }, [refresh, checkOptionalPerms]);
 
+  useEffect(() => {
+    if (!statusMsg) return;
+    const id = setTimeout(() => setStatusMsg(null), 5000);
+    return () => clearTimeout(id);
+  }, [statusMsg]);
+
   const attachedTabs = useMemo(
     () => (data ? data.tabs.filter((t) => t.inAgentGroup) : []),
     [data],
@@ -561,6 +567,16 @@ export function App() {
           </div>
         </div>
         <div className="header-actions">
+          <select
+            className="lang-select"
+            aria-label={t('setting.language')}
+            value={locale}
+            onChange={(e) => void handleLocaleChange(e.target.value as LocalePreference)}
+          >
+            <option value="en">EN</option>
+            <option value="ru">RU</option>
+            <option value="zh-CN">中文</option>
+          </select>
           <ThemeToggle
             persistedTheme={settings.theme ?? null}
             onPersist={(next) => void handleThemePersist(next)}
@@ -1016,21 +1032,6 @@ export function App() {
                     void handlePolicyPatch({ requireApprovalForUploads: e.target.checked })
                   }
                 />
-              </div>
-
-              <div className="security-row">
-                <label htmlFor="sp-sec-lang">{t('setting.language')}</label>
-                <select
-                  id="sp-sec-lang"
-                  className="input"
-                  style={{ width: 'auto', minWidth: 112 }}
-                  value={locale}
-                  onChange={(e) => void handleLocaleChange(e.target.value as LocalePreference)}
-                >
-                  <option value="en">English</option>
-                  <option value="ru">Русский</option>
-                  <option value="zh-CN">简体中文</option>
-                </select>
               </div>
 
               <div className="row">
