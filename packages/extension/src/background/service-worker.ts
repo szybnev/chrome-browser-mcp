@@ -638,8 +638,9 @@ async function dispatchRpc(
       const tab = await resolveAccessibleTab(params.tabId as number | undefined);
       const action = String(params.action ?? 'goto');
       const timeoutMs = Number(params.timeoutMs ?? 15_000);
+      const requestedUrl = action === 'goto' ? String(params.url) : undefined;
       if (action === 'goto') {
-        await chrome.tabs.update(tab.id, { url: String(params.url) });
+        await chrome.tabs.update(tab.id, { url: requestedUrl });
         await waitForTabLoad(tab.id, timeoutMs);
       } else if (action === 'back') {
         await chrome.tabs.goBack(tab.id);
@@ -665,7 +666,12 @@ async function dispatchRpc(
 
       const updated = await chrome.tabs.get(tab.id);
       await pushTabsSnapshotToBroker();
-      return { tabId: tab.id, url: updated.url ?? '', title: updated.title ?? '' };
+      const finalUrl = updated.url ?? '';
+      const redirectedFrom =
+        requestedUrl && finalUrl && requestedUrl.replace(/\/$/, '') !== finalUrl.replace(/\/$/, '')
+          ? requestedUrl
+          : undefined;
+      return { tabId: tab.id, url: finalUrl, title: updated.title ?? '', redirectedFrom };
     }
 
     case 'page.snapshot': {
@@ -699,13 +705,22 @@ async function dispatchRpc(
       const tab = await resolveAccessibleTab(params.tabId as number | undefined);
       const data = await callContentScript<{
         markdown: string;
+        totalChars: number;
+        offset: number;
+        returnedChars: number;
+        hasMore: boolean;
+        nextOffset: number | null;
         filteredHiddenCount: number;
+        tabsSummary: string[];
+        alternateLinks: string[];
         url: string;
         origin: string;
         title: string;
       }>(tab.id, 'cs.read', {
         selector: params.selector,
-        maxChars: Number(params.maxChars ?? 12_000),
+        maxChars: Number(params.maxChars ?? 30_000),
+        offset: Number(params.offset ?? 0),
+        scope: params.scope === 'body' ? 'body' : 'main',
       });
       return { tabId: tab.id, ...data };
     }

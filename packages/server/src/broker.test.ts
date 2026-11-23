@@ -169,12 +169,20 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
       method: 'tools/list',
       params: {},
     });
-    const toolNames = (toolsList.result.tools as Array<{ name: string }>).map((t) => t.name);
+    const tools = toolsList.result.tools as Array<{
+      name: string;
+      inputSchema?: { properties?: Record<string, unknown> };
+    }>;
+    const toolNames = tools.map((t) => t.name);
     expect(toolNames).toContain('browser_snapshot');
     expect(toolNames).toContain('browser_act');
     expect(toolNames).toContain('browser_webmcp_list');
     expect(toolNames).toContain('browser_workflows');
     expect(toolNames).toContain('browser_deck');
+
+    const readTool = tools.find((t) => t.name === 'browser_read');
+    expect(readTool?.inputSchema?.properties).toHaveProperty('offset');
+    expect(readTool?.inputSchema?.properties).toHaveProperty('scope');
 
     const resRead = await mcpPost({
       jsonrpc: '2.0',

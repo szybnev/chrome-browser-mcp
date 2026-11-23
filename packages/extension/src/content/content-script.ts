@@ -188,6 +188,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     if (el.id === 'chrome-browser-mcp-hud-host') return true;
     if (el.getAttribute('aria-hidden') === 'true') return true;
     const style = window.getComputedStyle(el);
+    if (style.display === 'contents') return false;
     if (
       style.display === 'none' ||
       style.visibility === 'hidden' ||
@@ -197,11 +198,20 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       return true;
     }
     const fontSize = parseFloat(style.fontSize || '12');
-    if (fontSize < 1) return true;
+    if (fontSize < 1 && el.children.length === 0) return true;
     const rect = el.getBoundingClientRect();
-    if (rect.width < 1 && rect.height < 1) return true;
-    // Detect classic sr-only / offscreen hidden text traps (-9999px)
-    if (rect.right < -500 || rect.bottom < -500) return true;
+    const clipsChildren =
+      style.overflow === 'hidden' ||
+      style.overflow === 'clip' ||
+      style.overflowX === 'hidden' ||
+      style.overflowY === 'hidden';
+    if (rect.width < 1 && rect.height < 1 && (el.children.length === 0 || clipsChildren)) {
+      return true;
+    }
+    // Detect classic sr-only / offscreen hidden text traps (-9999px) on leaf or clipped nodes
+    if ((rect.right < -500 || rect.bottom < -500) && (el.children.length === 0 || clipsChildren)) {
+      return true;
+    }
     return false;
   }
 
@@ -477,25 +487,107 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
   // Clean Markdown Extractor (with hidden-node filtering)
   // -------------------------------------------------------------------------
 
-  function extractMarkdown(selector?: string, maxChars = 12000): {
-    markdown: string;
-    filteredHiddenCount: number;
-  } {
-    const root =
-      (selector ? document.querySelector(selector) : null) ||
-      document.querySelector('main, article, [role="main"]') ||
-      document.body;
+  const BLOCK_TAGS = new Set([
+    'address', 'article', 'aside', 'blockquote', 'dd', 'details', 'dialog', 'div',
+    'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2',
+    'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre',
+    'section', 'summary', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+  ]);
 
-    if (!root) return { markdown: '', filteredHiddenCount: 0 };
+  function extractCodeLanguage(pre: Element): string {
+    const codeEl = pre.querySelector('code') ?? pre;
+    const cls = `${pre.className ?? ''} ${codeEl.className ?? ''}`;
+    const match = cls.match(/\b(?:language|lang)-([a-z0-9_+#.-]+)/i);
+    return match?.[1] ?? '';
+  }
+
+  function pickReadRoot(selector?: string, scope: 'main' | 'body' = 'main'): Element | null {
+    if (selector) return document.querySelector(selector);
+    if (scope === 'body') return document.body;
+
+    const bodyTextLen = (document.body?.innerText ?? '').trim().length;
+    const mainCandidate = document.querySelector('main, [role="main"]');
+    if (mainCandidate) {
+      const mainLen = ((mainCandidate as HTMLElement).innerText ?? '').trim().length;
+      // Only lock onto <main> when it holds a meaningful portion of the page text
+      if (bodyTextLen === 0 || mainLen >= bodyTextLen * 0.3) {
+        return mainCandidate;
+      }
+    }
+
+    const articles = document.querySelectorAll('article');
+    if (articles.length === 1) {
+      const artLen = ((articles[0] as HTMLElement).innerText ?? '').trim().length;
+      if (bodyTextLen === 0 || artLen >= bodyTextLen * 0.45) {
+        return articles[0]!;
+      }
+    }
+
+    return document.body;
+  }
+
+  function extractMarkdown(options?: {
+    selector?: string;
+    maxChars?: number;
+    offset?: number;
+    scope?: 'main' | 'body';
+  }): {
+    markdown: string;
+    totalChars: number;
+    offset: number;
+    returnedChars: number;
+    hasMore: boolean;
+    nextOffset: number | null;
+    filteredHiddenCount: number;
+    tabsSummary: string[];
+    alternateLinks: string[];
+  } {
+    const maxChars = options?.maxChars ?? 30000;
+    const offset = Math.max(0, options?.offset ?? 0);
+    const scope = options?.scope ?? 'main';
+    const root = pickReadRoot(options?.selector, scope);
+
+    const tabsSummary = [...document.querySelectorAll('[role="tab"]')]
+      .filter((t) => !isElementHiddenOrTrap(t))
+      .slice(0, 20)
+      .map((t) => {
+        const label = computeAccessibleName(t).slice(0, 40);
+        const sel = t.getAttribute('aria-selected') === 'true';
+        return sel ? `${label} (selected)` : label;
+      })
+      .filter(Boolean);
+
+    const alternateLinks = [...document.querySelectorAll('link[rel="alternate"]')]
+      .map((l) => {
+        const type = l.getAttribute('type') ?? '';
+        const href = l.getAttribute('href') ?? '';
+        return href ? `${type || 'alternate'}: ${href}` : '';
+      })
+      .filter(Boolean)
+      .slice(0, 5);
+
+    if (!root) {
+      return {
+        markdown: '',
+        totalChars: 0,
+        offset,
+        returnedChars: 0,
+        hasMore: false,
+        nextOffset: null,
+        filteredHiddenCount: 0,
+        tabsSummary,
+        alternateLinks,
+      };
+    }
 
     const lines: string[] = [];
-    let totalLen = 0;
     let filteredHiddenCount = 0;
 
-    const pushLine = (line: string) => {
-      if (!line || totalLen >= maxChars) return;
-      lines.push(line);
-      totalLen += line.length + 1;
+    const hasBlockChild = (el: Element): boolean => {
+      for (const child of el.children) {
+        if (BLOCK_TAGS.has(child.tagName.toLowerCase())) return true;
+      }
+      return false;
     };
 
     const visibleInlineText = (el: Element): string => {
@@ -510,7 +602,12 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             filteredHiddenCount += 1;
             continue;
           }
-          if (t === 'a' && child instanceof HTMLAnchorElement && child.href) {
+          if (t === 'br') {
+            buf += '\n';
+          } else if (t === 'code') {
+            const inner = visibleInlineText(child).trim();
+            if (inner) buf += `\`${inner}\``;
+          } else if (t === 'a' && child instanceof HTMLAnchorElement && child.href) {
             const label = visibleInlineText(child).trim();
             if (label) buf += `[${label}](${child.href})`;
           } else {
@@ -518,14 +615,13 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
           }
         }
       }
-      return buf.replace(/\s+/g, ' ');
+      return buf.replace(/[ \t]+/g, ' ');
     };
 
     const walk = (node: Node) => {
-      if (totalLen >= maxChars) return;
       if (node.nodeType === Node.TEXT_NODE) {
         const txt = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-        if (txt) pushLine(txt);
+        if (txt) lines.push(txt);
         return;
       }
       if (!(node instanceof Element)) return;
@@ -533,8 +629,11 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       const tag = node.tagName.toLowerCase();
       if (
         node.id === 'chrome-browser-mcp-hud-host' ||
-        ['script', 'style', 'noscript', 'svg', 'template', 'nav', 'footer'].includes(tag)
+        ['script', 'style', 'noscript', 'svg', 'template'].includes(tag)
       ) {
+        return;
+      }
+      if (scope === 'main' && ['nav', 'footer'].includes(tag)) {
         return;
       }
       if (isElementHiddenOrTrap(node)) {
@@ -560,47 +659,55 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       if (/^h[1-6]$/.test(tag)) {
         const level = Number(tag[1]);
         const txt = visibleInlineText(node).trim();
-        if (txt) pushLine(`\n${'#'.repeat(level)} ${txt}\n`);
+        if (txt) lines.push(`\n${'#'.repeat(level)} ${txt}\n`);
         return;
       }
       if (tag === 'pre') {
         const code = node.textContent?.trim();
-        if (code) pushLine(`\n\`\`\`\n${code}\n\`\`\`\n`);
+        const lang = extractCodeLanguage(node);
+        if (code) lines.push(`\n\`\`\`${lang}\n${code}\n\`\`\`\n`);
         return;
       }
       if (tag === 'table') {
         const rows = [...node.querySelectorAll('tr')];
-        for (let r = 0; r < rows.length && totalLen < maxChars; r++) {
+        for (let r = 0; r < rows.length; r++) {
           const row = rows[r]!;
           if (isElementHiddenOrTrap(row)) continue;
           const cells = [...row.querySelectorAll('th, td')].map((cell) =>
-            visibleInlineText(cell).trim().replace(/\|/g, '\\|'),
+            visibleInlineText(cell).trim().replace(/\|/g, '\\|').replace(/\n/g, ' '),
           );
           if (cells.length > 0) {
-            pushLine(`| ${cells.join(' | ')} |`);
-            if (r === 0) pushLine(`| ${cells.map(() => '---').join(' | ')} |`);
+            lines.push(`| ${cells.join(' | ')} |`);
+            if (r === 0) lines.push(`| ${cells.map(() => '---').join(' | ')} |`);
           }
         }
         return;
       }
       if (tag === 'li') {
-        const txt = visibleInlineText(node).trim();
-        if (txt) pushLine(`- ${txt}`);
-        return;
+        if (!hasBlockChild(node)) {
+          const txt = visibleInlineText(node).trim();
+          if (txt) lines.push(`- ${txt}`);
+          return;
+        }
       }
       if (tag === 'dt') {
         const txt = visibleInlineText(node).trim();
-        if (txt) pushLine(`\n**${txt}**`);
+        if (txt) lines.push(`\n**${txt}**`);
         return;
       }
       if (tag === 'dd') {
         const txt = visibleInlineText(node).trim();
-        if (txt) pushLine(`: ${txt}`);
+        if (txt) lines.push(`: ${txt}`);
         return;
       }
       if (tag === 'p' || tag === 'blockquote') {
         const txt = visibleInlineText(node).trim();
-        if (txt) pushLine(tag === 'blockquote' ? `> ${txt}` : `\n${txt}`);
+        if (txt) lines.push(tag === 'blockquote' ? `> ${txt}` : `\n${txt}`);
+        return;
+      }
+      if (BLOCK_TAGS.has(tag) && !hasBlockChild(node) && !node.shadowRoot) {
+        const txt = visibleInlineText(node).trim();
+        if (txt) lines.push(txt);
         return;
       }
 
@@ -610,10 +717,21 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     };
 
     walk(root);
-    const out = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, maxChars);
+    const full = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    const totalChars = full.length;
+    const slice = full.slice(offset, offset + maxChars);
+    const hasMore = offset + slice.length < totalChars;
+
     return {
-      markdown: out,
+      markdown: slice,
+      totalChars,
+      offset,
+      returnedChars: slice.length,
+      hasMore,
+      nextOffset: hasMore ? offset + slice.length : null,
       filteredHiddenCount,
+      tabsSummary,
+      alternateLinks,
     };
   }
 
@@ -993,7 +1111,12 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             sendResponse({
               ok: true,
               data: {
-                ...extractMarkdown(msg.params?.selector, msg.params?.maxChars),
+                ...extractMarkdown({
+                  selector: msg.params?.selector,
+                  maxChars: msg.params?.maxChars,
+                  offset: msg.params?.offset,
+                  scope: msg.params?.scope,
+                }),
                 url: location.href,
                 origin: location.origin,
                 title: document.title,

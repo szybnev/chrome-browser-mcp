@@ -258,17 +258,23 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           if (check.blocked) return errorResult(`Blocked by domain policy: ${check.reason}`);
         }
 
-        const { data } = await hub.callExtension<{ tabId: number; url: string; title: string }>(
+        const { data } = await hub.callExtension<{
+          tabId: number;
+          url: string;
+          title: string;
+          redirectedFrom?: string;
+        }>(
           'page.navigate',
           { action, url, tabId, waitSelector, waitText, timeoutMs },
           { profileId, timeoutMs: timeoutMs + 5000, toolLabel: `browser_navigate:${action}` },
         );
 
+        const redirectNote = data.redirectedFrom ? ` [redirected from ${data.redirectedFrom}]` : '';
         return {
           content: [
             {
               type: 'text',
-              text: `Tab ${data.tabId} ready: "${data.title}" (${data.url})`,
+              text: `Tab ${data.tabId} ready: "${data.title}" (${data.url})${redirectNote}`,
             },
           ],
         };
@@ -346,15 +352,18 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'browser_read',
     {
       title: 'Read Page Markdown',
-      description: 'Extract clean readable Markdown text from the page or a specific CSS selector, filtered by Prompt-Injection Shield.',
+      description:
+        'Extract clean readable Markdown text from the page (or CSS selector), with chunk pagination (offset + maxChars up to 200k), interactive tab hints, and Prompt-Injection Shield.',
       inputSchema: z.object({
         tabId: z.number().int().optional(),
         selector: z.string().optional(),
-        maxChars: z.number().int().min(500).max(50000).default(12000),
+        offset: z.number().int().min(0).default(0).describe('Character offset for paginating long pages without reloading'),
+        maxChars: z.number().int().min(500).max(200000).default(30000),
+        scope: z.enum(['main', 'body']).default('main').describe('Read primary content ("main") or entire document body ("body")'),
         profileId: z.string().optional(),
       }),
     },
-    async ({ tabId, selector, maxChars, profileId }) => {
+    async ({ tabId, selector, offset, maxChars, scope, profileId }) => {
       try {
         const { data } = await hub.callExtension<{
           tabId: number;
@@ -362,10 +371,17 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           origin: string;
           title: string;
           markdown: string;
+          totalChars?: number;
+          offset?: number;
+          returnedChars?: number;
+          hasMore?: boolean;
+          nextOffset?: number | null;
           filteredHiddenCount: number;
+          tabsSummary?: string[];
+          alternateLinks?: string[];
         }>(
           'page.read',
-          { tabId, selector, maxChars },
+          { tabId, selector, offset, maxChars, scope },
           { profileId, toolLabel: 'browser_read' },
         );
 
@@ -374,11 +390,31 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           return errorResult(`Blocked by domain policy: ${urlCheck.reason}`);
         }
 
+        const metaHints: string[] = [];
+        if (data.tabsSummary && data.tabsSummary.length > 0) {
+          metaHints.push(
+            `[TABS: ${data.tabsSummary.join(', ')} — call browser_snapshot + browser_act(click) to view inactive tabs]`,
+          );
+        }
+        if (data.alternateLinks && data.alternateLinks.length > 0) {
+          metaHints.push(`[ALTERNATE_LINKS: ${data.alternateLinks.join('; ')}]`);
+        }
+
+        let body = data.markdown;
+        if (metaHints.length > 0) {
+          body = `${metaHints.join('\n')}\n\n${body}`;
+        }
+        if (data.hasMore && data.nextOffset !== null && data.nextOffset !== undefined) {
+          const total = data.totalChars ?? data.nextOffset;
+          const remaining = Math.max(0, total - data.nextOffset);
+          body += `\n\n[PAGINATION: Showing chars ${data.offset ?? offset}..${data.nextOffset} of ${total} (${remaining} remaining). Call browser_read(tabId=${data.tabId}, offset=${data.nextOffset}, maxChars=${maxChars}) to read the next chunk without reloading.]`;
+        }
+
         const framed = frameUntrustedPageContent({
           origin: data.origin,
           url: data.url,
           title: data.title,
-          content: data.markdown,
+          content: body,
           filteredHiddenCount: data.filteredHiddenCount,
           shieldEnabled: hub.getPolicy().promptInjectionShield,
         });

@@ -22,6 +22,8 @@ Use this workflow whenever interacting with the user's real browser through `chr
 ## 3. Token-Efficient Perception Loop
 - Start with `browser_snapshot(mode="diff")` — never request a screenshot unless you genuinely need visual layout inspection, canvas/chart reading, or unlabeled icon disambiguation.
 - For reading articles, docs, or long text, prefer `browser_read` over `browser_snapshot`.
+- **Long pages:** If `browser_read` ends with `[PAGINATION: ... offset=...]`, continue reading the remaining chunks with `browser_read(tabId=..., offset=...)` (never reload the URL!) until you have the full document or the section you need.
+- **Tabbed content:** If `browser_read` reports `[TABS: ...]`, call `browser_snapshot` and `browser_act(click)` on the relevant tab(s) to inspect their content without reloading the page.
 - When you DO need visual grounding on complex UIs, use `browser_screenshot(setOfMark=true)` so element refs (`e1`, `e2`…) appear right on the image.
 
 ## 4. Batch Multi-Step Actions
