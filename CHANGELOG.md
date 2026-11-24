@@ -4,6 +4,31 @@ All notable changes to **Chrome Browser MCP** are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-11-24
+
+### Security
+
+- **Authenticated Streamable HTTP `/mcp` & Capability-Gated Control Deck (`F-01`, `R-04`)**: `POST /mcp` now requires `Authorization: Bearer <token>` or `x-broker-token`; all privileged mutating `deck_*` tools validate a per-server / per-broker `deckSecret` via `timingSafeEqual` so LLM agents cannot mutate policies, approvals, or pause state.
+- **Authenticated 6-Digit PIN Minting (`F-02`)**: removed unauthenticated PIN generation from `GET /pair` and `POST /pair/request-pin`; PINs are now minted exclusively via the 1-click **Generate PIN** button in Browser Control Deck (`deck_create_pin`) or CLI (`node packages/server/dist/cli.js pair`), with `X-Frame-Options: DENY`, strict `CSP`, `CORP: same-origin`, and `415` enforcement on non-JSON `/pair/exchange`.
+- **Tab-Group & MV3 Isolation Hardening (`F-03`, `F-10`, `R-02`, `R-05`)**: removed `attach` from agent-callable `browser_tabs`, enforced `userInitiated === true` + `isUrlBlocked` in `tabs.attach`, restricted `tabs.detach` to AI Agent group tabs, switched the in-page HUD to a closed Shadow DOM with `ev.isTrusted` on the Pause pill, and enforced extension-origin sender verification on all `sp.*` and `recorder.step` messages (preserving `welcome.html` onboarding).
+- **Zero-Secret & Filesystem Upload Protection (`F-04`, `F-08`, `F-09`)**: removed `/internal/resolve-secret` and resolved/scrubbed secrets strictly inside `BrowserBrokerHub`; restricted Zero-Secret autofill to `<input type="password">` targets; defaulted `uploadAllowedDirs` fail-closed to `[~/Downloads]` with an unremovable sensitive path denylist and pre/post-approval `realpathSync` verification.
+- **CDP Proxy Allowlist & Scoped Token (`F-05`, `F-17`)**: replaced the narrow CDP denylist with strict `SAFE_CDP_READ_METHODS` / `SAFE_CDP_MUTATE_METHODS` allowlists, domain checks on `Page.navigate` and `/cdp/browser`, and a separate scoped `cdpToken` (never exposing the master broker token).
+- **Live Policies, Origin-Bound Approvals & Complete Gate Coverage (`F-06`, `F-16`, `R-01`, `R-03`)**: routed stdio clients to live broker policy and tab URLs (`/internal/policy`, `/internal/tab-url`), split public `ActionStepSchema` from internal `ExtensionActionStepSchema` (stripping caller-supplied `preApproved`/`isSecret`), added fail-closed `expectedOrigin` checks, DOM-level password/payment challenges (including `selector`, `(x, y)`, `Enter`, `Space`, and `forceCdp`), approval gates on `browser_workflows(replay)`, `browser_webmcp_call`, and `dialogPolicy: "approval"`.
+- **URL Normalization, Prompt-Injection Shield & ReDoS Hardening (`F-07`, `F-11`–`F-15`, `F-18`–`F-20`)**: expanded default blocked schemes (`file://*`, `javascript:*`, `data:*`, `blob:*`, `view-source:*`), normalized trailing DNS dots, collapsed `//`, `%XX`, and `:port`, enforced post-redirect and iframe domain/read-only checks, added per-call random nonces to `<<<UNTRUSTED_PAGE_CONTENT>>>` across all page-derived tools, stripped Unicode Tag characters & hidden `<pre>`/table/CSS traps, timed out `discoverWebMcp` at 300ms, fixed polynomial ReDoS in `redactSensitiveBody` and wildcard matching, hardened Playwright export escaping, enforced `0o700`/`0o600` file permissions, POSIX-quoted `native-host.sh`, and validated loopback `wsUrl` & `data:image/*` thumbnails.
+
+### Added
+
+- **1-Click Generate PIN & Reliable Sandbox Copy in Browser Control Deck**: generates a 2-minute single-use PIN directly from Antigravity with automatic clipboard copy (`navigator.clipboard` → `execCommand('copy')` → safe 6-digit OS clipboard fallback).
+- **Separate Clear Buttons in DevTools Tab**: clear **Console Errors & Warnings** and **Failed Network Requests** independently in Browser Control Deck.
+- **Strict Biome 2.6 Checker & Linter**: `pnpm check` (`biome check --error-on-warnings .`) enforced across `package.json`, `.githooks/pre-commit`, `.githooks/pre-push`, and GitHub Actions CI.
+
+### Changed & Fixed
+
+- Moved the Side Panel language selector into the top header next to the theme toggle (matching Browser Control Deck).
+- Fixed Browser Control Deck Light/Dark theme toggle overriding host inline `color-scheme` styles.
+- Guarded workflow recording against `chrome://` and Chrome Web Store URLs and upgraded `buildSelectorHint` to produce unique Playwright-safe selectors (avoiding ephemeral React `_R_...` IDs).
+- Kept file exports (`.spec.ts` / JSON audit reports) in Chrome Side Panel only.
+
 ## [2.0.0] - 2026-11-24
 
 ### Added
