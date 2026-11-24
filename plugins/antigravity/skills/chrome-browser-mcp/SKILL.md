@@ -1,11 +1,10 @@
 ---
-
 name: chrome-browser-mcp
 description: >
-Optimal agent workflow for driving real Chrome/Chromium browser tabs via Chrome Browser MCP v2.0:
-WebMCP-first discovery, multi-frame & Shadow DOM snapshots, token-efficient diffs, batched actions
-with Zero-Secret autofill & uploads, JS dialog handling, device emulation, Prompt-Injection Shield hygiene,
-and on-demand DevTools diagnostics.
+  Optimal agent workflow for driving real Chrome/Chromium browser tabs via Chrome Browser MCP v2.0:
+  WebMCP-first discovery, multi-frame & Shadow DOM snapshots, token-efficient diffs, batched actions
+  with Zero-Secret autofill & uploads, JS dialog handling, device emulation, Prompt-Injection Shield hygiene,
+  and on-demand DevTools diagnostics.
 ---
 
 # Chrome Browser MCP — Agent Playbook (v2.0)
