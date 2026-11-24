@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -170,6 +171,44 @@ function safeOriginFromUrl(url: string): string {
   } catch {
     return 'unknown-origin';
   }
+}
+
+async function copySixDigitPinToClipboard(pin: string): Promise<boolean> {
+  if (!/^\d{6}$/.test(pin) || process.env.VITEST === 'true') return false;
+  const candidates: Array<{ cmd: string; args: string[] }> =
+    process.platform === 'darwin'
+      ? [{ cmd: 'pbcopy', args: [] }]
+      : process.platform === 'win32'
+        ? [{ cmd: 'clip', args: [] }]
+        : [
+            { cmd: 'wl-copy', args: [] },
+            { cmd: 'xclip', args: ['-selection', 'clipboard'] },
+            { cmd: 'xsel', args: ['--clipboard', '--input'] },
+          ];
+
+  for (const { cmd, args } of candidates) {
+    const ok = await new Promise<boolean>((resolvePromise) => {
+      let settled = false;
+      const done = (val: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolvePromise(val);
+      };
+      const timer = setTimeout(() => done(false), 1500);
+      try {
+        const child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
+        child.once('error', () => done(false));
+        child.once('close', (code) => done(code === 0));
+        child.stdin?.once('error', () => done(false));
+        child.stdin?.end(pin, 'utf8');
+      } catch {
+        done(false);
+      }
+    });
+    if (ok) return true;
+  }
+  return false;
 }
 
 export function createBrowserMcpServer(
@@ -1819,19 +1858,44 @@ export function createBrowserMcpServer(
     },
   );
 
+  let lastMintedPin: { pin: string; expiresAt: number } | null = null;
+
   server.registerTool(
     'deck_create_pin',
     {
       title: 'Deck: Generate 6-Digit Pairing PIN',
-      inputSchema: z.object({ deckSecret: z.string().optional() }),
+      inputSchema: z.object({
+        deckSecret: z.string().optional(),
+        copyActive: z.boolean().optional(),
+      }),
       _meta: APP_ONLY_META,
     },
-    async ({ deckSecret: supplied }) => {
+    async ({ deckSecret: supplied, copyActive }) => {
       assertDeckSecret(supplied);
+      if (copyActive && lastMintedPin && Date.now() < lastMintedPin.expiresAt) {
+        const copied = await copySixDigitPinToClipboard(lastMintedPin.pin);
+        return {
+          content: [{ type: 'text', text: copied ? 'Pairing PIN copied' : 'Pairing PIN ready' }],
+          structuredContent: {
+            pin: lastMintedPin.pin,
+            expiresAt: lastMintedPin.expiresAt,
+            copied,
+          },
+        };
+      }
       const { pin, expiresAt } = await hub.createPairingPin();
+      lastMintedPin = { pin, expiresAt };
+      const copied = await copySixDigitPinToClipboard(pin);
       return {
-        content: [{ type: 'text', text: 'Pairing PIN generated (valid 2 min)' }],
-        structuredContent: { pin, expiresAt },
+        content: [
+          {
+            type: 'text',
+            text: copied
+              ? 'Pairing PIN generated and copied to clipboard (valid 2 min)'
+              : 'Pairing PIN generated (valid 2 min)',
+          },
+        ],
+        structuredContent: { pin, expiresAt, copied },
       };
     },
   );

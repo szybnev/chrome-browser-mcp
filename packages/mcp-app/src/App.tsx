@@ -29,6 +29,36 @@ interface ToolStructuredPayload {
   state?: DeckState;
   pin?: string;
   expiresAt?: number;
+  copied?: boolean;
+}
+
+async function copyTextInBrowser(text: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Blocked by iframe Permissions-Policy — fall through to execCommand fallback
+    }
+  }
+  if (typeof document !== 'undefined') {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
+    document.body.appendChild(ta);
+    try {
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    } finally {
+      ta.remove();
+    }
+  }
+  return false;
 }
 
 export function App() {
@@ -84,6 +114,9 @@ export function App() {
         if (structured?.state) setDeckState(structured.state);
         if (structured?.pin && structured?.expiresAt) {
           setPairingPin({ pin: structured.pin, expiresAt: structured.expiresAt });
+          if (structured.copied) {
+            setNotice(`${translate(locale, 'status.copied')} (${structured.pin})`);
+          }
         }
       } catch (err) {
         setNotice(err instanceof Error ? err.message : String(err));
@@ -91,7 +124,7 @@ export function App() {
         setBusy(false);
       }
     },
-    [app],
+    [app, locale],
   );
 
   useEffect(() => {
@@ -401,16 +434,44 @@ export function App() {
 
       {pairingPin && (
         <div className="toast-banner" role="status" aria-live="polite">
-          <span className="toast-text">
-            {tr('pair.pinTitle')}:{' '}
+          <span className="toast-text" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span>{tr('pair.pinTitle')}:</span>
             <button
               type="button"
               className="btn small primary"
-              style={{ marginLeft: 6, fontFamily: 'ui-monospace, monospace', letterSpacing: '0.14em' }}
+              style={{
+                fontFamily: 'ui-monospace, monospace',
+                letterSpacing: '0.14em',
+                userSelect: 'all',
+              }}
               title={tr('status.clickToCopy')}
               onClick={() => {
-                void navigator.clipboard?.writeText(pairingPin.pin).catch(() => {});
-                setNotice(`${tr('status.copied')} (${pairingPin.pin})`);
+                void (async () => {
+                  const browserOk = await copyTextInBrowser(pairingPin.pin);
+                  if (browserOk) {
+                    setNotice(`${tr('status.copied')} (${pairingPin.pin})`);
+                    return;
+                  }
+                  if (app) {
+                    try {
+                      const res = await app.callServerTool({
+                        name: 'deck_create_pin',
+                        arguments: {
+                          ...(DECK_SECRET ? { deckSecret: DECK_SECRET } : {}),
+                          copyActive: true,
+                        },
+                      });
+                      const structured = res.structuredContent as ToolStructuredPayload | undefined;
+                      if (structured?.copied) {
+                        setNotice(`${tr('status.copied')} (${structured.pin ?? pairingPin.pin})`);
+                        return;
+                      }
+                    } catch {
+                      // Fall through to manual copy hint
+                    }
+                  }
+                  setNotice(`Clipboard blocked by frame — select ${pairingPin.pin} and press ⌘C / Ctrl+C`);
+                })();
               }}
             >
               {pairingPin.pin}
