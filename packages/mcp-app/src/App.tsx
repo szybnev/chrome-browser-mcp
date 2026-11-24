@@ -17,9 +17,18 @@ import { VirtualList } from './VirtualList.js';
 
 type DeckTab = 'overview' | 'timeline' | 'devtools' | 'workflows' | 'security';
 
+const DECK_SECRET =
+  (typeof window !== 'undefined'
+    ? (window as unknown as { __CBMCP_DECK_SECRET__?: string }).__CBMCP_DECK_SECRET__
+    : undefined) ?? '';
+
+const SAFE_IMAGE_DATA_URL_RE = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+
 interface ToolStructuredPayload {
   focusTab?: DeckTab;
   state?: DeckState;
+  pin?: string;
+  expiresAt?: number;
 }
 
 export function App() {
@@ -27,6 +36,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState<DeckTab>('overview');
   const [tabQuery, setTabQuery] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
+  const [pairingPin, setPairingPin] = useState<{ pin: string; expiresAt: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dismissedErrorIds, setDismissedErrorIds] = useState<Set<string>>(() => new Set());
   const [dismissedNetworkIds, setDismissedNetworkIds] = useState<Set<string>>(() => new Set());
@@ -67,9 +77,14 @@ export function App() {
       if (!app) return;
       setBusy(true);
       try {
-        const res = await app.callServerTool({ name, arguments: args });
+        const finalArgs =
+          name !== 'deck_get_state' && DECK_SECRET ? { deckSecret: DECK_SECRET, ...args } : args;
+        const res = await app.callServerTool({ name, arguments: finalArgs });
         const structured = res.structuredContent as ToolStructuredPayload | undefined;
         if (structured?.state) setDeckState(structured.state);
+        if (structured?.pin && structured?.expiresAt) {
+          setPairingPin({ pin: structured.pin, expiresAt: structured.expiresAt });
+        }
       } catch (err) {
         setNotice(err instanceof Error ? err.message : String(err));
       } finally {
@@ -227,7 +242,10 @@ export function App() {
     }
     if (!app) return;
     void app
-      .callServerTool({ name: 'deck_clear_diagnostics', arguments: { target } })
+      .callServerTool({
+        name: 'deck_clear_diagnostics',
+        arguments: DECK_SECRET ? { deckSecret: DECK_SECRET, target } : { target },
+      })
       .then((res) => {
         const structured = res.structuredContent as ToolStructuredPayload | undefined;
         if (structured?.state) setDeckState(structured.state);
@@ -338,6 +356,14 @@ export function App() {
             type="button"
             className="btn small"
             disabled={busy}
+            onClick={() => void callDeckTool('deck_create_pin')}
+          >
+            {tr('btn.generatePin')}
+          </button>
+          <button
+            type="button"
+            className="btn small"
+            disabled={busy}
             onClick={() => void callDeckTool('deck_get_state')}
           >
             {tr('btn.refresh')}
@@ -372,6 +398,34 @@ export function App() {
           </button>
         ))}
       </div>
+
+      {pairingPin && (
+        <div className="toast-banner" role="status" aria-live="polite">
+          <span className="toast-text">
+            {tr('pair.pinTitle')}:{' '}
+            <button
+              type="button"
+              className="btn small primary"
+              style={{ marginLeft: 6, fontFamily: 'ui-monospace, monospace', letterSpacing: '0.14em' }}
+              title={tr('status.clickToCopy')}
+              onClick={() => {
+                void navigator.clipboard?.writeText(pairingPin.pin).catch(() => {});
+                setNotice(`${tr('status.copied')} (${pairingPin.pin})`);
+              }}
+            >
+              {pairingPin.pin}
+            </button>
+          </span>
+          <button
+            type="button"
+            className="toast-close"
+            aria-label={tr('btn.dismiss')}
+            onClick={() => setPairingPin(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {notice && (
         <div className="toast-banner" role="status" aria-live="polite">
@@ -451,23 +505,24 @@ export function App() {
               )}
             </div>
 
-            {deckState.latestScreenshot && (
-              <div className="card" style={{ flex: '0 0 auto' }}>
-                <div className="row-between">
-                  <strong>{tr('section.latestCapture')}</strong>
-                  <span className="pill accent">
-                    Tab {deckState.latestScreenshot.tabId}
-                    {deckState.latestScreenshot.setOfMark ? ' · SoM' : ''}
-                  </span>
+            {deckState.latestScreenshot &&
+              SAFE_IMAGE_DATA_URL_RE.test(deckState.latestScreenshot.dataUrl) && (
+                <div className="card" style={{ flex: '0 0 auto' }}>
+                  <div className="row-between">
+                    <strong>{tr('section.latestCapture')}</strong>
+                    <span className="pill accent">
+                      Tab {deckState.latestScreenshot.tabId}
+                      {deckState.latestScreenshot.setOfMark ? ' · SoM' : ''}
+                    </span>
+                  </div>
+                  <img
+                    className="screenshot-frame"
+                    src={deckState.latestScreenshot.dataUrl}
+                    alt={`Screenshot of ${deckState.latestScreenshot.url}`}
+                  />
+                  <div className="muted">{deckState.latestScreenshot.url}</div>
                 </div>
-                <img
-                  className="screenshot-frame"
-                  src={deckState.latestScreenshot.dataUrl}
-                  alt={`Screenshot of ${deckState.latestScreenshot.url}`}
-                />
-                <div className="muted">{deckState.latestScreenshot.url}</div>
-              </div>
-            )}
+              )}
 
             {/* ALL OTHER BROWSER TABS (ADAPTIVE HEIGHT + VIRTUALIZED) */}
             <div className={`card ${otherTabs.length > 0 ? 'fill-card' : ''}`}>

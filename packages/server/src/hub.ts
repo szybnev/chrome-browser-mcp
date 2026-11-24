@@ -84,11 +84,14 @@ export interface BrowserHubInterface {
     reason: string;
     risk: RiskLevel;
     preview: string;
-    kind: 'eval' | 'password' | 'payment' | 'upload' | 'read-only-override';
+    kind: 'eval' | 'password' | 'payment' | 'upload' | 'read-only-override' | 'dialog';
   }): Promise<void>;
   resolveSecret(secretRef: string): Promise<{ value: string; maskedLabel: string }>;
   exportAudit(format: 'json' | 'html'): Promise<{ contentType: string; content: string; eventCount: number }>;
   getTabUrl(profileId: string, tabId?: number): string | undefined;
+  getLiveTabUrl(profileId?: string, tabId?: number): Promise<string | undefined>;
+  getLivePolicy(): Promise<SecurityPolicy>;
+  createPairingPin(): Promise<{ pin: string; expiresAt: number }>;
   getPreviousSnapshot(profileId: string, tabId: number): PageSnapshot | undefined;
   rememberSnapshot(profileId: string, snapshot: PageSnapshot): void;
   recordScreenshot(record: ScreenshotRecord): void;
@@ -115,6 +118,7 @@ export class BrowserBrokerHub implements BrowserHubInterface {
   private pendingApprovals = new Map<string, PendingApprovalEntry>();
   private pendingDialogs = new Map<string, PendingDialog>();
   private approvedEvalOrigins = new Set<string>();
+  private pinFactory: (() => { pin: string; expiresAt: number }) | null = null;
 
   constructor(
     private readonly dataDir: string,
@@ -125,8 +129,29 @@ export class BrowserBrokerHub implements BrowserHubInterface {
     this.workflows = loadPersistedWorkflows(dataDir);
   }
 
+  setPinFactory(fn: () => { pin: string; expiresAt: number }): void {
+    this.pinFactory = fn;
+  }
+
+  async createPairingPin(): Promise<{ pin: string; expiresAt: number }> {
+    if (!this.pinFactory) {
+      throw new Error('Pairing PIN generation is only available on the running broker daemon.');
+    }
+    return this.pinFactory();
+  }
+
   getPolicy(): SecurityPolicy {
     return this.policy;
+  }
+
+  async getLivePolicy(): Promise<SecurityPolicy> {
+    return this.policy;
+  }
+
+  async getLiveTabUrl(profileId?: string, tabId?: number): Promise<string | undefined> {
+    const id = profileId || this.defaultProfileId;
+    if (!id) return undefined;
+    return this.getTabUrl(id, tabId);
   }
 
   isPaused(): boolean {
@@ -452,15 +477,17 @@ export class BrowserBrokerHub implements BrowserHubInterface {
     reason: string;
     risk: RiskLevel;
     preview: string;
-    kind: 'eval' | 'password' | 'payment' | 'upload' | 'read-only-override';
+    kind: 'eval' | 'password' | 'payment' | 'upload' | 'read-only-override' | 'dialog';
   }): Promise<void> {
+    const isConcreteHttpOrigin = /^https?:\/\/[^/\s]+$/i.test(args.origin);
     const needsApproval =
       (args.kind === 'eval' &&
         this.policy.requireApprovalForEval &&
-        !this.approvedEvalOrigins.has(args.origin)) ||
+        (!isConcreteHttpOrigin || !this.approvedEvalOrigins.has(args.origin))) ||
       (args.kind === 'password' && this.policy.requireApprovalForPasswords) ||
       (args.kind === 'payment' && this.policy.requireApprovalForPayments) ||
       (args.kind === 'upload' && this.policy.requireApprovalForUploads) ||
+      (args.kind === 'dialog' && this.policy.dialogPolicy === 'approval') ||
       args.kind === 'read-only-override';
 
     if (!needsApproval) return;
@@ -508,7 +535,8 @@ export class BrowserBrokerHub implements BrowserHubInterface {
       );
     }
 
-    if (args.kind === 'eval') {
+    // Never cache 'active-tab', 'null', or non-http(s) opaque origins
+    if (args.kind === 'eval' && isConcreteHttpOrigin) {
       this.approvedEvalOrigins.add(args.origin);
     }
   }
@@ -549,6 +577,58 @@ export class BrowserBrokerHub implements BrowserHubInterface {
     const startedAt = Date.now();
     const tabId = typeof params.tabId === 'number' ? params.tabId : undefined;
 
+    // Resolve Zero-Secret Autofill references strictly inside BrowserBrokerHub (never over HTTP)
+    // and remember resolved values solely to scrub them from any returned snapshot/error!
+    const resolvedSecrets: string[] = [];
+    let effectiveParams = params;
+    if (method === 'page.act' && Array.isArray(params.steps)) {
+      const stepsCopy: Array<Record<string, unknown>> = [];
+      for (const rawStep of params.steps) {
+        if (rawStep && typeof rawStep === 'object') {
+          const step = { ...(rawStep as Record<string, unknown>) };
+          if (
+            (step.kind === 'fill' || step.kind === 'type') &&
+            typeof step.secretRef === 'string' &&
+            step.secretRef.trim().length > 0
+          ) {
+            const secret = await this.resolveSecret(step.secretRef);
+            if (secret.value.length >= 3) {
+              resolvedSecrets.push(secret.value);
+            }
+            if (step.kind === 'fill') {
+              step.value = secret.value;
+            } else {
+              step.text = secret.value;
+            }
+            step.isSecret = true;
+            step.secretRef = undefined;
+          }
+          stepsCopy.push(step);
+        }
+      }
+      effectiveParams = { ...params, steps: stepsCopy };
+    }
+
+    const scrubValue = (input: unknown): unknown => {
+      if (resolvedSecrets.length === 0) return input;
+      if (typeof input === 'string') {
+        let out = input;
+        for (const s of resolvedSecrets) {
+          if (out.includes(s)) out = out.replaceAll(s, '[REDACTED_SECRET]');
+        }
+        return out;
+      }
+      if (Array.isArray(input)) return input.map((item) => scrubValue(item));
+      if (input && typeof input === 'object') {
+        const res: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+          res[k] = scrubValue(v);
+        }
+        return res;
+      }
+      return input;
+    };
+
     const resultPromise = new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         profile.pending.delete(id);
@@ -556,8 +636,11 @@ export class BrowserBrokerHub implements BrowserHubInterface {
       }, timeoutMs);
 
       profile.pending.set(id, {
-        resolve: (val) => resolve(val as T),
-        reject,
+        resolve: (val) => resolve(scrubValue(val) as T),
+        reject: (err) => {
+          const msg = scrubValue(err.message) as string;
+          reject(new Error(msg));
+        },
         timer,
       });
 
@@ -565,7 +648,7 @@ export class BrowserBrokerHub implements BrowserHubInterface {
         type: 'rpc.request',
         id,
         method,
-        params,
+        params: effectiveParams,
       });
     });
 

@@ -25,7 +25,12 @@ export interface BrokerConfig {
 export function resolveDataDir(explicitDir?: string): string {
   const dir =
     explicitDir || process.env.CHROME_BROWSER_MCP_DATA_DIR || join(homedir(), '.chrome-browser-mcp');
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    chmodSync(dir, 0o700);
+  } catch {
+    // Ignore on platforms where chmod is unsupported
+  }
   return dir;
 }
 
@@ -37,6 +42,11 @@ export function loadOrCreateToken(dataDir: string, rotate = false): string {
 
   const tokenFile = join(dataDir, 'token.txt');
   if (!rotate && existsSync(tokenFile)) {
+    try {
+      chmodSync(tokenFile, 0o600);
+    } catch {
+      // Ignore on platforms where chmod is unsupported
+    }
     const existing = readFileSync(tokenFile, 'utf8').trim();
     if (existing.length >= 16) {
       return existing;
@@ -87,7 +97,12 @@ export function loadPersistedPolicy(dataDir: string): SecurityPolicy {
 
 export function savePersistedPolicy(dataDir: string, policy: SecurityPolicy): void {
   const file = join(dataDir, 'policy.json');
-  writeFileSync(file, JSON.stringify(policy, null, 2), 'utf8');
+  writeFileSync(file, JSON.stringify(policy, null, 2), { encoding: 'utf8', mode: 0o600 });
+  try {
+    chmodSync(file, 0o600);
+  } catch {
+    // Ignore on unsupported platforms
+  }
 }
 
 export function loadPersistedWorkflows(dataDir: string): RecordedWorkflow[] {
@@ -103,5 +118,10 @@ export function loadPersistedWorkflows(dataDir: string): RecordedWorkflow[] {
 
 export function savePersistedWorkflows(dataDir: string, workflows: RecordedWorkflow[]): void {
   const file = join(dataDir, 'workflows.json');
-  writeFileSync(file, JSON.stringify(workflows, null, 2), 'utf8');
+  writeFileSync(file, JSON.stringify(workflows, null, 2), { encoding: 'utf8', mode: 0o600 });
+  try {
+    chmodSync(file, 0o600);
+  } catch {
+    // Ignore on unsupported platforms
+  }
 }

@@ -27,15 +27,18 @@ export function renderAuditJson(payload: AuditExportPayload): string {
   return JSON.stringify(payload, null, 2);
 }
 
+const SAFE_DATA_IMG_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+
 export function renderAuditHtml(payload: AuditExportPayload): string {
   const rows = payload.events
     .map((ev) => {
       const time = new Date(ev.timestamp).toISOString().replace('T', ' ').slice(0, 19);
       const badgeClass =
         ev.status === 'ok' ? 'ok' : ev.status === 'blocked' ? 'warn' : ev.status === 'error' ? 'err' : 'info';
-      const thumb = ev.thumbnailDataUrl
-        ? `<div class="thumb"><img src="${escapeHtml(ev.thumbnailDataUrl)}" alt="Step screenshot" loading="lazy" /></div>`
-        : '';
+      const thumb =
+        ev.thumbnailDataUrl && SAFE_DATA_IMG_RE.test(ev.thumbnailDataUrl)
+          ? `<div class="thumb"><img src="${escapeHtml(ev.thumbnailDataUrl)}" alt="Step screenshot" loading="lazy" /></div>`
+          : '';
       return `<article class="event">
         <header>
           <span class="badge ${badgeClass}">${escapeHtml(ev.status.toUpperCase())}</span>

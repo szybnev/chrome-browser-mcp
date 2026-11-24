@@ -1,6 +1,6 @@
-import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { ExtensionToBrokerMessageSchema } from '@chrome-browser-mcp/protocol';
+import { ExtensionToBrokerMessageSchema, isUrlBlocked } from '@chrome-browser-mcp/protocol';
 import {
   localhostHostValidation,
   localhostOriginValidation,
@@ -40,6 +40,30 @@ function timingSafeStringEqual(a: string, b: string): boolean {
   const bufB = Buffer.from(b, 'utf8');
   if (bufA.length !== bufB.length) return false;
   return timingSafeEqual(bufA, bufB);
+}
+
+const EXT_ORIGIN_RE = /^chrome-extension:\/\/[a-p]{32}$/;
+
+function isLoopbackHostHeader(hostHeader: string | undefined): boolean {
+  if (!hostHeader) return false;
+  const trimmed = hostHeader.trim().toLowerCase();
+  return (
+    /^127\.0\.0\.1(?::\d{1,5})?$/.test(trimmed) ||
+    /^localhost(?::\d{1,5})?$/.test(trimmed) ||
+    /^\[::1\](?::\d{1,5})?$/.test(trimmed)
+  );
+}
+
+function extractBearerOrBrokerToken(req: IncomingMessage): string {
+  const headerToken = req.headers['x-broker-token'];
+  if (typeof headerToken === 'string' && headerToken.trim()) {
+    return headerToken.trim();
+  }
+  const auth = req.headers.authorization;
+  if (typeof auth === 'string' && /^Bearer\s+/i.test(auth)) {
+    return auth.replace(/^Bearer\s+/i, '').trim();
+  }
+  return '';
 }
 
 function isLoopbackOrigin(origin: string): boolean {
@@ -94,14 +118,19 @@ export async function startBrokerDaemon(options?: {
   const validateHost = localhostHostValidation();
   const validateOrigin = localhostOriginValidation();
 
+  // Separate scoped CDP token so ?token= in /json/version never leaks the master brokerToken
+  const cdpToken = randomBytes(24).toString('hex');
+  const verifyCdpToken = (candidate: string) =>
+    typeof candidate === 'string' && candidate.length > 0 && timingSafeStringEqual(candidate, cdpToken);
+
   let activePin: { code: string; expiresAt: number; attempts: number } | null = null;
-  let activePairNonce: { value: string; expiresAt: number } | null = null;
   const createPairingPin = () => {
     const code = String(randomInt(100000, 1000000));
     const expiresAt = Date.now() + PIN_TTL_MS;
     activePin = { code, expiresAt, attempts: 0 };
     return { pin: code, expiresAt };
   };
+  hub.setPinFactory(createPairingPin);
 
   const leases = new Map<string, number>();
   let hadLeases = false;
@@ -136,9 +165,9 @@ export async function startBrokerDaemon(options?: {
 
       const url = new URL(req.url ?? '/', config.brokerUrl);
 
-      // Allow chrome-extension:// origin STRICTLY for 1-click PIN exchange & /health (NEVER /mcp or /internal/*)
+      // Allow strict 32-char chrome-extension:// origin ONLY for PIN exchange & /health (NEVER /mcp or /internal/*)
       const originHeader = req.headers.origin;
-      const isExtOrigin = typeof originHeader === 'string' && originHeader.startsWith('chrome-extension://');
+      const isExtOrigin = typeof originHeader === 'string' && EXT_ORIGIN_RE.test(originHeader);
       const isExtAllowedRoute = url.pathname === '/pair/exchange' || url.pathname === '/health';
 
       if (req.method === 'OPTIONS' && isExtOrigin && isExtAllowedRoute) {
@@ -176,90 +205,39 @@ export async function startBrokerDaemon(options?: {
         return;
       }
 
-      // One-Click 6-digit PIN pairing page (browser-native, no npx/terminal required!)
+      // Informational local pairing helper page (never mints PINs unauthenticated)
       if (req.method === 'GET' && url.pathname === '/pair') {
-        const nonce = randomUUID();
-        activePairNonce = { value: nonce, expiresAt: Date.now() + PIN_TTL_MS };
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'no-store',
+          'x-frame-options': 'DENY',
+          'cross-origin-resource-policy': 'same-origin',
+          'content-security-policy':
+            "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
         });
         res.end(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="dark light">
 <title>Chrome Browser MCP — Local Pairing</title>
 <style>
-  :root { --bg:#111317; --surface:#181b21; --surface2:#1f232c; --border:#2b313e; --text:#e6e9ef; --muted:#9aa3b2; --accent:#2563eb; --accent2:#38e4d4; }
-  @media (prefers-color-scheme: light) { :root { --bg:#f5f7fa; --surface:#fff; --surface2:#f0f2f6; --border:#d8dee9; --text:#151922; --muted:#5a6475; --accent:#2563eb; --accent2:#0d9488; } }
+  :root { --bg:#111317; --surface:#181b21; --surface2:#1f232c; --border:#2b313e; --text:#e6e9ef; --muted:#9aa3b2; --accent:#2563eb; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f5f7fa; --surface:#fff; --surface2:#f0f2f6; --border:#d8dee9; --text:#151922; --muted:#5a6475; --accent:#2563eb; } }
   body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--bg); color:var(--text); font:14px/1.5 system-ui,-apple-system,sans-serif; }
-  .card { width:100%; max-width:480px; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; box-shadow:0 16px 40px rgba(0,0,0,0.28); }
-  h1 { margin:0 0 6px; font-size:19px; }
-  p { margin:0 0 14px; color:var(--muted); font-size:13px; }
-  .pin-box { display:none; align-items:center; justify-content:space-between; gap:12px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin:16px 0; }
-  .pin-box.show { display:flex; }
-  .pin-val { font:700 30px/1 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:0.24em; color:var(--accent2); }
-  button { appearance:none; border:1px solid var(--border); background:var(--accent); color:#fff; border-radius:9px; padding:9px 14px; font:600 13px/1.2 inherit; cursor:pointer; }
-  button.sec { background:var(--surface2); color:var(--text); }
-  button:hover { opacity:0.92; }
-  .hint { font-size:12px; color:var(--muted); margin-top:10px; }
-  code { background:var(--surface2); border:1px solid var(--border); padding:2px 6px; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; }
+  .card { width:100%; max-width:520px; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; box-shadow:0 16px 40px rgba(0,0,0,0.28); }
+  h1 { margin:0 0 8px; font-size:19px; }
+  p, li { color:var(--muted); font-size:13px; }
+  ol { padding-left:20px; margin:12px 0; }
+  li { margin-bottom:8px; }
+  code { background:var(--surface2); border:1px solid var(--border); padding:2px 6px; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:var(--text); }
 </style></head><body>
 <div class="card">
-  <h1>Chrome Browser MCP — 1-Click Pairing</h1>
-  <p>Local broker is running on <code>${config.brokerUrl}</code>. Click below to generate a single-use 6-digit PIN (valid for 2 minutes) — no terminal needed.</p>
-  <button id="genBtn" type="button">Generate 6-Digit PIN</button>
-  <div id="pinBox" class="pin-box">
-    <span id="pinVal" class="pin-val">------</span>
-    <button id="copyBtn" type="button" class="sec">Copy PIN</button>
-  </div>
-  <div id="msg" class="hint">Paste this PIN into the Chrome Browser MCP Welcome Wizard or Side Panel → Pair tab.</div>
-</div>
-<script>
-  const nonce = ${JSON.stringify(nonce)};
-  const genBtn = document.getElementById('genBtn');
-  const pinBox = document.getElementById('pinBox');
-  const pinVal = document.getElementById('pinVal');
-  const copyBtn = document.getElementById('copyBtn');
-  const msg = document.getElementById('msg');
-  genBtn.addEventListener('click', async () => {
-    genBtn.disabled = true;
-    try {
-      const r = await fetch('/pair/request-pin', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ nonce })
-      });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j.error || 'Failed to generate PIN');
-      pinVal.textContent = j.data.pin;
-      pinBox.classList.add('show');
-      msg.textContent = 'PIN active for 2 minutes (single use). You can close this tab after pairing.';
-    } catch (e) {
-      msg.textContent = 'Error: ' + (e.message || e) + ' (reload this page to try again)';
-      genBtn.disabled = false;
-    }
-  });
-  copyBtn.addEventListener('click', async () => {
-    await navigator.clipboard.writeText(pinVal.textContent.trim());
-    copyBtn.textContent = 'Copied!';
-    setTimeout(() => { copyBtn.textContent = 'Copy PIN'; }, 1500);
-  });
-</script></body></html>`);
-        return;
-      }
-
-      if (req.method === 'POST' && url.pathname === '/pair/request-pin') {
-        const body = (await readJsonBody(req)) as { nonce?: string };
-        if (
-          !activePairNonce ||
-          Date.now() > activePairNonce.expiresAt ||
-          typeof body.nonce !== 'string' ||
-          body.nonce !== activePairNonce.value
-        ) {
-          writeJson(res, 403, { ok: false, error: 'Invalid or expired page nonce — reload /pair' });
-          return;
-        }
-        activePairNonce = null;
-        writeJson(res, 200, { ok: true, data: createPairingPin() });
+  <h1>Chrome Browser MCP — Secure Local Pairing</h1>
+  <p>Local broker is running on <code>${config.brokerUrl}</code>. For security, one-time 6-digit PINs can only be minted by an authenticated local host holding your broker token:</p>
+  <ol>
+    <li><strong>In Antigravity:</strong> Open <strong>Browser Control Deck</strong> and click <strong>Generate PIN</strong> in the top bar.</li>
+    <li><strong>Or in your terminal</strong> (inside the cloned repository): run <code>node packages/server/dist/cli.js pair</code>.</li>
+  </ol>
+  <p>Then paste the 6-digit PIN into the Chrome Browser MCP Welcome Wizard or Side Panel → Pair tab.</p>
+</div></body></html>`);
         return;
       }
 
@@ -268,13 +246,22 @@ export async function startBrokerDaemon(options?: {
           'content-type': 'application/json; charset=utf-8',
           ...(isExtOrigin ? { 'access-control-allow-origin': originHeader } : {}),
         };
+        const contentType = String(req.headers['content-type'] ?? '').toLowerCase();
+        if (!contentType.includes('application/json')) {
+          res.writeHead(415, corsHeaders);
+          res.end(JSON.stringify({ ok: false, error: 'Content-Type must be application/json' }));
+          return;
+        }
         const body = (await readJsonBody(req)) as { pin?: string };
         const submitted = String(body.pin ?? '').trim();
         if (!activePin || Date.now() > activePin.expiresAt) {
           activePin = null;
           res.writeHead(401, corsHeaders);
           res.end(
-            JSON.stringify({ ok: false, error: `No active pairing PIN — open ${config.brokerUrl}/pair` }),
+            JSON.stringify({
+              ok: false,
+              error: 'No active pairing PIN — generate one in Browser Deck or via CLI pair',
+            }),
           );
           return;
         }
@@ -296,13 +283,21 @@ export async function startBrokerDaemon(options?: {
         return;
       }
 
-      // Opt-in Local CDP Proxy discovery (/json/version, /json/list)
-      if (handleCdpDiscoveryRequest(req, res, url, hub, config.brokerUrl, config.token)) {
+      // Opt-in Local CDP Proxy discovery (/json/version, /json/list) — scoped cdpToken
+      if (handleCdpDiscoveryRequest(req, res, url, hub, config.brokerUrl, cdpToken, verifyCdpToken)) {
         return;
       }
 
-      // Streamable HTTP MCP Endpoint (2026 MCP v2 stateless handler)
+      // Streamable HTTP MCP Endpoint (requires broker token authentication)
       if (url.pathname === '/mcp') {
+        const mcpToken = extractBearerOrBrokerToken(req);
+        if (!hub.verifyToken(mcpToken)) {
+          writeJson(res, 401, {
+            ok: false,
+            error: 'Unauthorized: pass Authorization: Bearer <token> or x-broker-token header.',
+          });
+          return;
+        }
         const mcpServer = createBrowserMcpServer(hub);
         const transport = new NodeStreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
@@ -397,12 +392,16 @@ export async function startBrokerDaemon(options?: {
           case '/internal/create-pin':
             writeJson(res, 200, { ok: true, data: createPairingPin() });
             return;
-          case '/internal/resolve-secret':
-            writeJson(res, 200, {
-              ok: true,
-              data: await hub.resolveSecret(String(body.secretRef ?? '')),
-            });
+          case '/internal/policy':
+            writeJson(res, 200, { ok: true, data: await hub.getLivePolicy() });
             return;
+          case '/internal/tab-url': {
+            const pId = typeof body.profileId === 'string' ? body.profileId : undefined;
+            const tId = typeof body.tabId === 'number' ? body.tabId : undefined;
+            const foundUrl = await hub.getLiveTabUrl(pId, tId);
+            writeJson(res, 200, { ok: true, data: { url: foundUrl ?? null } });
+            return;
+          }
           case '/internal/audit-export': {
             const fmt = body.format === 'html' ? 'html' : 'json';
             writeJson(res, 200, { ok: true, data: await hub.exportAudit(fmt) });
@@ -441,81 +440,93 @@ export async function startBrokerDaemon(options?: {
   const cdpWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   httpServer.on('upgrade', (req, socket, head) => {
-    const remote = req.socket.remoteAddress;
-    if (remote && remote !== '127.0.0.1' && remote !== '::1' && remote !== '::ffff:127.0.0.1') {
-      socket.destroy();
-      return;
-    }
-
-    const url = new URL(req.url ?? '/', config.brokerUrl);
-    const originHeader = req.headers.origin;
-
-    if (url.pathname === '/ws') {
-      // Allow absent Origin (Node clients), loopback origins, or chrome-extension:// ONLY
-      if (
-        typeof originHeader === 'string' &&
-        originHeader.length > 0 &&
-        !originHeader.startsWith('chrome-extension://') &&
-        !isLoopbackOrigin(originHeader)
-      ) {
+    try {
+      const remote = req.socket.remoteAddress;
+      if (remote && remote !== '127.0.0.1' && remote !== '::1' && remote !== '::ffff:127.0.0.1') {
         socket.destroy();
         return;
       }
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit('connection', ws, req);
-      });
-      return;
-    }
-
-    const cdpTabMatch = /^\/cdp\/(\d+)$/.exec(url.pathname);
-    const isCdpBrowser = url.pathname === '/cdp/browser';
-    if ((cdpTabMatch || isCdpBrowser) && hub.getPolicy().cdpProxyEnabled) {
-      // Reject cross-site browser origins on CDP WebSocket upgrades (CSWSH protection)
-      if (typeof originHeader === 'string' && originHeader.length > 0 && !isLoopbackOrigin(originHeader)) {
+      if (!isLoopbackHostHeader(req.headers.host)) {
         socket.destroy();
         return;
       }
-      const tokenParam = url.searchParams.get('token') ?? '';
-      const headerToken = req.headers['x-broker-token'];
-      const candidate = typeof headerToken === 'string' ? headerToken : tokenParam;
-      if (!hub.verifyToken(candidate)) {
-        socket.destroy();
-        return;
-      }
-      const profileId = url.searchParams.get('profileId') ?? undefined;
 
-      const upgradeToTab = (tabId: number) => {
-        cdpWss.handleUpgrade(req, socket, head, (ws) => {
-          attachCdpProxySocket(ws, tabId, profileId, hub);
-        });
-      };
+      const url = new URL(req.url ?? '/', config.brokerUrl);
+      const originHeader = req.headers.origin;
 
-      if (cdpTabMatch) {
-        upgradeToTab(Number(cdpTabMatch[1]));
-        return;
-      }
-
-      // /cdp/browser: resolve first scoped non-blocked agent tab
-      void (async () => {
-        try {
-          const state = await hub.getDeckState();
-          const targetProfile = profileId ?? state.defaultProfileId ?? state.profiles[0]?.profileId;
-          const tabs = targetProfile ? (state.tabs[targetProfile] ?? []) : [];
-          const scoped = state.policy.scopeMode === 'agent-group' ? tabs.filter((t) => t.inAgentGroup) : tabs;
-          const chosen = scoped.find((t) => t.active) ?? scoped[0];
-          if (!chosen) {
-            socket.destroy();
-            return;
-          }
-          upgradeToTab(chosen.tabId);
-        } catch {
+      if (url.pathname === '/ws') {
+        // Allow absent Origin (Node clients), loopback origins, or strict 32-char chrome-extension:// ONLY
+        if (
+          typeof originHeader === 'string' &&
+          originHeader.length > 0 &&
+          !EXT_ORIGIN_RE.test(originHeader) &&
+          !isLoopbackOrigin(originHeader)
+        ) {
           socket.destroy();
+          return;
         }
-      })();
-      return;
-    }
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          wss.emit('connection', ws, req);
+        });
+        return;
+      }
 
-    socket.destroy();
+      const cdpTabMatch = /^\/cdp\/(\d+)$/.exec(url.pathname);
+      const isCdpBrowser = url.pathname === '/cdp/browser';
+      if ((cdpTabMatch || isCdpBrowser) && hub.getPolicy().cdpProxyEnabled) {
+        // Reject cross-site browser origins on CDP WebSocket upgrades (CSWSH protection)
+        if (typeof originHeader === 'string' && originHeader.length > 0 && !isLoopbackOrigin(originHeader)) {
+          socket.destroy();
+          return;
+        }
+        const tokenParam = url.searchParams.get('token') ?? '';
+        const headerToken = req.headers['x-broker-token'];
+        const candidate = typeof headerToken === 'string' ? headerToken : tokenParam;
+        if (!verifyCdpToken(candidate) && !hub.verifyToken(candidate)) {
+          socket.destroy();
+          return;
+        }
+        const profileId = url.searchParams.get('profileId') ?? undefined;
+
+        const upgradeToTab = (tabId: number) => {
+          cdpWss.handleUpgrade(req, socket, head, (ws) => {
+            attachCdpProxySocket(ws, tabId, profileId, hub);
+          });
+        };
+
+        if (cdpTabMatch) {
+          upgradeToTab(Number(cdpTabMatch[1]));
+          return;
+        }
+
+        // /cdp/browser: resolve first scoped non-blocked agent tab
+        void (async () => {
+          try {
+            const state = await hub.getDeckState();
+            const targetProfile = profileId ?? state.defaultProfileId ?? state.profiles[0]?.profileId;
+            const tabs = targetProfile ? (state.tabs[targetProfile] ?? []) : [];
+            const scoped = (
+              state.policy.scopeMode === 'agent-group' ? tabs.filter((t) => t.inAgentGroup) : tabs
+            ).filter(
+              (t) => !isUrlBlocked(t.url, state.policy.blockedDomains, state.policy.allowedDomains).blocked,
+            );
+            const chosen = scoped.find((t) => t.active) ?? scoped[0];
+            if (!chosen) {
+              socket.destroy();
+              return;
+            }
+            upgradeToTab(chosen.tabId);
+          } catch {
+            socket.destroy();
+          }
+        })();
+        return;
+      }
+
+      socket.destroy();
+    } catch {
+      socket.destroy();
+    }
   });
 
   wss.on('connection', (ws) => {

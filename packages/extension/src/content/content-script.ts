@@ -35,7 +35,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     hudHost.id = 'chrome-browser-mcp-hud-host';
     hudHost.style.cssText =
       'position:fixed;inset:0;pointer-events:none;z-index:2147483646;contain:layout style;';
-    hudShadow = hudHost.attachShadow({ mode: 'open' });
+    hudShadow = hudHost.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
     style.textContent = `
       .frame {
@@ -173,6 +173,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             pauseBtn.className = 'badge-pause';
             pauseBtn.textContent = 'Pause';
             pauseBtn.addEventListener('click', (ev) => {
+              if (!ev.isTrusted) return;
               ev.stopPropagation();
               void chrome.runtime.sendMessage({ type: 'cs.togglePause' }).catch(() => {});
             });
@@ -331,23 +332,37 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       style.display === 'none' ||
       style.visibility === 'hidden' ||
       style.visibility === 'collapse' ||
-      Number.parseFloat(style.opacity || '1') <= 0.02
+      Number.parseFloat(style.opacity || '1') <= 0.02 ||
+      style.color === 'transparent' ||
+      /^rgba\([^,]+,[^,]+,[^,]+,\s*0(?:\.0+)?\)$/.test(style.color)
     ) {
       return true;
     }
+    if (style.clip === 'rect(0px, 0px, 0px, 0px)' || /inset\((?:[5-9]\d|100)%/.test(style.clipPath || '')) {
+      return true;
+    }
     const fontSize = Number.parseFloat(style.fontSize || '12');
-    if (fontSize < 1 && el.children.length === 0) return true;
+    if (fontSize < 2 && el.children.length === 0) return true;
     const rect = el.getBoundingClientRect();
     const clipsChildren =
       style.overflow === 'hidden' ||
       style.overflow === 'clip' ||
       style.overflowX === 'hidden' ||
       style.overflowY === 'hidden';
-    if (rect.width < 1 && rect.height < 1 && (el.children.length === 0 || clipsChildren)) {
+    if (
+      Math.abs(Number.parseFloat(style.textIndent || '0')) > 500 &&
+      (el.children.length === 0 || clipsChildren)
+    ) {
       return true;
     }
-    // Detect classic sr-only / offscreen hidden text traps (-9999px) on leaf or clipped nodes
-    if ((rect.right < -500 || rect.bottom < -500) && (el.children.length === 0 || clipsChildren)) {
+    if (rect.width <= 1 && rect.height <= 1 && (el.children.length === 0 || clipsChildren)) {
+      return true;
+    }
+    // Detect classic sr-only / offscreen hidden text traps (-9999px / +9999px) on leaf or clipped nodes
+    if (
+      (rect.right < -500 || rect.bottom < -500 || rect.left > window.innerWidth + 5000) &&
+      (el.children.length === 0 || clipsChildren)
+    ) {
       return true;
     }
     return false;
@@ -903,7 +918,29 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         return;
       }
       if (tag === 'pre') {
-        const code = node.textContent?.trim();
+        const collectVisiblePre = (el: Node): string => {
+          if (el.nodeType === Node.TEXT_NODE) return el.textContent ?? '';
+          if (!(el instanceof Element)) return '';
+          const childTag = el.tagName.toLowerCase();
+          if (
+            childTag === 'script' ||
+            childTag === 'style' ||
+            childTag === 'noscript' ||
+            childTag === 'template'
+          ) {
+            return '';
+          }
+          if (el !== node && isElementHiddenOrTrap(el)) {
+            filteredHiddenCount += 1;
+            return '';
+          }
+          let out = '';
+          for (const child of el.childNodes) {
+            out += collectVisiblePre(child);
+          }
+          return out;
+        };
+        const code = collectVisiblePre(node).trim();
         const lang = extractCodeLanguage(node);
         if (code) lines.push(`\n\`\`\`${lang}\n${code}\n\`\`\`\n`);
         return;
@@ -992,21 +1029,40 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     const tables: ExtractedTable[] = [];
     const seen = new Set<Element>();
 
+    const visibleTableText = (el: Element): string => {
+      let buf = '';
+      for (const child of el.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          buf += child.textContent ?? '';
+        } else if (child instanceof Element) {
+          const t = child.tagName.toLowerCase();
+          if (t === 'script' || t === 'style' || t === 'noscript' || t === 'template') continue;
+          if (isElementHiddenOrTrap(child)) continue;
+          buf += visibleTableText(child);
+        }
+      }
+      return buf;
+    };
+
     const collect = (container: Document | ShadowRoot | Element) => {
       const found = container.querySelectorAll('table');
       for (const table of found) {
         if (seen.has(table) || isElementHiddenOrTrap(table)) continue;
         seen.add(table);
-        const caption = table.querySelector('caption')?.textContent?.trim() || undefined;
+        const captionEl = table.querySelector('caption');
+        const caption =
+          captionEl && !isElementHiddenOrTrap(captionEl)
+            ? visibleTableText(captionEl).replace(/\s+/g, ' ').trim() || undefined
+            : undefined;
         const trList = [...table.querySelectorAll('tr')].filter((r) => !isElementHiddenOrTrap(r));
         if (trList.length === 0) continue;
         let headers: string[] = [];
         const rows: string[][] = [];
         for (let i = 0; i < trList.length; i++) {
           const row = trList[i]!;
-          const cells = [...row.querySelectorAll('th, td')].map((c) =>
-            ((c as HTMLElement).innerText || c.textContent || '').replace(/\s+/g, ' ').trim(),
-          );
+          const cells = [...row.querySelectorAll('th, td')]
+            .filter((c) => !isElementHiddenOrTrap(c))
+            .map((c) => visibleTableText(c).replace(/\s+/g, ' ').trim());
           if (cells.length === 0) continue;
           if (i === 0 && (row.querySelector('th') !== null || row.parentElement?.tagName === 'THEAD')) {
             headers = cells;
@@ -1140,7 +1196,55 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  async function executeContentStep(step: ActionStep): Promise<{
+  const PAYMENT_KEYWORDS =
+    /\b(pay|purchase|checkout|place order|confirm payment|buy now|delete account|transfer|wire|send money|submit payment)\b/i;
+
+  interface StepPolicyFlags {
+    requireApprovalForPasswords?: boolean;
+    requireApprovalForPayments?: boolean;
+  }
+
+  function checkClickPaymentChallenge(
+    el: Element | null,
+    policyFlags?: StepPolicyFlags,
+    preApproved?: boolean,
+  ): string | null {
+    if (!policyFlags?.requireApprovalForPayments || preApproved || !el) return null;
+    const interactive =
+      el.closest('button, a, [role="button"], input[type="submit"], input[type="button"], summary') || el;
+    const label = (computeAccessibleName(interactive) || interactive.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (label && PAYMENT_KEYWORDS.test(label)) {
+      return `APPROVAL_REQUIRED:payment:Clicking sensitive control "${label.slice(0, 60)}"`;
+    }
+    return null;
+  }
+
+  function checkFormSubmitPaymentChallenge(
+    el: Element | null,
+    policyFlags?: StepPolicyFlags,
+    preApproved?: boolean,
+  ): string | null {
+    if (!policyFlags?.requireApprovalForPayments || preApproved || !el) return null;
+    const direct = checkClickPaymentChallenge(el, policyFlags, preApproved);
+    if (direct) return direct;
+    const form = el instanceof HTMLFormElement ? el : el.closest('form');
+    if (!form) return null;
+    const submits = form.querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]');
+    for (const btn of submits) {
+      const label = (computeAccessibleName(btn) || btn.textContent || '').replace(/\s+/g, ' ').trim();
+      if (label && PAYMENT_KEYWORDS.test(label)) {
+        return `APPROVAL_REQUIRED:payment:Submitting sensitive form "${label.slice(0, 60)}"`;
+      }
+    }
+    return null;
+  }
+
+  async function executeContentStep(
+    step: ActionStep,
+    policyFlags?: StepPolicyFlags,
+  ): Promise<{
     ok: boolean;
     detail?: string;
     error?: string;
@@ -1205,11 +1309,16 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
     if (step.kind === 'click') {
       if (step.x !== undefined && step.y !== undefined) {
+        const hit = document.elementFromPoint(step.x, step.y);
+        const challenge = checkClickPaymentChallenge(hit, policyFlags, step.preApproved);
+        if (challenge) return { ok: false, error: challenge };
         showClickPulse(step.x, step.y);
         return { ok: true, coords: { x: step.x, y: step.y }, needsCdpClick: true };
       }
       const el = resolveTarget(step.ref, step.selector);
       if (!el) return { ok: false, error: `Element not found (${step.ref || step.selector})` };
+      const challenge = checkClickPaymentChallenge(el, policyFlags, step.preApproved);
+      if (challenge) return { ok: false, error: challenge };
       el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
       const rect = el.getBoundingClientRect();
       const x = Math.round(rect.left + rect.width / 2);
@@ -1245,6 +1354,28 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     if (step.kind === 'fill' || step.kind === 'type') {
       const el = resolveTarget(step.ref, step.selector);
       if (!el) return { ok: false, error: `Input element not found (${step.ref || step.selector})` };
+      if (step.isSecret && (!(el instanceof HTMLInputElement) || el.type !== 'password')) {
+        return {
+          ok: false,
+          error: 'Refused: Zero-Secret autofill is only allowed on <input type="password"> fields',
+        };
+      }
+      if (
+        policyFlags?.requireApprovalForPasswords &&
+        !step.preApproved &&
+        el instanceof HTMLInputElement &&
+        el.type === 'password'
+      ) {
+        const label = computeAccessibleName(el) || step.ref || step.selector || 'password';
+        return {
+          ok: false,
+          error: `APPROVAL_REQUIRED:password:Filling password input "${label.slice(0, 60)}"`,
+        };
+      }
+      if (step.kind === 'fill' && step.submit) {
+        const submitChallenge = checkFormSubmitPaymentChallenge(el, policyFlags, step.preApproved);
+        if (submitChallenge) return { ok: false, error: submitChallenge };
+      }
       el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
       if (el instanceof HTMLElement) el.focus();
       const rect = el.getBoundingClientRect();
@@ -1291,6 +1422,10 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
     if (step.kind === 'press') {
       const el = (step.ref ? resolveTarget(step.ref) : document.activeElement) || document.body;
+      if (step.key === 'Enter') {
+        const submitChallenge = checkFormSubmitPaymentChallenge(el, policyFlags, step.preApproved);
+        if (submitChallenge) return { ok: false, error: submitChallenge };
+      }
       el.dispatchEvent(new KeyboardEvent('keydown', { key: step.key, bubbles: true, cancelable: true }));
       el.dispatchEvent(new KeyboardEvent('keyup', { key: step.key, bubbles: true, cancelable: true }));
       if (step.key === 'Enter' && el instanceof HTMLInputElement && el.form) {
@@ -1601,9 +1736,34 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             if (typeof msg.params?.hudEnabled === 'boolean') {
               visualHudEnabled = msg.params.hudEnabled;
             }
+            const policyFlags = msg.params?.policyFlags as StepPolicyFlags | undefined;
+            const preApproved = Boolean(msg.params?.preApproved);
+            if (typeof msg.params?.x === 'number' && typeof msg.params?.y === 'number') {
+              const hit = document.elementFromPoint(msg.params.x, msg.params.y);
+              const challenge = checkClickPaymentChallenge(hit, policyFlags, preApproved);
+              if (challenge) {
+                sendResponse({ ok: false, error: challenge });
+                return;
+              }
+              showClickPulse(msg.params.x, msg.params.y);
+              sendResponse({
+                ok: true,
+                data: {
+                  x: msg.params.x,
+                  y: msg.params.y,
+                  selectorHint: hit ? buildSelectorHint(hit) : undefined,
+                },
+              });
+              return;
+            }
             const el = resolveTarget(msg.params?.ref, msg.params?.selector);
             if (!el) {
               sendResponse({ ok: false, error: 'Element not found' });
+              return;
+            }
+            const challenge = checkClickPaymentChallenge(el, policyFlags, preApproved);
+            if (challenge) {
+              sendResponse({ ok: false, error: challenge });
               return;
             }
             el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
@@ -1617,11 +1777,30 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             sendResponse({ ok: true, data: coords });
             return;
           }
+          case 'cs.checkPress': {
+            const policyFlags = msg.params?.policyFlags as StepPolicyFlags | undefined;
+            const preApproved = Boolean(msg.params?.preApproved);
+            const key = String(msg.params?.key ?? '');
+            const el =
+              (msg.params?.ref ? resolveTarget(msg.params.ref) : document.activeElement) || document.body;
+            if (key === 'Enter') {
+              const challenge = checkFormSubmitPaymentChallenge(el, policyFlags, preApproved);
+              if (challenge) {
+                sendResponse({ ok: false, error: challenge });
+                return;
+              }
+            }
+            sendResponse({ ok: true, data: { allowed: true } });
+            return;
+          }
           case 'cs.actStep': {
             if (typeof msg.params?.hudEnabled === 'boolean') {
               visualHudEnabled = msg.params.hudEnabled;
             }
-            const res = await executeContentStep(msg.params.step as ActionStep);
+            const res = await executeContentStep(
+              msg.params.step as ActionStep,
+              msg.params.policyFlags as StepPolicyFlags | undefined,
+            );
             sendResponse({ ok: true, data: res });
             return;
           }

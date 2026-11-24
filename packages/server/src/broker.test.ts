@@ -139,9 +139,20 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     ext2.ws.close();
   });
 
-  it('serves MCP tools and SEP-1865 MCP App resource over Streamable HTTP /mcp', async () => {
+  it('serves MCP tools and SEP-1865 MCP App resource over authenticated Streamable HTTP /mcp', async () => {
     const port = 46000 + Math.floor(Math.random() * 1000);
     activeBroker = await startBrokerDaemon({ port, dataDir: createTempDataDir() });
+
+    // Unauthenticated /mcp POST must be rejected with 401
+    const unauthRes = await fetch(activeBroker.config.mcpUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'tools/list', params: {} }),
+    });
+    expect(unauthRes.status).toBe(401);
 
     const mcpPost = async (body: unknown) => {
       const res = await fetch(activeBroker!.config.mcpUrl, {
@@ -149,6 +160,7 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
         headers: {
           'content-type': 'application/json',
           accept: 'application/json, text/event-stream',
+          authorization: `Bearer ${activeBroker!.config.token}`,
         },
         body: JSON.stringify(body),
       });
@@ -178,6 +190,11 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     expect(toolNames).toContain('browser_workflows');
     expect(toolNames).toContain('browser_deck');
 
+    // browser_tabs must NOT expose 'attach' to LLM agents
+    const tabsTool = tools.find((t) => t.name === 'browser_tabs');
+    const actionProp = tabsTool?.inputSchema?.properties?.action as { enum?: string[] } | undefined;
+    expect(actionProp?.enum).not.toContain('attach');
+
     const readTool = tools.find((t) => t.name === 'browser_read');
     expect(readTool?.inputSchema?.properties).toHaveProperty('offset');
     expect(readTool?.inputSchema?.properties).toHaveProperty('scope');
@@ -188,6 +205,16 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     expect(toolNames).toContain('browser_emulate');
     expect(toolNames).toContain('browser_audit_export');
 
+    // Privileged mutating deck_* tools must reject calls missing deckSecret
+    const unauthDeckMut = await mcpPost({
+      jsonrpc: '2.0',
+      id: 99,
+      method: 'tools/call',
+      params: { name: 'deck_update_policy', arguments: { scopeMode: 'all-tabs' } },
+    });
+    expect(unauthDeckMut.result?.isError).toBe(true);
+    expect(JSON.stringify(unauthDeckMut.result)).toContain('Unauthorized');
+
     const resRead = await mcpPost({
       jsonrpc: '2.0',
       id: 2,
@@ -197,6 +224,7 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     const contents = resRead.result.contents as Array<{ mimeType: string; text: string }>;
     expect(contents[0]?.mimeType).toBe('text/html;profile=mcp-app');
     expect(contents[0]?.text).toContain('Browser Control Deck');
+    expect(contents[0]?.text).toContain('__CBMCP_DECK_SECRET__');
   });
 
   it('supports 6-digit single-use PIN pairing, Zero-Secret env resolution, opt-in CDP proxy & audit export', async () => {
@@ -233,35 +261,34 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     });
     expect(reusePin.status).toBe(401);
 
-    // 1b. Browser-native /pair page (1-click PIN via CSRF nonce, no npx/terminal required)
+    // 1b. Static /pair instructions page (no unauthenticated PIN minting) & strict Content-Type on /pair/exchange
     const pairPage = await fetch(`${activeBroker.config.brokerUrl}/pair`);
     expect(pairPage.status).toBe(200);
+    expect(pairPage.headers.get('x-frame-options')).toBe('DENY');
+    expect(pairPage.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
     const pairHtml = await pairPage.text();
-    const nonceMatch = /const nonce = "([^"]+)"/.exec(pairHtml);
-    expect(nonceMatch?.[1]).toBeTruthy();
+    expect(pairHtml).not.toContain('request-pin');
 
-    const badNonceRes = await fetch(`${activeBroker.config.brokerUrl}/pair/request-pin`, {
+    const removedEndpointRes = await fetch(`${activeBroker.config.brokerUrl}/pair/request-pin`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ nonce: 'wrong-nonce' }),
+      body: JSON.stringify({ nonce: 'anything' }),
     });
-    expect(badNonceRes.status).toBe(403);
+    expect(removedEndpointRes.status).toBe(404);
 
-    const browserPinRes = await fetch(`${activeBroker.config.brokerUrl}/pair/request-pin`, {
+    const textPlainExchange = await fetch(`${activeBroker.config.brokerUrl}/pair/exchange`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ nonce: nonceMatch![1] }),
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify({ pin: '123456' }),
     });
-    expect(browserPinRes.status).toBe(200);
-    const browserPinJson = (await browserPinRes.json()) as { ok: boolean; data: { pin: string } };
-    expect(browserPinJson.data.pin).toMatch(/^\d{6}$/);
+    expect(textPlainExchange.status).toBe(415);
 
-    // 2. Zero-Secret resolution
+    // 2. Zero-Secret resolution (broker-local only, /internal/resolve-secret removed)
     const secret = await activeBroker.hub.resolveSecret('env:STAGING_PASS');
     expect(secret.value).toBe('s3cr3t-v2-pass');
     expect(secret.maskedLabel).toBe('[SECRET:env:STAGING_PASS]');
 
-    // 3. Opt-in CDP Proxy (disabled by default -> 403, enabled -> 200)
+    // 3. Opt-in CDP Proxy (disabled by default -> 403, enabled -> 200 with scoped cdpToken != brokerToken)
     const cdpOff = await fetch(`${activeBroker.config.brokerUrl}/json/version`);
     expect(cdpOff.status).toBe(403);
 
@@ -272,6 +299,7 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     expect(cdpOn.status).toBe(200);
     const cdpMeta = (await cdpOn.json()) as { Browser: string; webSocketDebuggerUrl: string };
     expect(cdpMeta.Browser).toContain('Chrome-Browser-MCP');
+    expect(cdpMeta.webSocketDebuggerUrl).not.toContain(activeBroker.config.token);
 
     // 4. Audit Export (JSON + standalone HTML)
     const auditJson = await activeBroker.hub.exportAudit('json');

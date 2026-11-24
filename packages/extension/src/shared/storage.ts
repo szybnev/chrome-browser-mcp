@@ -9,6 +9,7 @@ import {
   resolveLocale,
   type SecurityPolicy,
   SecurityPolicySchema,
+  validateWsUrl,
 } from '@chrome-browser-mcp/protocol';
 
 export interface ExtensionSettings {
@@ -102,9 +103,18 @@ export async function loadSettings(): Promise<ExtensionSettings> {
 
 export async function saveSettings(patch: Partial<ExtensionSettings>): Promise<ExtensionSettings> {
   const current = await loadSettings();
+  let nextWsUrl = patch.wsUrl ?? current.wsUrl;
+  if (patch.wsUrl !== undefined) {
+    const check = validateWsUrl(patch.wsUrl);
+    if (!check.ok || !check.normalized) {
+      throw new Error('Broker WebSocket URL must use ws:// or wss:// on localhost / 127.0.0.1 / ::1');
+    }
+    nextWsUrl = check.normalized;
+  }
   const next: ExtensionSettings = {
     ...current,
     ...patch,
+    wsUrl: nextWsUrl,
     policy: SecurityPolicySchema.parse(
       patch.policy ? { ...current.policy, ...patch.policy } : current.policy,
     ),

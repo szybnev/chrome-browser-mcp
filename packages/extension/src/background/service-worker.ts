@@ -19,6 +19,7 @@ import {
   SecurityPolicySchema,
   type StepOutcome,
   type TabInfo,
+  validateWsUrl,
   type WebMcpToolInfo,
 } from '@chrome-browser-mcp/protocol';
 import {
@@ -336,12 +337,24 @@ async function connectBroker(): Promise<void> {
     return;
   }
 
+  const wsCheck = validateWsUrl(settings.wsUrl);
+  if (!wsCheck.ok || !wsCheck.normalized) {
+    await saveRuntimeState({
+      connected: false,
+      lastError:
+        'Invalid broker WebSocket URL: only localhost / 127.0.0.1 / ::1 ws(s):// endpoints are allowed.',
+    });
+    await updateBadge();
+    await notifySidePanel();
+    return;
+  }
+
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;
   }
 
   try {
-    const ws = new WebSocket(settings.wsUrl);
+    const ws = new WebSocket(wsCheck.normalized);
     socket = ws;
 
     ws.addEventListener('open', async () => {
@@ -702,19 +715,43 @@ function parseFrameRef(ref?: string): { frameId: number; ref?: string } {
   return { frameId: Number(match[1]), ref };
 }
 
-const MUTATING_CDP_METHOD_PREFIXES = [
-  'Input.',
-  'DOM.setFileInputFiles',
-  'DOM.setAttributeValue',
-  'DOM.removeNode',
-  'Runtime.evaluate',
-  'Runtime.callFunctionOn',
+const SAFE_CDP_READ_METHODS = new Set([
+  'Runtime.enable',
+  'Network.enable',
+  'Page.enable',
+  'DOM.getDocument',
+  'DOM.querySelector',
+  'DOM.querySelectorAll',
+  'DOM.getBoxModel',
+  'DOM.getOuterHTML',
+  'DOM.describeNode',
+  'Accessibility.getFullAXTree',
+  'Page.captureScreenshot',
+  'Page.getLayoutMetrics',
+  'Page.getFrameTree',
+  'CSS.getComputedStyleForNode',
+  'Performance.getMetrics',
+]);
+
+const SAFE_CDP_MUTATE_METHODS = new Set([
+  'Input.dispatchMouseEvent',
+  'Input.dispatchKeyEvent',
+  'Input.insertText',
   'Page.navigate',
   'Page.reload',
-];
+  'Emulation.setDeviceMetricsOverride',
+  'Emulation.clearDeviceMetricsOverride',
+  'Emulation.setUserAgentOverride',
+  'Emulation.setTimezoneOverride',
+  'Emulation.setGeolocationOverride',
+  'Emulation.setEmulatedMedia',
+  'Network.emulateNetworkConditions',
+]);
 
-function isMutatingCdpMethod(method: string): boolean {
-  return MUTATING_CDP_METHOD_PREFIXES.some((prefix) => method.startsWith(prefix));
+function isAllowedCdpMethod(method: string): 'read' | 'mutate' | null {
+  if (SAFE_CDP_READ_METHODS.has(method)) return 'read';
+  if (SAFE_CDP_MUTATE_METHODS.has(method)) return 'mutate';
+  return null;
 }
 
 async function sendToastToTab(tabId: number, message: string): Promise<void> {
@@ -793,45 +830,57 @@ async function downscaleBase64Image(
 }
 
 async function discoverWebMcp(tabId: number): Promise<{ supported: boolean; tools: WebMcpToolInfo[] }> {
-  const [result] = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async () => {
-      const nav = navigator as unknown as {
-        modelContext?: {
-          getTools?: () => Promise<
-            Array<{
+  const timeoutMs = 300;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<{ supported: boolean; tools: WebMcpToolInfo[] }>((resolve) => {
+    timer = setTimeout(() => resolve({ supported: false, tools: [] }), timeoutMs);
+  });
+  const execPromise = (async () => {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: async () => {
+        const nav = navigator as unknown as {
+          modelContext?: {
+            getTools?: () => Promise<
+              Array<{
+                name: string;
+                description?: string;
+                inputSchema?: Record<string, unknown>;
+                annotations?: { readOnlyHint?: boolean };
+              }>
+            >;
+            tools?: Array<{
               name: string;
               description?: string;
               inputSchema?: Record<string, unknown>;
               annotations?: { readOnlyHint?: boolean };
-            }>
-          >;
-          tools?: Array<{
-            name: string;
-            description?: string;
-            inputSchema?: Record<string, unknown>;
-            annotations?: { readOnlyHint?: boolean };
-          }>;
+            }>;
+          };
         };
-      };
-      const mc = nav.modelContext;
-      if (!mc) return { supported: false, tools: [] };
-      const rawTools = typeof mc.getTools === 'function' ? await mc.getTools() : (mc.tools ?? []);
-      return {
-        supported: true,
-        tools: rawTools.map((t) => ({
-          name: String(t.name),
-          description: String(t.description ?? ''),
-          inputSchema: t.inputSchema,
-          readOnlyHint: t.annotations?.readOnlyHint,
-        })),
-      };
-    },
-  });
-  return (
-    (result?.result as { supported: boolean; tools: WebMcpToolInfo[] }) ?? { supported: false, tools: [] }
-  );
+        const mc = nav.modelContext;
+        if (!mc) return { supported: false, tools: [] };
+        const rawTools = typeof mc.getTools === 'function' ? await mc.getTools() : (mc.tools ?? []);
+        return {
+          supported: true,
+          tools: rawTools.map((t) => ({
+            name: String(t.name),
+            description: String(t.description ?? ''),
+            inputSchema: t.inputSchema,
+            readOnlyHint: t.annotations?.readOnlyHint,
+          })),
+        };
+      },
+    });
+    return (
+      (result?.result as { supported: boolean; tools: WebMcpToolInfo[] }) ?? { supported: false, tools: [] }
+    );
+  })();
+  try {
+    return await Promise.race([execPromise, timeoutPromise]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 async function invokeWebMcp(
@@ -877,18 +926,38 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
       return await listScopedTabs(false);
 
     case 'tabs.open': {
+      const settings = await loadSettings();
       const url = typeof params.url === 'string' ? params.url : 'about:blank';
+      if (url !== 'about:blank') {
+        const preCheck = isUrlBlocked(url, settings.policy.blockedDomains, settings.policy.allowedDomains);
+        if (preCheck.blocked) {
+          throw new Error(`Blocked by domain policy: ${preCheck.reason}`);
+        }
+      }
       const active = params.active !== false;
       const tab = await chrome.tabs.create({ url, active });
       if (tab.id !== undefined) {
         await attachTabToAgentGroup(tab.id);
         await waitForTabLoad(tab.id, 12_000);
-        await pushTabsSnapshotToBroker();
         const refreshed = await chrome.tabs.get(tab.id);
+        const finalUrl = refreshed.url ?? url;
+        if (finalUrl && finalUrl !== 'about:blank') {
+          const postCheck = isUrlBlocked(
+            finalUrl,
+            settings.policy.blockedDomains,
+            settings.policy.allowedDomains,
+          );
+          if (postCheck.blocked) {
+            await detachTabFromAgentGroup(tab.id);
+            await pushTabsSnapshotToBroker();
+            throw new Error(`Blocked by domain policy after redirect: ${postCheck.reason}`);
+          }
+        }
+        await pushTabsSnapshotToBroker();
         return {
           tabId: tab.id,
           windowId: refreshed.windowId,
-          url: refreshed.url ?? url,
+          url: finalUrl,
           title: refreshed.title ?? '',
           active: Boolean(refreshed.active),
           inAgentGroup: true,
@@ -923,12 +992,25 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
     }
 
     case 'tabs.attach': {
+      if (params.userInitiated !== true) {
+        throw new Error('Only the user can attach existing browser tabs via Side Panel or Browser Deck.');
+      }
       let tabId = params.tabId as number | undefined;
       if (tabId === undefined) {
         const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
         tabId = active?.id;
       }
       if (tabId === undefined) throw new Error('No tabId to attach');
+      const settings = await loadSettings();
+      const targetTab = await chrome.tabs.get(tabId);
+      const blocked = isUrlBlocked(
+        targetTab.url ?? '',
+        settings.policy.blockedDomains,
+        settings.policy.allowedDomains,
+      );
+      if (blocked.blocked) {
+        throw new Error(`Cannot attach blocked tab ${tabId}: ${blocked.reason}`);
+      }
       const groupId = await attachTabToAgentGroup(tabId);
       await sendToastToTab(tabId, 'Attached to AI Agent group');
       await pushTabsSnapshotToBroker();
@@ -946,10 +1028,19 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
 
     case 'page.navigate': {
       const tab = await resolveAccessibleTab(params.tabId as number | undefined);
+      const settings = await loadSettings();
       const action = String(params.action ?? 'goto');
       const timeoutMs = Number(params.timeoutMs ?? 15_000);
       const requestedUrl = action === 'goto' ? String(params.url) : undefined;
-      if (action === 'goto') {
+      if (action === 'goto' && requestedUrl) {
+        const preCheck = isUrlBlocked(
+          requestedUrl,
+          settings.policy.blockedDomains,
+          settings.policy.allowedDomains,
+        );
+        if (preCheck.blocked) {
+          throw new Error(`Blocked by domain policy: ${preCheck.reason}`);
+        }
         await chrome.tabs.update(tab.id, { url: requestedUrl });
         await waitForTabLoad(tab.id, timeoutMs);
       } else if (action === 'back') {
@@ -995,6 +1086,20 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
         await waitForTabLoad(tab.id, timeoutMs);
       }
 
+      const postNav = await chrome.tabs.get(tab.id);
+      const postUrl = postNav.url ?? '';
+      if (postUrl) {
+        const postCheck = isUrlBlocked(
+          postUrl,
+          settings.policy.blockedDomains,
+          settings.policy.allowedDomains,
+        );
+        if (postCheck.blocked) {
+          await pushTabsSnapshotToBroker();
+          throw new Error(`Blocked by domain policy after redirect: ${postCheck.reason}`);
+        }
+      }
+
       if (params.waitSelector || params.waitText) {
         await callContentScript(tab.id, 'cs.actStep', {
           step: {
@@ -1033,9 +1138,10 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
 
       const frames: FrameSummary[] = [{ frameId: 0, url: snapshot.url, title: snapshot.title }];
 
-      // Multi-frame traversal (including cross-origin iframes)
+      // Multi-frame traversal (including cross-origin iframes, respecting domain policy)
       if (includeIframes && snapshot.nodes.length < maxNodes) {
         try {
+          const settings = await loadSettings();
           const probe = await chrome.scripting.executeScript({
             target: { tabId: tab.id, allFrames: true },
             func: () => ({ url: location.href, title: document.title }),
@@ -1047,6 +1153,12 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
               const remaining = maxNodes - snapshot.nodes.length;
               if (remaining <= 0) break;
               const info = f.result as { url: string; title: string };
+              const frameCheck = isUrlBlocked(
+                info.url ?? '',
+                settings.policy.blockedDomains,
+                settings.policy.allowedDomains,
+              );
+              if (frameCheck.blocked) continue;
               frames.push({ frameId: f.frameId, url: info.url, title: info.title });
               try {
                 const childSnap = await callContentScript<PageSnapshot>(
@@ -1189,7 +1301,24 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
     case 'page.act': {
       const parsed = ExtensionActParamsSchema.parse(params);
       const tab = await resolveAccessibleTab(parsed.tabId);
+      if (parsed.expectedOrigin && tab.url) {
+        let liveOrigin: string | null = null;
+        try {
+          liveOrigin = new URL(tab.url).origin;
+        } catch {
+          liveOrigin = null;
+        }
+        if (liveOrigin && liveOrigin !== parsed.expectedOrigin) {
+          throw new Error(
+            `Origin changed before action (expected ${parsed.expectedOrigin}, got ${liveOrigin}) — approval invalidated`,
+          );
+        }
+      }
       const settings = await loadSettings();
+      const policyFlags = {
+        requireApprovalForPasswords: settings.policy.requireApprovalForPasswords,
+        requireApprovalForPayments: settings.policy.requireApprovalForPayments,
+      };
       const hudEnabled = settings.visualHudEnabled;
       const outcomes: StepOutcome[] = [];
       let allOk = true;
@@ -1207,6 +1336,24 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
           const started = Date.now();
           const targetRef = 'ref' in step ? step.ref : 'sourceRef' in step ? step.sourceRef : undefined;
           const { frameId } = parseFrameRef(targetRef);
+
+          if (frameId > 0) {
+            const [frameProbe] = await chrome.scripting
+              .executeScript({
+                target: { tabId: tab.id, frameIds: [frameId] },
+                func: () => location.href,
+              })
+              .catch(() => [{ result: '' }]);
+            const frameUrl = typeof frameProbe?.result === 'string' ? frameProbe.result : '';
+            const frameBlocked = isUrlBlocked(
+              frameUrl,
+              settings.policy.blockedDomains,
+              settings.policy.allowedDomains,
+            );
+            if (frameBlocked.blocked) {
+              throw new Error(`Iframe action blocked by domain policy: ${frameBlocked.reason}`);
+            }
+          }
 
           if (hudEnabled) {
             const label =
@@ -1262,15 +1409,20 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
             const wantsCdpKey = step.kind === 'press' && parsed.forceCdp;
 
             if (wantsCdpClick) {
-              const coords =
-                step.x !== undefined && step.y !== undefined
-                  ? { x: step.x, y: step.y }
-                  : await callContentScript<{ x: number; y: number }>(
-                      tab.id,
-                      'cs.resolveCoords',
-                      { ref: step.ref, selector: step.selector, hudEnabled },
-                      frameId,
-                    );
+              const coords = await callContentScript<{ x: number; y: number }>(
+                tab.id,
+                'cs.resolveCoords',
+                {
+                  x: step.x,
+                  y: step.y,
+                  ref: step.ref,
+                  selector: step.selector,
+                  hudEnabled,
+                  policyFlags,
+                  preApproved: step.preApproved,
+                },
+                frameId,
+              );
               const attached = await cdp.ensureAttached(tab.id);
               if (attached) {
                 await cdp.dispatchClick(tab.id, coords.x, coords.y, step.button, step.clickCount);
@@ -1292,6 +1444,19 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
             }
 
             if (wantsCdpKey) {
+              if (step.key === 'Enter') {
+                await callContentScript(
+                  tab.id,
+                  'cs.checkPress',
+                  {
+                    key: step.key,
+                    ref: step.ref,
+                    policyFlags,
+                    preApproved: step.preApproved,
+                  },
+                  frameId,
+                );
+              }
               const attached = await cdp.ensureAttached(tab.id);
               if (attached) {
                 await cdp.dispatchKeyPress(tab.id, step.key, step.modifiers ?? []);
@@ -1313,7 +1478,7 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
               error?: string;
               coords?: { x: number; y: number };
               needsCdpClick?: boolean;
-            }>(tab.id, 'cs.actStep', { step, hudEnabled }, frameId);
+            }>(tab.id, 'cs.actStep', { step, hudEnabled, policyFlags }, frameId);
 
             if (res.needsCdpClick && res.coords && frameId === 0) {
               const attached = await cdp.ensureAttached(tab.id);
@@ -1493,15 +1658,26 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
       const settings = await loadSettings();
       const methodName = String(params.method ?? '');
       if (!methodName) throw new Error('CDP method is required');
+      const allowedKind = isAllowedCdpMethod(methodName);
+      if (!allowedKind) {
+        throw new Error(`CDP method "${methodName}" is not permitted by the security allowlist`);
+      }
+      const cdpParams = (params.params as Record<string, unknown> | undefined) ?? undefined;
+      if (methodName === 'Page.navigate' && typeof cdpParams?.url === 'string') {
+        const navBlocked = isUrlBlocked(
+          cdpParams.url,
+          settings.policy.blockedDomains,
+          settings.policy.allowedDomains,
+        );
+        if (navBlocked.blocked) {
+          throw new Error(`CDP Page.navigate blocked by domain policy: ${navBlocked.reason}`);
+        }
+      }
       const ro = isUrlReadOnly(tab.url ?? '', settings.policy.readOnlyDomains);
-      if (ro.readOnly && isMutatingCdpMethod(methodName)) {
+      if (ro.readOnly && allowedKind !== 'read') {
         throw new Error(`CDP method "${methodName}" blocked by read-only rule: ${ro.reason}`);
       }
-      return await cdp.sendRaw(
-        tab.id,
-        methodName,
-        (params.params as Record<string, unknown> | undefined) ?? undefined,
-      );
+      return await cdp.sendRaw(tab.id, methodName, cdpParams);
     }
 
     case 'devtools.console': {
@@ -1544,6 +1720,19 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
 
     case 'devtools.eval': {
       const tab = await resolveAccessibleTab(params.tabId as number | undefined);
+      if (typeof params.expectedOrigin === 'string' && tab.url) {
+        let liveOrigin: string | null = null;
+        try {
+          liveOrigin = new URL(tab.url).origin;
+        } catch {
+          liveOrigin = null;
+        }
+        if (liveOrigin && liveOrigin !== params.expectedOrigin) {
+          throw new Error(
+            `Origin changed before script evaluation: expected ${params.expectedOrigin}, got ${liveOrigin} — approval invalidated`,
+          );
+        }
+      }
       return await cdp.evaluate(tab.id, String(params.expression), params.awaitPromise !== false);
     }
 
@@ -1578,9 +1767,16 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
 // Internal Side Panel & Recorder Messaging
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
+      const extOrigin = chrome.runtime.getURL('');
+      const isExtensionPage = !sender.tab && Boolean(sender.url?.startsWith(extOrigin));
+      if (typeof msg?.type === 'string' && msg.type.startsWith('sp.') && !isExtensionPage) {
+        sendResponse({ ok: false, error: 'Forbidden: side panel API requires extension page origin' });
+        return;
+      }
+
       switch (msg.type) {
         case 'sp.getState': {
           const [settings, runtime, tabs, workflows] = await Promise.all([
@@ -1718,6 +1914,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
 
         case 'recorder.step': {
+          const runtime = await loadRuntimeState();
+          if (runtime.recordingTabId === null || sender.tab?.id !== runtime.recordingTabId) {
+            sendResponse({ ok: false, error: 'Forbidden: recording is not active on this tab' });
+            return;
+          }
           const step = msg.step as RecordedStep;
           activeRecordingSteps.push(step);
           await notifySidePanel();
@@ -1753,7 +1954,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case 'sp.pairWithPin': {
           const pin = String(msg.pin ?? '').trim();
           const settings = await loadSettings();
-          const baseHttp = settings.wsUrl
+          const wsCheck = validateWsUrl(settings.wsUrl);
+          if (!wsCheck.ok || !wsCheck.normalized) {
+            throw new Error('Broker WebSocket URL must be a localhost / 127.0.0.1 / ::1 ws(s):// endpoint');
+          }
+          const baseHttp = wsCheck.normalized
             .replace(/^ws:/i, 'http:')
             .replace(/^wss:/i, 'https:')
             .replace(/\/ws\/?$/, '');

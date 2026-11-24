@@ -141,5 +141,6 @@ export const ExtensionActParamsSchema = z.object({
   steps: z.array(ActionStepSchema).min(1).max(30),
   returnSnapshot: z.enum(['diff', 'full', 'none']).default('diff'),
   forceCdp: z.boolean().default(false),
+  expectedOrigin: z.string().optional(),
 });
 export type ExtensionActParams = z.infer<typeof ExtensionActParamsSchema>;

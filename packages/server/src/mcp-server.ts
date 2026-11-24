@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type ActionStep,
@@ -16,9 +17,12 @@ import {
   formatFullSnapshot,
   frameUntrustedPageContent,
   interpolateWorkflowSteps,
+  isUrlBlocked,
+  isUrlReadOnly,
   type NetworkEntry,
   PageSnapshotSchema,
   type PendingDialog,
+  type SecurityPolicy,
   SecurityPolicySchema,
   type TabInfo,
   type WebMcpToolInfo,
@@ -33,16 +37,21 @@ export const DECK_APP_URI = 'ui://chrome-browser/deck.html';
 const PAYMENT_KEYWORDS =
   /\b(pay\s*now|place\s*order|confirm\s*purchase|checkout|complete\s*payment|transfer\s*funds|delete\s*account)\b/i;
 
-function loadDeckHtml(): string {
+function loadDeckHtml(deckSecret: string): string {
   const candidates = [
     process.env.CHROME_BROWSER_MCP_APP_HTML,
     resolve(__dirname, 'app/deck.html'),
     resolve(__dirname, '../../mcp-app/dist/index.html'),
   ].filter(Boolean) as string[];
 
+  const secretTag = `<script>window.__CBMCP_DECK_SECRET__=${JSON.stringify(deckSecret)};</script>`;
+
   for (const path of candidates) {
     if (existsSync(path)) {
-      return readFileSync(path, 'utf8');
+      const html = readFileSync(path, 'utf8');
+      return html.includes('</head>')
+        ? html.replace('</head>', `${secretTag}</head>`)
+        : `${secretTag}${html}`;
     }
   }
 
@@ -52,6 +61,7 @@ function loadDeckHtml(): string {
   <meta charset="utf-8" />
   <meta name="color-scheme" content="light dark" />
   <title>Browser Control Deck</title>
+  ${secretTag}
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
     body { margin: 0; padding: 20px; background: var(--color-background-primary, #111); color: var(--color-text-primary, #eee); }
@@ -72,32 +82,112 @@ function errorResult(err: unknown) {
   };
 }
 
-function saveExportToDownloads(
-  rawFilename: string,
-  content: string,
-): { savedPath: string; displayPath: string } {
-  const safeBase = basename(rawFilename).replace(/[^a-zA-Z0-9._-]/g, '-') || 'export.json';
-  const ext = extname(safeBase);
-  const stem = ext ? safeBase.slice(0, -ext.length) : safeBase;
+function isPathInsideDir(targetPath: string, baseDir: string): boolean {
+  const rel = relative(baseDir, targetPath);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
 
+function getSensitiveUploadDenylist(): string[] {
   const home = homedir();
-  const downloadsDir = join(home, 'Downloads');
-  const targetDir = existsSync(downloadsDir) ? downloadsDir : join(home, '.chrome-browser-mcp', 'exports');
-  mkdirSync(targetDir, { recursive: true, mode: 0o700 });
+  const candidates = [
+    join(home, '.chrome-browser-mcp'),
+    join(home, '.ssh'),
+    join(home, '.aws'),
+    join(home, '.gnupg'),
+    join(home, '.config'),
+    join(home, '.kube'),
+    '/etc',
+    '/private/etc',
+  ];
+  const resolved: string[] = [];
+  for (const dir of candidates) {
+    try {
+      resolved.push(existsSync(dir) ? realpathSync(dir) : resolve(dir));
+    } catch {
+      resolved.push(resolve(dir));
+    }
+  }
+  return resolved;
+}
 
-  let candidate = join(targetDir, safeBase);
-  let counter = 1;
-  while (existsSync(candidate) && counter < 1000) {
-    candidate = join(targetDir, `${stem} (${counter})${ext}`);
-    counter += 1;
+function validateUploadPaths(
+  rawFiles: string[],
+  policy: SecurityPolicy,
+): { ok: true; files: string[] } | { ok: false; error: string } {
+  const home = homedir();
+  // Fail closed by default: when uploadAllowedDirs is empty, restrict strictly to ~/Downloads
+  const configuredDirs =
+    policy.uploadAllowedDirs.length > 0 ? policy.uploadAllowedDirs : [join(home, 'Downloads')];
+  const allowedRealDirs: string[] = [];
+  for (const dir of configuredDirs) {
+    const abs = resolve(dir);
+    if (!existsSync(abs)) continue;
+    try {
+      allowedRealDirs.push(realpathSync(abs));
+    } catch {
+      // skip inaccessible dir
+    }
+  }
+  if (allowedRealDirs.length === 0) {
+    return {
+      ok: false,
+      error:
+        'No valid upload directory is available. Configure uploadAllowedDirs in Security settings or ensure ~/Downloads exists.',
+    };
   }
 
-  writeFileSync(candidate, content, { encoding: 'utf8', mode: 0o600 });
-  const displayPath = candidate.startsWith(home) ? `~${candidate.slice(home.length)}` : candidate;
-  return { savedPath: candidate, displayPath };
+  const deniedDirs = getSensitiveUploadDenylist();
+  const canonicalFiles: string[] = [];
+  for (const rawPath of rawFiles) {
+    const abs = resolve(rawPath);
+    if (!existsSync(abs)) {
+      return { ok: false, error: `Upload file does not exist: ${abs}` };
+    }
+    const real = realpathSync(abs);
+    if (deniedDirs.some((denied) => isPathInsideDir(real, denied))) {
+      return {
+        ok: false,
+        error: `Upload path "${real}" is inside a protected sensitive directory and cannot be uploaded`,
+      };
+    }
+    if (!allowedRealDirs.some((base) => isPathInsideDir(real, base))) {
+      return {
+        ok: false,
+        error: `Upload path "${real}" is outside allowed upload directories (${allowedRealDirs.join(', ')})`,
+      };
+    }
+    canonicalFiles.push(real);
+  }
+  return { ok: true, files: canonicalFiles };
+}
+
+function safeOriginFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.origin && parsed.origin !== 'null' ? parsed.origin : 'opaque-origin';
+  } catch {
+    return 'unknown-origin';
+  }
 }
 
 export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
+  // Per-server capability secret embedded strictly in deck.html (never shown to the LLM)
+  const deckSecret = randomBytes(24).toString('hex');
+  const assertDeckSecret = (candidate?: string): void => {
+    if (typeof candidate !== 'string' || !candidate) {
+      throw new Error(
+        'Unauthorized: privileged Deck control tools require an active Browser Control Deck UI session.',
+      );
+    }
+    const a = Buffer.from(candidate, 'utf8');
+    const b = Buffer.from(deckSecret, 'utf8');
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new Error(
+        'Unauthorized: privileged Deck control tools require an active Browser Control Deck UI session.',
+      );
+    }
+  };
+
   const server = new McpServer(
     {
       name: 'chrome-browser-mcp',
@@ -134,7 +224,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         {
           uri: uri.href,
           mimeType: 'text/html;profile=mcp-app',
-          text: loadDeckHtml(),
+          text: loadDeckHtml(deckSecret),
         },
       ],
     }),
@@ -205,9 +295,9 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     {
       title: 'Browser Tabs',
       description:
-        'List, open, focus, close, attach, or detach browser tabs. By default only tabs inside the AI Agent tab group are accessible.',
+        'List, open, focus, close, or detach browser tabs inside the AI Agent tab group. Only the user can attach existing private tabs via Chrome Side Panel or Browser Deck.',
       inputSchema: z.object({
-        action: z.enum(['list', 'open', 'focus', 'close', 'attach', 'detach']).default('list'),
+        action: z.enum(['list', 'open', 'focus', 'close', 'detach']).default('list'),
         tabId: z.number().int().optional(),
         url: z.string().url().optional().describe('URL to open when action is "open"'),
         active: z.boolean().default(true).describe('Focus newly opened tab'),
@@ -221,7 +311,8 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     async ({ action, tabId, url, active, bringToFront, profileId }) => {
       try {
         if (action === 'open' && url) {
-          const check = hub.checkUrlPolicy(url);
+          const policy = await hub.getLivePolicy();
+          const check = isUrlBlocked(url, policy.blockedDomains, policy.allowedDomains);
           if (check.blocked) {
             return errorResult(`Blocked by domain policy: ${check.reason}`);
           }
@@ -232,7 +323,6 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           open: 'tabs.open',
           focus: 'tabs.focus',
           close: 'tabs.close',
-          attach: 'tabs.attach',
           detach: 'tabs.detach',
         } as const;
 
@@ -292,9 +382,10 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     },
     async ({ action, url, tabId, waitSelector, waitText, timeoutMs, profileId }) => {
       try {
+        const policy = await hub.getLivePolicy();
         if (action === 'goto') {
           if (!url) return errorResult('url is required for action="goto"');
-          const check = hub.checkUrlPolicy(url);
+          const check = isUrlBlocked(url, policy.blockedDomains, policy.allowedDomains);
           if (check.blocked) return errorResult(`Blocked by domain policy: ${check.reason}`);
         }
 
@@ -308,6 +399,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           { action, url, tabId, waitSelector, waitText, timeoutMs },
           { profileId, timeoutMs: timeoutMs + 5000, toolLabel: `browser_navigate:${action}` },
         );
+
+        const postCheck = isUrlBlocked(data.url, policy.blockedDomains, policy.allowedDomains);
+        if (postCheck.blocked) {
+          return errorResult(`Blocked by domain policy after navigation: ${postCheck.reason}`);
+        }
 
         const redirectNote = data.redirectedFrom ? ` [redirected from ${data.redirectedFrom}]` : '';
         return {
@@ -369,8 +465,8 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         );
 
         const snapshot = PageSnapshotSchema.parse(data);
-        const policy = hub.getPolicy();
-        const urlCheck = hub.checkUrlPolicy(snapshot.url);
+        const policy = await hub.getLivePolicy();
+        const urlCheck = isUrlBlocked(snapshot.url, policy.blockedDomains, policy.allowedDomains);
         if (urlCheck.blocked) {
           return errorResult(`Blocked by domain policy: ${urlCheck.reason}`);
         }
@@ -456,7 +552,8 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           { profileId, toolLabel: 'browser_read' },
         );
 
-        const urlCheck = hub.checkUrlPolicy(data.url);
+        const policy = await hub.getLivePolicy();
+        const urlCheck = isUrlBlocked(data.url, policy.blockedDomains, policy.allowedDomains);
         if (urlCheck.blocked) {
           return errorResult(`Blocked by domain policy: ${urlCheck.reason}`);
         }
@@ -577,6 +674,185 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
   // 7. browser_act (Single or Batch Actions + Risky Action Gates)
   // -------------------------------------------------------------------------
 
+  // Shared policy/approval pipeline used by BOTH browser_act AND browser_workflows(replay)
+  async function executeGatedBatchAct(opts: {
+    tabId?: number;
+    steps: ActionStep[];
+    returnSnapshot: 'diff' | 'full' | 'none';
+    forceCdp: boolean;
+    profileId?: string;
+    toolLabel: string;
+    timeoutMs: number;
+  }): Promise<{ profileId: string; data: BatchActResult; policy: SecurityPolicy }> {
+    const resolvedProfiles = await hub.listProfiles();
+    const activeProfileId = opts.profileId || resolvedProfiles.defaultProfileId || 'default';
+    const policy = await hub.getLivePolicy();
+
+    const prevSnap =
+      opts.tabId !== undefined ? hub.getPreviousSnapshot(activeProfileId, opts.tabId) : undefined;
+    const liveUrl = (await hub.getLiveTabUrl(activeProfileId, opts.tabId)) ?? prevSnap?.url ?? '';
+    const origin = liveUrl ? safeOriginFromUrl(liveUrl) : (prevSnap?.origin ?? 'active-tab');
+
+    if (liveUrl) {
+      const blocked = isUrlBlocked(liveUrl, policy.blockedDomains, policy.allowedDomains);
+      if (blocked.blocked) {
+        throw new Error(`Blocked by domain policy: ${blocked.reason}`);
+      }
+    }
+
+    const hasMutatingStep = opts.steps.some((s) => s.kind !== 'scroll' && s.kind !== 'wait');
+    if (liveUrl && hasMutatingStep) {
+      const roCheck = isUrlReadOnly(liveUrl, policy.readOnlyDomains);
+      if (roCheck.readOnly) {
+        await hub.requestApprovalIfNeeded({
+          profileId: activeProfileId,
+          tabId: opts.tabId,
+          origin,
+          action: 'browser_act:read_only_override',
+          reason: `Mutating action requested on read-only domain (${roCheck.reason})`,
+          risk: 'high',
+          preview: `Allow ${opts.steps.length} step(s) on read-only ${origin}`,
+          kind: 'read-only-override',
+        });
+      }
+    }
+
+    const preparedSteps: ActionStep[] = [];
+    for (const step of opts.steps) {
+      if (step.kind === 'upload') {
+        const preCheck = validateUploadPaths(step.files, policy);
+        if (!preCheck.ok) {
+          throw new Error(preCheck.error);
+        }
+        await hub.requestApprovalIfNeeded({
+          profileId: activeProfileId,
+          tabId: opts.tabId,
+          origin,
+          action: 'browser_act:file_upload',
+          reason: `Uploading ${preCheck.files.length} local file(s) to ${origin}`,
+          risk: 'high',
+          preview: `Upload ${preCheck.files.join(', ')} to ${origin}`,
+          kind: 'upload',
+        });
+        // Re-verify canonical realpath AFTER approval to close symlink TOCTOU window
+        const postCheck = validateUploadPaths(step.files, await hub.getLivePolicy());
+        if (!postCheck.ok) {
+          throw new Error(postCheck.error);
+        }
+        preparedSteps.push({ ...step, files: postCheck.files });
+        continue;
+      }
+
+      if ((step.kind === 'fill' || step.kind === 'type') && step.secretRef) {
+        await hub.requestApprovalIfNeeded({
+          profileId: activeProfileId,
+          tabId: opts.tabId,
+          origin,
+          action: 'browser_act:secret_autofill',
+          reason: `Filling secret "${step.secretRef}" into ${step.ref || step.selector || 'input'} on ${origin}`,
+          risk: 'high',
+          preview: `Zero-Secret autofill ${step.secretRef} on ${origin}`,
+          kind: 'password',
+        });
+        // Keep secretRef intact so BrowserBrokerHub resolves & scrubs it locally (never over HTTP)
+        preparedSteps.push({ ...step, preApproved: true });
+        continue;
+      }
+
+      if ((step.kind === 'fill' || step.kind === 'type') && step.ref && prevSnap) {
+        const targetNode = prevSnap.nodes.find((n) => n.ref === step.ref);
+        if (targetNode?.inputType === 'password') {
+          await hub.requestApprovalIfNeeded({
+            profileId: activeProfileId,
+            tabId: opts.tabId,
+            origin,
+            action: 'browser_act:password_input',
+            reason: `Filling password field "${targetNode.name || targetNode.ref}" on ${origin}`,
+            risk: 'high',
+            preview: `Fill password input [${targetNode.ref}] on ${origin}`,
+            kind: 'password',
+          });
+          preparedSteps.push({ ...step, preApproved: true });
+          continue;
+        }
+      }
+
+      if (step.kind === 'click' && step.ref && prevSnap) {
+        const targetNode = prevSnap.nodes.find((n) => n.ref === step.ref);
+        if (targetNode && PAYMENT_KEYWORDS.test(targetNode.name)) {
+          await hub.requestApprovalIfNeeded({
+            profileId: activeProfileId,
+            tabId: opts.tabId,
+            origin,
+            action: 'browser_act:sensitive_submit',
+            reason: `Clicking sensitive control "${targetNode.name}" on ${origin}`,
+            risk: 'critical',
+            preview: `Click [${targetNode.ref}] "${targetNode.name}" on ${origin}`,
+            kind: 'payment',
+          });
+          preparedSteps.push({ ...step, preApproved: true });
+          continue;
+        }
+      }
+
+      preparedSteps.push(step);
+    }
+
+    let currentSteps = preparedSteps;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { profileId: usedProfile, data } = await hub.callExtension<BatchActResult>(
+        'page.act',
+        {
+          tabId: opts.tabId,
+          steps: currentSteps,
+          returnSnapshot: opts.returnSnapshot,
+          forceCdp: opts.forceCdp,
+          expectedOrigin: /^https?:\/\//i.test(origin) ? origin : undefined,
+        },
+        { profileId: opts.profileId, timeoutMs: opts.timeoutMs, toolLabel: opts.toolLabel },
+      );
+
+      // Handle DOM-level approval challenges returned by the extension for selector/(x,y)/Enter/password targets
+      const failedChallenge = data.outcomes.find(
+        (o) => !o.ok && typeof o.error === 'string' && o.error.startsWith('APPROVAL_REQUIRED:'),
+      );
+      if (!failedChallenge?.error) {
+        return { profileId: usedProfile, data, policy };
+      }
+
+      const parts = failedChallenge.error.split(':');
+      const kindRaw = parts[1];
+      const detailRaw = parts.slice(2).join(':');
+      const kind = kindRaw === 'password' ? 'password' : 'payment';
+      const detail = detailRaw || `Step ${failedChallenge.index + 1} (${failedChallenge.kind})`;
+      const liveAfter = (await hub.getLiveTabUrl(usedProfile, data.tabId)) ?? liveUrl;
+      const challengeOrigin = liveAfter ? safeOriginFromUrl(liveAfter) : origin;
+
+      await hub.requestApprovalIfNeeded({
+        profileId: usedProfile,
+        tabId: data.tabId,
+        origin: challengeOrigin,
+        action: kind === 'password' ? 'browser_act:password_input' : 'browser_act:sensitive_submit',
+        reason: `${detail} on ${challengeOrigin}`,
+        risk: kind === 'payment' ? 'critical' : 'high',
+        preview: `${detail} on ${challengeOrigin}`,
+        kind,
+      });
+
+      // Retry remaining steps starting at the challenged step with preApproved=true
+      const remaining = currentSteps
+        .slice(failedChallenge.index)
+        .map((s, idx) =>
+          idx === 0 && (s.kind === 'click' || s.kind === 'fill' || s.kind === 'type' || s.kind === 'press')
+            ? { ...s, preApproved: true }
+            : s,
+        );
+      currentSteps = remaining;
+    }
+
+    throw new Error('Action aborted after repeated approval challenges.');
+  }
+
   server.registerTool(
     'browser_act',
     {
@@ -593,125 +869,19 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     },
     async ({ tabId, steps, returnSnapshot, forceCdp, profileId }) => {
       try {
-        const resolvedProfiles = await hub.listProfiles();
-        const activeProfileId = profileId || resolvedProfiles.defaultProfileId || 'default';
-
-        // Inspect previous snapshot / tab URL for read-only, password, payment, upload, and secretRef gates
-        const prevSnap = tabId !== undefined ? hub.getPreviousSnapshot(activeProfileId, tabId) : undefined;
-        const knownUrl = prevSnap?.url ?? hub.getTabUrl(activeProfileId, tabId) ?? '';
-        const origin = prevSnap?.origin ?? (knownUrl ? new URL(knownUrl).origin : 'active-tab');
-        const policy = hub.getPolicy();
-
-        const hasMutatingStep = steps.some((s) => s.kind !== 'scroll' && s.kind !== 'wait');
-        if (knownUrl && hasMutatingStep) {
-          const roCheck = hub.checkReadOnlyPolicy(knownUrl);
-          if (roCheck.readOnly) {
-            await hub.requestApprovalIfNeeded({
-              profileId: activeProfileId,
-              tabId,
-              origin,
-              action: 'browser_act:read_only_override',
-              reason: `Mutating action requested on read-only domain (${roCheck.reason})`,
-              risk: 'high',
-              preview: `Allow ${steps.length} step(s) on read-only ${origin}`,
-              kind: 'read-only-override',
-            });
-          }
-        }
-
-        const resolvedSteps: ActionStep[] = [];
-        for (const step of steps) {
-          if (step.kind === 'upload') {
-            const canonicalFiles: string[] = [];
-            for (const rawPath of step.files) {
-              const abs = resolve(rawPath);
-              if (!existsSync(abs)) {
-                return errorResult(`Upload file does not exist: ${abs}`);
-              }
-              const real = realpathSync(abs);
-              if (policy.uploadAllowedDirs.length > 0) {
-                const allowed = policy.uploadAllowedDirs.some((dir) => {
-                  const base = resolve(dir);
-                  return real === base || real.startsWith(`${base}/`) || real.startsWith(`${base}\\`);
-                });
-                if (!allowed) {
-                  return errorResult(`Upload path "${real}" is outside configured uploadAllowedDirs`);
-                }
-              }
-              canonicalFiles.push(real);
-            }
-            await hub.requestApprovalIfNeeded({
-              profileId: activeProfileId,
-              tabId,
-              origin,
-              action: 'browser_act:file_upload',
-              reason: `Uploading ${canonicalFiles.length} local file(s) to ${origin}`,
-              risk: 'high',
-              preview: `Upload ${canonicalFiles.join(', ')} to ${origin}`,
-              kind: 'upload',
-            });
-            resolvedSteps.push({ ...step, files: canonicalFiles });
-            continue;
-          }
-
-          if ((step.kind === 'fill' || step.kind === 'type') && step.secretRef) {
-            await hub.requestApprovalIfNeeded({
-              profileId: activeProfileId,
-              tabId,
-              origin,
-              action: 'browser_act:secret_autofill',
-              reason: `Filling secret "${step.secretRef}" into ${step.ref || step.selector || 'input'} on ${origin}`,
-              risk: 'high',
-              preview: `Zero-Secret autofill ${step.secretRef} on ${origin}`,
-              kind: 'password',
-            });
-            const resolved = await hub.resolveSecret(step.secretRef);
-            if (step.kind === 'fill') {
-              resolvedSteps.push({ ...step, value: resolved.value, secretRef: undefined });
-            } else {
-              resolvedSteps.push({ ...step, text: resolved.value, secretRef: undefined });
-            }
-            continue;
-          }
-
-          if ((step.kind === 'fill' || step.kind === 'type') && step.ref && prevSnap) {
-            const targetNode = prevSnap.nodes.find((n) => n.ref === step.ref);
-            if (targetNode?.inputType === 'password') {
-              await hub.requestApprovalIfNeeded({
-                profileId: activeProfileId,
-                tabId,
-                origin,
-                action: 'browser_act:password_input',
-                reason: `Filling password field "${targetNode.name || targetNode.ref}" on ${origin}`,
-                risk: 'high',
-                preview: `Fill password input [${targetNode.ref}] on ${origin}`,
-                kind: 'password',
-              });
-            }
-          }
-          if (step.kind === 'click' && step.ref && prevSnap) {
-            const targetNode = prevSnap.nodes.find((n) => n.ref === step.ref);
-            if (targetNode && PAYMENT_KEYWORDS.test(targetNode.name)) {
-              await hub.requestApprovalIfNeeded({
-                profileId: activeProfileId,
-                tabId,
-                origin,
-                action: 'browser_act:sensitive_submit',
-                reason: `Clicking sensitive control "${targetNode.name}" on ${origin}`,
-                risk: 'critical',
-                preview: `Click [${targetNode.ref}] "${targetNode.name}" on ${origin}`,
-                kind: 'payment',
-              });
-            }
-          }
-          resolvedSteps.push(step);
-        }
-
-        const { profileId: usedProfile, data } = await hub.callExtension<BatchActResult>(
-          'page.act',
-          { tabId, steps: resolvedSteps, returnSnapshot, forceCdp },
-          { profileId, timeoutMs: 45_000, toolLabel: `browser_act(${steps.length})` },
-        );
+        const {
+          profileId: usedProfile,
+          data,
+          policy,
+        } = await executeGatedBatchAct({
+          tabId,
+          steps,
+          returnSnapshot,
+          forceCdp,
+          profileId,
+          toolLabel: `browser_act(${steps.length})`,
+          timeoutMs: 45_000,
+        });
 
         const summaryLines = [
           `Executed ${data.completedSteps}/${data.totalSteps} step(s) on tab ${data.tabId} (${data.ok ? 'OK' : 'STOPPED ON ERROR'}):`,
@@ -742,7 +912,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
             title: parsedSnap.title,
             content: snapText,
             filteredHiddenCount: parsedSnap.filteredHiddenCount,
-            shieldEnabled: hub.getPolicy().promptInjectionShield,
+            shieldEnabled: policy.promptInjectionShield,
           });
           summaryLines.push('', framed.text);
         }
@@ -791,7 +961,14 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           (c) =>
             `[${new Date(c.timestamp).toISOString().slice(11, 23)}] [${c.level.toUpperCase()}] ${c.text}${c.source ? ` (${c.source}${c.line ? `:${c.line}` : ''})` : ''}`,
         );
-        return { content: [{ type: 'text', text: lines.join('\n') }] };
+        const policy = await hub.getLivePolicy();
+        const framed = frameUntrustedPageContent({
+          origin: 'browser-console',
+          url: `tab://${tabId ?? 'active'}`,
+          content: lines.join('\n'),
+          shieldEnabled: policy.promptInjectionShield,
+        });
+        return { content: [{ type: 'text', text: framed.text }] };
       } catch (err) {
         return errorResult(err);
       }
@@ -856,7 +1033,14 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           (n) =>
             `[${n.requestId}] ${n.method} ${n.status ?? (n.failed ? 'FAIL' : 'PENDING')} ${n.url}${n.durationMs ? ` (${n.durationMs}ms)` : ''}${n.errorText ? ` — ${n.errorText}` : ''}${n.responsePreview ? `\n    preview: ${n.responsePreview.slice(0, 180)}` : ''}`,
         );
-        return { content: [{ type: 'text', text: lines.join('\n') }] };
+        const policy = await hub.getLivePolicy();
+        const framed = frameUntrustedPageContent({
+          origin: 'browser-network',
+          url: `tab://${tabId ?? 'active'}`,
+          content: lines.join('\n'),
+          shieldEnabled: policy.promptInjectionShield,
+        });
+        return { content: [{ type: 'text', text: framed.text }] };
       } catch (err) {
         return errorResult(err);
       }
@@ -884,12 +1068,17 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
       try {
         const { defaultProfileId } = await hub.listProfiles();
         const activeProfile = profileId || defaultProfileId || 'default';
+        const policy = await hub.getLivePolicy();
         const prevSnap = tabId !== undefined ? hub.getPreviousSnapshot(activeProfile, tabId) : undefined;
-        const knownUrl = prevSnap?.url ?? hub.getTabUrl(activeProfile, tabId) ?? '';
-        const origin = prevSnap?.origin ?? (knownUrl ? new URL(knownUrl).origin : 'active-tab');
+        const knownUrl = (await hub.getLiveTabUrl(activeProfile, tabId)) ?? prevSnap?.url ?? '';
+        const origin = knownUrl ? safeOriginFromUrl(knownUrl) : (prevSnap?.origin ?? 'active-tab');
 
         if (knownUrl) {
-          const roCheck = hub.checkReadOnlyPolicy(knownUrl);
+          const blocked = isUrlBlocked(knownUrl, policy.blockedDomains, policy.allowedDomains);
+          if (blocked.blocked) {
+            return errorResult(`Blocked by domain policy: ${blocked.reason}`);
+          }
+          const roCheck = isUrlReadOnly(knownUrl, policy.readOnlyDomains);
           if (roCheck.readOnly) {
             await hub.requestApprovalIfNeeded({
               profileId: activeProfile,
@@ -917,7 +1106,12 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
 
         const { data } = await hub.callExtension<{ value: unknown; exception?: string }>(
           'devtools.eval',
-          { tabId, expression, awaitPromise },
+          {
+            tabId,
+            expression,
+            awaitPromise,
+            expectedOrigin: /^https?:\/\//i.test(origin) ? origin : undefined,
+          },
           { profileId, toolLabel: 'browser_eval' },
         );
 
@@ -925,8 +1119,14 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           return errorResult(`JS exception: ${data.exception}`);
         }
         const serialized = typeof data.value === 'string' ? data.value : JSON.stringify(data.value, null, 2);
+        const framed = frameUntrustedPageContent({
+          origin,
+          url: knownUrl || `tab://${tabId ?? 'active'}`,
+          content: serialized ?? 'undefined',
+          shieldEnabled: policy.promptInjectionShield,
+        });
         return {
-          content: [{ type: 'text', text: serialized ?? 'undefined' }],
+          content: [{ type: 'text', text: framed.text }],
         };
       } catch (err) {
         return errorResult(err);
@@ -951,13 +1151,20 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     },
     async ({ tabId, profileId }) => {
       try {
+        const policy = await hub.getLivePolicy();
         const { data } = await hub.callExtension<AuditResult>(
           'devtools.audit',
           { tabId },
           { profileId, toolLabel: 'browser_audit' },
         );
+        const framed = frameUntrustedPageContent({
+          origin: safeOriginFromUrl(data.url),
+          url: data.url,
+          content: JSON.stringify(data, null, 2),
+          shieldEnabled: policy.promptInjectionShield,
+        });
         return {
-          content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+          content: [{ type: 'text', text: framed.text }],
         };
       } catch (err) {
         return errorResult(err);
@@ -999,8 +1206,15 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
             ],
           };
         }
+        const policy = await hub.getLivePolicy();
+        const framed = frameUntrustedPageContent({
+          origin: 'webmcp-tools',
+          url: `tab://${tabId ?? 'active'}`,
+          content: JSON.stringify(data.tools, null, 2),
+          shieldEnabled: policy.promptInjectionShield,
+        });
         return {
-          content: [{ type: 'text', text: JSON.stringify(data.tools, null, 2) }],
+          content: [{ type: 'text', text: framed.text }],
         };
       } catch (err) {
         return errorResult(err);
@@ -1022,18 +1236,45 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     },
     async ({ tabId, name, arguments: args, profileId }) => {
       try {
+        const { defaultProfileId } = await hub.listProfiles();
+        const activeProfile = profileId || defaultProfileId || 'default';
+        const policy = await hub.getLivePolicy();
+        const liveUrl = (await hub.getLiveTabUrl(activeProfile, tabId)) ?? '';
+        const origin = liveUrl ? safeOriginFromUrl(liveUrl) : 'active-tab';
+
+        if (liveUrl) {
+          const blocked = isUrlBlocked(liveUrl, policy.blockedDomains, policy.allowedDomains);
+          if (blocked.blocked) return errorResult(`Blocked by domain policy: ${blocked.reason}`);
+          const roCheck = isUrlReadOnly(liveUrl, policy.readOnlyDomains);
+          if (roCheck.readOnly) {
+            await hub.requestApprovalIfNeeded({
+              profileId: activeProfile,
+              tabId,
+              origin,
+              action: `browser_webmcp_call:${name}`,
+              reason: `WebMCP tool call requested on read-only domain (${roCheck.reason})`,
+              risk: 'high',
+              preview: `Call WebMCP tool "${name}" on ${origin}`,
+              kind: 'read-only-override',
+            });
+          }
+        }
+
         const { data } = await hub.callExtension<{ result: unknown }>(
           'webmcp.call',
           { tabId, name, arguments: args },
           { profileId, toolLabel: `webmcp:${name}` },
         );
+        const serialized =
+          typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
+        const framed = frameUntrustedPageContent({
+          origin,
+          url: liveUrl || `tab://${tabId ?? 'active'}`,
+          content: serialized ?? 'null',
+          shieldEnabled: policy.promptInjectionShield,
+        });
         return {
-          content: [
-            {
-              type: 'text',
-              text: typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2),
-            },
-          ],
+          content: [{ type: 'text', text: framed.text }],
         };
       } catch (err) {
         return errorResult(err);
@@ -1108,13 +1349,17 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           return { content: [{ type: 'text', text: exportWorkflowToPlaywright(wf) }] };
         }
 
-        // Replay recorded steps via page.act (with optional {{var}} interpolation)
+        // Replay recorded steps through the FULL policy, upload, secret & approval pipeline
         const { steps } = interpolateWorkflowSteps(wf, variables ?? {});
-        const { data } = await hub.callExtension<BatchActResult>(
-          'page.act',
-          { tabId, steps, returnSnapshot: 'diff', forceCdp: false },
-          { profileId, timeoutMs: 60_000, toolLabel: `workflow:${wf.name}` },
-        );
+        const { data } = await executeGatedBatchAct({
+          tabId,
+          steps,
+          returnSnapshot: 'diff',
+          forceCdp: false,
+          profileId,
+          toolLabel: `workflow:${wf.name}`,
+          timeoutMs: 60_000,
+        });
 
         return {
           isError: !data.ok,
@@ -1150,6 +1395,25 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     },
     async ({ action, promptText, tabId, profileId }) => {
       try {
+        const policy = await hub.getLivePolicy();
+        const { defaultProfileId } = await hub.listProfiles();
+        const activeProfile = profileId || defaultProfileId || 'default';
+        const liveUrl = (await hub.getLiveTabUrl(activeProfile, tabId)) ?? '';
+        const origin = liveUrl ? safeOriginFromUrl(liveUrl) : 'active-tab';
+
+        if ((action === 'accept' || action === 'dismiss') && policy.dialogPolicy === 'approval') {
+          await hub.requestApprovalIfNeeded({
+            profileId: activeProfile,
+            tabId,
+            origin,
+            action: `browser_dialog:${action}`,
+            reason: `Respond (${action}) to JavaScript dialog on ${origin}`,
+            risk: 'medium',
+            preview: `${action} JS dialog${promptText ? ` with "${promptText.slice(0, 80)}"` : ''} on ${origin}`,
+            kind: 'dialog',
+          });
+        }
+
         const { data } = await hub.callExtension<{
           tabId?: number;
           dialog?: PendingDialog | null;
@@ -1164,13 +1428,14 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           if (!data.dialog) {
             return { content: [{ type: 'text', text: 'No active JavaScript dialog on this tab.' }] };
           }
+          const framed = frameUntrustedPageContent({
+            origin,
+            url: liveUrl || `tab://${tabId ?? 'active'}`,
+            content: `Pending ${data.dialog.type} dialog: ${JSON.stringify(data.dialog.message)}${data.dialog.defaultPrompt ? ` (default: ${JSON.stringify(data.dialog.defaultPrompt)})` : ''}`,
+            shieldEnabled: policy.promptInjectionShield,
+          });
           return {
-            content: [
-              {
-                type: 'text',
-                text: `Pending ${data.dialog.type} dialog: ${JSON.stringify(data.dialog.message)}${data.dialog.defaultPrompt ? ` (default: ${JSON.stringify(data.dialog.defaultPrompt)})` : ''}`,
-              },
-            ],
+            content: [{ type: 'text', text: framed.text }],
           };
         }
         return {
@@ -1371,10 +1636,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'deck_set_paused',
     {
       title: 'Deck: Set Paused',
-      inputSchema: z.object({ paused: z.boolean() }),
+      inputSchema: z.object({ paused: z.boolean(), deckSecret: z.string().optional() }),
       _meta: APP_ONLY_META,
     },
-    async ({ paused }) => {
+    async ({ paused, deckSecret: supplied }) => {
+      assertDeckSecret(supplied);
       await hub.setPaused(paused);
       const state = await hub.getDeckState();
       return {
@@ -1388,10 +1654,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'deck_select_profile',
     {
       title: 'Deck: Select Profile',
-      inputSchema: z.object({ profileId: z.string() }),
+      inputSchema: z.object({ profileId: z.string(), deckSecret: z.string().optional() }),
       _meta: APP_ONLY_META,
     },
-    async ({ profileId }) => {
+    async ({ profileId, deckSecret: supplied }) => {
+      assertDeckSecret(supplied);
       await hub.selectDefaultProfile(profileId);
       const state = await hub.getDeckState();
       return {
@@ -1410,10 +1677,12 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         tabId: z.number().int(),
         action: z.enum(['attach', 'detach', 'focus', 'close']),
         bringToFront: z.boolean().optional(),
+        deckSecret: z.string().optional(),
       }),
       _meta: APP_ONLY_META,
     },
-    async ({ profileId, tabId, action, bringToFront }) => {
+    async ({ profileId, tabId, action, bringToFront, deckSecret: supplied }) => {
+      assertDeckSecret(supplied);
       const map = {
         attach: 'tabs.attach',
         detach: 'tabs.detach',
@@ -1440,10 +1709,12 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
       inputSchema: z.object({
         approvalId: z.string(),
         decision: z.enum(['approved', 'rejected']),
+        deckSecret: z.string().optional(),
       }),
       _meta: APP_ONLY_META,
     },
-    async ({ approvalId, decision }) => {
+    async ({ approvalId, decision, deckSecret: supplied }) => {
+      assertDeckSecret(supplied);
       await hub.resolveApproval(approvalId, decision);
       const state = await hub.getDeckState();
       return {
@@ -1457,10 +1728,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'deck_update_policy',
     {
       title: 'Deck: Update Policy',
-      inputSchema: SecurityPolicySchema.partial(),
+      inputSchema: SecurityPolicySchema.partial().extend({ deckSecret: z.string().optional() }),
       _meta: APP_ONLY_META,
     },
-    async (patch) => {
+    async ({ deckSecret: supplied, ...patch }) => {
+      assertDeckSecret(supplied);
       await hub.updatePolicy(patch);
       const state = await hub.getDeckState();
       return {
@@ -1474,10 +1746,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'deck_delete_workflow',
     {
       title: 'Deck: Delete Workflow',
-      inputSchema: z.object({ workflowId: z.string() }),
+      inputSchema: z.object({ workflowId: z.string(), deckSecret: z.string().optional() }),
       _meta: APP_ONLY_META,
     },
-    async ({ workflowId }) => {
+    async ({ workflowId, deckSecret: supplied }) => {
+      assertDeckSecret(supplied);
       await hub.deleteWorkflow(workflowId);
       const state = await hub.getDeckState();
       return {
@@ -1488,69 +1761,39 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
   );
 
   server.registerTool(
-    'deck_export_playwright',
-    {
-      title: 'Deck: Export Workflow to Playwright',
-      inputSchema: z.object({ workflowId: z.string() }),
-      _meta: APP_ONLY_META,
-    },
-    async ({ workflowId }) => {
-      const workflows = await hub.listWorkflows();
-      const wf = workflows.find((w) => w.id === workflowId);
-      if (!wf) return errorResult(`Workflow "${workflowId}" not found`);
-      const code = exportWorkflowToPlaywright(wf);
-      const slug =
-        wf.name
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '') || wf.id;
-      const filename = `${slug}.spec.ts`;
-      const { savedPath, displayPath } = saveExportToDownloads(filename, code);
-      return {
-        content: [{ type: 'text', text: `Saved to ${displayPath}` }],
-        structuredContent: { filename, savedPath, displayPath, code },
-      };
-    },
-  );
-
-  server.registerTool(
-    'deck_export_audit',
-    {
-      title: 'Deck: Export Audit Report',
-      inputSchema: z.object({ format: z.enum(['json', 'html']).default('json') }),
-      _meta: APP_ONLY_META,
-    },
-    async ({ format }) => {
-      const res = await hub.exportAudit(format);
-      const filename = `chrome-browser-mcp-timeline.${format}`;
-      const { savedPath, displayPath } = saveExportToDownloads(filename, res.content);
-      return {
-        content: [{ type: 'text', text: `Exported ${res.eventCount} event(s) to ${displayPath}` }],
-        structuredContent: {
-          filename,
-          savedPath,
-          displayPath,
-          contentType: res.contentType,
-          content: res.content,
-          eventCount: res.eventCount,
-        },
-      };
-    },
-  );
-
-  server.registerTool(
     'deck_clear_diagnostics',
     {
       title: 'Deck: Clear Console or Network Diagnostics',
-      inputSchema: z.object({ target: z.enum(['console', 'network', 'all']).default('all') }),
+      inputSchema: z.object({
+        target: z.enum(['console', 'network', 'all']).default('all'),
+        deckSecret: z.string().optional(),
+      }),
       _meta: APP_ONLY_META,
     },
-    async ({ target }) => {
+    async ({ target, deckSecret: supplied }) => {
+      assertDeckSecret(supplied);
       await hub.clearDiagnostics(target);
       const state = await hub.getDeckState();
       return {
         content: [{ type: 'text', text: `cleared ${target}` }],
         structuredContent: { state },
+      };
+    },
+  );
+
+  server.registerTool(
+    'deck_create_pin',
+    {
+      title: 'Deck: Generate 6-Digit Pairing PIN',
+      inputSchema: z.object({ deckSecret: z.string().optional() }),
+      _meta: APP_ONLY_META,
+    },
+    async ({ deckSecret: supplied }) => {
+      assertDeckSecret(supplied);
+      const { pin, expiresAt } = await hub.createPairingPin();
+      return {
+        content: [{ type: 'text', text: 'Pairing PIN generated (valid 2 min)' }],
+        structuredContent: { pin, expiresAt },
       };
     },
   );
@@ -1564,10 +1807,12 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         tabId: z.number().int(),
         accept: z.boolean(),
         promptText: z.string().optional(),
+        deckSecret: z.string().optional(),
       }),
       _meta: APP_ONLY_META,
     },
-    async ({ profileId, tabId, accept, promptText }) => {
+    async ({ profileId, tabId, accept, promptText, deckSecret: supplied }) => {
+      assertDeckSecret(supplied);
       await hub.callExtension(
         'page.dialog',
         { action: accept ? 'accept' : 'dismiss', tabId, promptText },

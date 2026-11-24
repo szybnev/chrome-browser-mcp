@@ -9,7 +9,8 @@ export function handleCdpDiscoveryRequest(
   url: URL,
   hub: BrowserBrokerHub,
   brokerUrl: string,
-  brokerToken: string,
+  cdpToken: string,
+  verifyCdpToken: (candidate: string) => boolean,
 ): boolean {
   if (req.method !== 'GET') return false;
   if (url.pathname !== '/json/version' && url.pathname !== '/json/list' && url.pathname !== '/json') {
@@ -31,7 +32,7 @@ export function handleCdpDiscoveryRequest(
   const headerToken = req.headers['x-broker-token'];
   const queryToken = url.searchParams.get('token');
   const candidate = typeof headerToken === 'string' ? headerToken : (queryToken ?? '');
-  if (!hub.verifyToken(candidate)) {
+  if (!verifyCdpToken(candidate) && !hub.verifyToken(candidate)) {
     res.writeHead(401, { 'content-type': 'application/json; charset=utf-8' });
     res.end(
       JSON.stringify({ ok: false, error: 'Unauthorized CDP proxy token (pass ?token= or x-broker-token)' }),
@@ -49,13 +50,13 @@ export function handleCdpDiscoveryRequest(
         'Protocol-Version': '1.3',
         'User-Agent': `Chrome-Browser-MCP/${APP_VERSION}`,
         'V8-Version': process.versions.v8,
-        webSocketDebuggerUrl: `${wsBase}/cdp/browser?token=${encodeURIComponent(brokerToken)}`,
+        webSocketDebuggerUrl: `${wsBase}/cdp/browser?token=${encodeURIComponent(cdpToken)}`,
       }),
     );
     return true;
   }
 
-  // /json or /json/list — expose ONLY scoped non-blocked tabs
+  // /json or /json/list — expose ONLY scoped non-blocked tabs (using scoped cdpToken, NOT master brokerToken!)
   void (async () => {
     const state = await hub.getDeckState();
     const policy = hub.getPolicy();
@@ -70,7 +71,7 @@ export function handleCdpDiscoveryRequest(
           type: 'page',
           title: tab.title,
           url: tab.url,
-          webSocketDebuggerUrl: `${wsBase}/cdp/${tab.tabId}?profileId=${encodeURIComponent(profileId)}&token=${encodeURIComponent(brokerToken)}`,
+          webSocketDebuggerUrl: `${wsBase}/cdp/${tab.tabId}?profileId=${encodeURIComponent(profileId)}&token=${encodeURIComponent(cdpToken)}`,
         });
       }
     }

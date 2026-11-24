@@ -33,14 +33,19 @@ export function installNativeMessagingHost(options: { extensionId: string; dataD
     process.platform === 'win32' ? 'native-host.cmd' : 'native-host.sh',
   );
 
-  mkdirSync(config.dataDir, { recursive: true });
+  mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
   if (process.platform === 'win32') {
     writeFileSync(wrapperPath, `@echo off\r\n"${process.execPath}" "${cliPath}" native-host\r\n`, 'utf8');
   } else {
-    writeFileSync(wrapperPath, `#!/bin/sh\nexec "${process.execPath}" "${cliPath}" native-host\n`, {
-      encoding: 'utf8',
-      mode: 0o700,
-    });
+    const shQuote = (p: string) => `'${p.replace(/'/g, `'\\''`)}'`;
+    writeFileSync(
+      wrapperPath,
+      `#!/bin/sh\nexec ${shQuote(process.execPath)} ${shQuote(cliPath)} native-host\n`,
+      {
+        encoding: 'utf8',
+        mode: 0o700,
+      },
+    );
     chmodSync(wrapperPath, 0o700);
   }
 

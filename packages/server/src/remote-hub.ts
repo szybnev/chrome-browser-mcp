@@ -109,8 +109,23 @@ export class RemoteBrokerHub implements BrowserHubInterface {
     return undefined;
   }
 
-  async resolveSecret(secretRef: string): Promise<{ value: string; maskedLabel: string }> {
-    return this.post('/internal/resolve-secret', { secretRef });
+  async getLiveTabUrl(profileId?: string, tabId?: number): Promise<string | undefined> {
+    const res = await this.post<{ url: string | null }>('/internal/tab-url', { profileId, tabId });
+    return res.url ?? undefined;
+  }
+
+  async getLivePolicy(): Promise<SecurityPolicy> {
+    const policy = await this.post<SecurityPolicy>('/internal/policy');
+    this.cachedPolicy = policy;
+    return policy;
+  }
+
+  async createPairingPin(): Promise<{ pin: string; expiresAt: number }> {
+    return this.post('/internal/create-pin');
+  }
+
+  async resolveSecret(_secretRef: string): Promise<{ value: string; maskedLabel: string }> {
+    throw new Error('Secrets are resolved strictly inside the local Broker Hub during page.act.');
   }
 
   async exportAudit(
@@ -131,7 +146,7 @@ export class RemoteBrokerHub implements BrowserHubInterface {
     reason: string;
     risk: RiskLevel;
     preview: string;
-    kind: 'eval' | 'password' | 'payment' | 'upload' | 'read-only-override';
+    kind: 'eval' | 'password' | 'payment' | 'upload' | 'read-only-override' | 'dialog';
   }): Promise<void> {
     await this.post('/internal/request-approval', args);
   }

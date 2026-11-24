@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 
 const ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
-const ACCOUNT_RE = /^[A-Za-z0-9._:@/-]{1,120}$/;
+const ACCOUNT_RE = /^[A-Za-z0-9_][A-Za-z0-9._:@/-]{0,119}$/;
 
 function parseSecretsEnvFile(filePath: string): Map<string, string> {
   const map = new Map<string, string>();

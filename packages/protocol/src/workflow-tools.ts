@@ -84,8 +84,18 @@ export function interpolateWorkflowSteps(
   return { startUrl, steps };
 }
 
+function sanitizeLineComment(str: string): string {
+  return str.replace(/[\r\n\u2028\u2029]+/g, ' ');
+}
+
 function escapeSingleQuoted(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 function escapeTemplateLiteralChunk(str: string): string {
@@ -94,7 +104,9 @@ function escapeTemplateLiteralChunk(str: string): string {
     .replace(/`/g, '\\`')
     .replace(/\$\{/g, '\\${')
     .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r');
+    .replace(/\r/g, '\\r')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 function formatVarExpr(name: string, sensitiveNames: Set<string>): string {
@@ -137,8 +149,8 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
   const sensitiveSet = new Set((workflow.parameters ?? []).filter((p) => p.sensitive).map((p) => p.name));
   const defaults = new Map((workflow.parameters ?? []).map((p) => [p.name, p.defaultValue ?? '']));
 
-  const safeCommentName = workflow.name.replace(/[\r\n]+/g, ' ');
-  const safeCommentId = workflow.id.replace(/[\r\n]+/g, ' ');
+  const safeCommentName = sanitizeLineComment(workflow.name);
+  const safeCommentId = sanitizeLineComment(workflow.id);
   const lines: string[] = [
     `import { test, expect } from '@playwright/test';`,
     '',
@@ -172,7 +184,7 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
           : null;
 
     if (entry.description) {
-      lines.push(`  // ${entry.description.replace(/\r?\n/g, ' ')}`);
+      lines.push(`  // ${sanitizeLineComment(entry.description)}`);
     }
 
     switch (s.kind) {
@@ -254,7 +266,9 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
         }
         break;
       case 'drag':
-        lines.push(`  // Drag from ${s.sourceRef} to ${s.targetRef}`);
+        lines.push(
+          `  // Drag from ${sanitizeLineComment(s.sourceRef)} to ${sanitizeLineComment(s.targetRef)}`,
+        );
         break;
     }
   }
