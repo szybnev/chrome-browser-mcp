@@ -43,19 +43,23 @@ export function WelcomeApp() {
   const [busy, setBusy] = useState(false);
 
   const loadState = useCallback(async () => {
-    const payload = await sendSw<StatePayload>({ type: 'sp.getState' });
-    setSettings(payload.settings);
-    setRuntime(payload.runtime);
-    setLabelDraft((prev) => (prev === 'default' ? payload.settings.profileLabel : prev));
-    const httpBase = payload.settings.wsUrl
-      .replace(/^ws:/i, 'http:')
-      .replace(/^wss:/i, 'https:')
-      .replace(/\/ws\/?$/, '');
     try {
-      const resp = await fetch(`${httpBase}/health`, { signal: AbortSignal.timeout(1200) });
-      setBrokerAlive(resp.ok);
-    } catch {
-      setBrokerAlive(false);
+      const payload = await sendSw<StatePayload>({ type: 'sp.getState' });
+      setSettings(payload.settings);
+      setRuntime(payload.runtime);
+      setLabelDraft((prev) => (prev === 'default' ? payload.settings.profileLabel : prev));
+      const httpBase = payload.settings.wsUrl
+        .replace(/^ws:/i, 'http:')
+        .replace(/^wss:/i, 'https:')
+        .replace(/\/ws\/?$/, '');
+      try {
+        const resp = await fetch(`${httpBase}/health`, { signal: AbortSignal.timeout(1200) });
+        setBrokerAlive(resp.ok);
+      } catch {
+        setBrokerAlive(false);
+      }
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : String(err));
     }
   }, []);
 
@@ -81,8 +85,12 @@ export function WelcomeApp() {
     .replace(/\/ws\/?$/, '');
 
   const updateSettings = async (patch: Partial<ExtensionSettings>, reconnect = false) => {
-    const next = await sendSw<ExtensionSettings>({ type: 'sp.saveSettings', patch, reconnect });
-    setSettings(next);
+    try {
+      const next = await sendSw<ExtensionSettings>({ type: 'sp.saveSettings', patch, reconnect });
+      setSettings(next);
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleOpenPairPage = () => {

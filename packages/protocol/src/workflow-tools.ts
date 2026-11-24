@@ -90,17 +90,48 @@ function escapeSingleQuoted(str: string): string {
   return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
 }
 
+function escapeTemplateLiteralChunk(str: string): string {
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$\{/g, '\\${')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
+}
+
+function formatVarExpr(name: string, sensitiveNames: Set<string>): string {
+  const envKey = name.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  if (sensitiveNames.has(name)) {
+    return `process.env.${envKey} ?? ''`;
+  }
+  return `vars.${name.replace(/[^A-Za-z0-9_]/g, '_')}`;
+}
+
 function formatTsValueExpr(raw: string, sensitiveNames: Set<string>): string {
   VAR_PLACEHOLDER_RE.lastIndex = 0;
   const fullVarMatch = /^\{\{\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\}\}$/.exec(raw.trim());
   if (fullVarMatch?.[1]) {
-    const name = fullVarMatch[1];
-    const envKey = name.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    if (sensitiveNames.has(name)) {
-      return `process.env.${envKey} ?? ''`;
-    }
-    return `vars.${name.replace(/[^A-Za-z0-9_]/g, '_')}`;
+    return formatVarExpr(fullVarMatch[1], sensitiveNames);
   }
+
+  // Support embedded {{var}} placeholders inside URLs/text via template literal
+  VAR_PLACEHOLDER_RE.lastIndex = 0;
+  if (VAR_PLACEHOLDER_RE.test(raw)) {
+    VAR_PLACEHOLDER_RE.lastIndex = 0;
+    let out = '`';
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = VAR_PLACEHOLDER_RE.exec(raw)) !== null) {
+      out += escapeTemplateLiteralChunk(raw.slice(lastIndex, match.index));
+      const varName = match[1]!;
+      out += `\${${formatVarExpr(varName, sensitiveNames)}}`;
+      lastIndex = match.index + match[0].length;
+    }
+    out += escapeTemplateLiteralChunk(raw.slice(lastIndex));
+    out += '`';
+    return out;
+  }
+
   return `'${escapeSingleQuoted(raw)}'`;
 }
 
@@ -113,11 +144,13 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
     (workflow.parameters ?? []).map((p) => [p.name, p.defaultValue ?? '']),
   );
 
+  const safeCommentName = workflow.name.replace(/[\r\n]+/g, ' ');
+  const safeCommentId = workflow.id.replace(/[\r\n]+/g, ' ');
   const lines: string[] = [
     `import { test, expect } from '@playwright/test';`,
     ``,
     `// Exported from Chrome Browser MCP Workflow Recorder`,
-    `// Workflow: ${workflow.name} (${workflow.id})`,
+    `// Workflow: ${safeCommentName} (${safeCommentId})`,
     `test('${escapeSingleQuoted(workflow.name)}', async ({ page }) => {`,
   ];
 
@@ -142,7 +175,7 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
       'selector' in s && s.selector
         ? `page.locator('${escapeSingleQuoted(s.selector)}')`
         : 'ref' in s && s.ref
-          ? `page.locator('[data-mcp-ref="${escapeSingleQuoted(s.ref)}"]')`
+          ? `page.locator('[data-mcp-ref="${escapeSingleQuoted(s.ref.replace(/"/g, '\\"'))}"]')`
           : null;
 
     if (entry.description) {
@@ -173,9 +206,11 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
         break;
       case 'type':
         if (locator) {
-          const expr = s.secretRef
-            ? `process.env.${s.secretRef.replace(/^[^:]+:/, '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')} ?? ''`
-            : formatTsValueExpr(s.text ?? '', sensitiveSet);
+          const expr = entry.maskedSensitiveValue
+            ? `process.env.SECRET_VALUE ?? ''`
+            : s.secretRef
+              ? `process.env.${s.secretRef.replace(/^[^:]+:/, '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')} ?? ''`
+              : formatTsValueExpr(s.text ?? '', sensitiveSet);
           lines.push(`  await ${locator}.pressSequentially(${expr}, { delay: ${s.delayMs} });`);
         }
         break;
@@ -210,7 +245,7 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
         if (s.selector) {
           lines.push(`  await page.locator('${escapeSingleQuoted(s.selector)}').waitFor({ timeout: ${s.timeoutMs} });`);
         } else if (s.text) {
-          lines.push(`  await expect(page.getByText('${escapeSingleQuoted(s.text)}')).toBeVisible({ timeout: ${s.timeoutMs} });`);
+          lines.push(`  await expect(page.getByText(${formatTsValueExpr(s.text, sensitiveSet)})).toBeVisible({ timeout: ${s.timeoutMs} });`);
         } else if (s.ms) {
           lines.push(`  await page.waitForTimeout(${s.ms});`);
         }

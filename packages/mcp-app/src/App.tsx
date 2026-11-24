@@ -175,28 +175,36 @@ export function App() {
 
   const handleSendDiagnosticsToAgent = async (summary: string) => {
     if (!app || !canSendMessage) return;
-    await app.sendMessage({
-      role: 'user',
-      content: [{ type: 'text', text: summary }],
-    });
-    setNotice('Sent diagnostics to conversation.');
+    try {
+      await app.sendMessage({
+        role: 'user',
+        content: [{ type: 'text', text: summary }],
+      });
+      setNotice('Sent diagnostics to conversation.');
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleAttachWorkflowToContext = async (wf: RecordedWorkflow) => {
     if (!app || !canUpdateContext) return;
-    await app.updateModelContext({
-      content: [
-        {
-          type: 'text',
-          text: `Recorded browser workflow "${wf.name}" (id: ${wf.id}, startUrl: ${wf.startUrl}):\n${JSON.stringify(
-            wf.steps.map((s) => ({ description: s.description, step: s.step })),
-            null,
-            2,
-          )}`,
-        },
-      ],
-    });
-    setNotice(`Attached workflow "${wf.name}" to your next message.`);
+    try {
+      await app.updateModelContext({
+        content: [
+          {
+            type: 'text',
+            text: `Recorded browser workflow "${wf.name}" (id: ${wf.id}, startUrl: ${wf.startUrl}):\n${JSON.stringify(
+              wf.steps.map((s) => ({ description: s.description, step: s.step })),
+              null,
+              2,
+            )}`,
+          },
+        ],
+      });
+      setNotice(`Attached workflow "${wf.name}" to your next message.`);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const controlledCount =

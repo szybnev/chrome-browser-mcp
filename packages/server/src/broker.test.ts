@@ -283,5 +283,35 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     const auditHtml = await activeBroker.hub.exportAudit('html');
     expect(auditHtml.contentType).toContain('text/html');
     expect(auditHtml.content).toContain('Session Audit Report');
+
+    // 5. Security regression: reject chrome-extension:// Origin on /mcp, reject evil Origin on /ws & /cdp, 400 on malformed JSON
+    const evilExtMcp = await fetch(`${activeBroker.config.brokerUrl}/mcp`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'chrome-extension://evilunrelatedextensionid',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    });
+    expect(evilExtMcp.status).toBe(403);
+
+    const badJsonRes = await fetch(`${activeBroker.config.brokerUrl}/pair/exchange`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{invalid-json',
+    });
+    expect(badJsonRes.status).toBe(400);
+
+    const wsRejected = await new Promise<boolean>((resolve) => {
+      const ws = new WebSocket(activeBroker!.config.wsUrl, {
+        headers: { origin: 'https://evil.example' },
+      });
+      ws.on('open', () => {
+        ws.close();
+        resolve(false);
+      });
+      ws.on('error', () => resolve(true));
+    });
+    expect(wsRejected).toBe(true);
   });
 });

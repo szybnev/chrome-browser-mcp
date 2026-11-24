@@ -102,7 +102,6 @@ export function App() {
       const payload = await sendSw<SidePanelPayload>({ type: 'sp.getState' });
       setData(payload);
       if (payload.runtime.connected) {
-        setStatusMsg((prev) => (prev?.includes('reconnecting') ? null : prev));
         setBrokerDetected(true);
       } else {
         const httpBase = payload.settings.wsUrl
@@ -229,23 +228,39 @@ export function App() {
     .replace(/\/ws\/?$/, '');
 
   const handleThemePersist = async (next: ThemeOverride) => {
-    await sendSw({ type: 'sp.saveSettings', patch: { theme: next }, reconnect: false });
-    await refresh();
+    try {
+      await sendSw({ type: 'sp.saveSettings', patch: { theme: next }, reconnect: false });
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleLocaleChange = async (next: LocalePreference) => {
-    await sendSw({ type: 'sp.saveSettings', patch: { locale: next }, reconnect: false });
-    await refresh();
+    try {
+      await sendSw({ type: 'sp.saveSettings', patch: { locale: next }, reconnect: false });
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleVisualHudToggle = async (enabled: boolean) => {
-    await sendSw({ type: 'sp.setVisualHud', enabled });
-    await refresh();
+    try {
+      await sendSw({ type: 'sp.setVisualHud', enabled });
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleTogglePause = async () => {
-    await sendSw({ type: 'sp.setPaused', paused: !runtime.paused });
-    await refresh();
+    try {
+      await sendSw({ type: 'sp.setPaused', paused: !runtime.paused });
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleAttachCurrent = async () => {
@@ -341,27 +356,35 @@ export function App() {
       );
       return;
     }
-    await sendSw({
-      type: 'sp.saveSettings',
-      patch: {
-        wsUrl: wsCheck.normalized,
-        token: tokenCheck.normalized,
-        profileLabel: labelCheck.normalized,
-      },
-      reconnect: true,
-    });
-    setStatusMsg(t('pair.savedReconnecting'));
-    await refresh();
-    setTimeout(() => setActiveTab('control'), 650);
+    try {
+      await sendSw({
+        type: 'sp.saveSettings',
+        patch: {
+          wsUrl: wsCheck.normalized,
+          token: tokenCheck.normalized,
+          profileLabel: labelCheck.normalized,
+        },
+        reconnect: true,
+      });
+      setStatusMsg(t('pair.savedReconnecting'));
+      await refresh();
+      setTimeout(() => setActiveTab('control'), 650);
+    } catch (err) {
+      setConnError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handlePolicyPatch = async (patch: Partial<ExtensionSettings['policy']>) => {
-    await sendSw({
-      type: 'sp.saveSettings',
-      patch: { policy: { ...settings.policy, ...patch } },
-      reconnect: false,
-    });
-    await refresh();
+    try {
+      await sendSw({
+        type: 'sp.saveSettings',
+        patch: { policy: { ...settings.policy, ...patch } },
+        reconnect: false,
+      });
+      await refresh();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const formatDomainError = (issues: ReturnType<typeof validateDomainRules>['issues']): string => {
@@ -514,12 +537,16 @@ export function App() {
 
   const handleTourClose = async () => {
     setTourStep(null);
-    await sendSw({
-      type: 'sp.saveSettings',
-      patch: { onboardingCompleted: true, sidePanelTourPending: false },
-      reconnect: false,
-    });
-    await refresh();
+    try {
+      await sendSw({
+        type: 'sp.saveSettings',
+        patch: { onboardingCompleted: true, sidePanelTourPending: false },
+        reconnect: false,
+      });
+      await refresh();
+    } catch {
+      // ignore close errors
+    }
   };
 
   const handleReplayTour = () => {
@@ -716,9 +743,16 @@ export function App() {
                   {t('btn.attachActive')}
                 </button>
               </div>
-              <label className="toggle-label">
-                <span>{t('setting.allowAllTabs')}</span>
+              <div className="security-row">
+                <span className="security-label-group">
+                  <label htmlFor="sp-ctrl-all-tabs">{t('setting.allowAllTabs')}</label>
+                  <InfoTip
+                    label={t('setting.allowAllTabs')}
+                    text={t('setting.allowAllTabsInfo')}
+                  />
+                </span>
                 <input
+                  id="sp-ctrl-all-tabs"
                   type="checkbox"
                   checked={settings.policy.scopeMode === 'all-tabs'}
                   onChange={(e) =>
@@ -727,7 +761,7 @@ export function App() {
                     })
                   }
                 />
-              </label>
+              </div>
 
               {attachedTabs.length === 0 ? (
                 <div className="muted">{t('empty.agentTabs')}</div>

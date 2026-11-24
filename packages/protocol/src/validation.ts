@@ -6,9 +6,13 @@ export interface DomainValidationIssue {
   kind: DomainValidationIssueKind;
 }
 
-const SCHEME_RULE_RE = /^(chrome|chrome-extension|edge|brave|about|https?|file):\/\/?[^\s,]+$/i;
-const HOST_RULE_RE =
-  /^(?:\*\.)?(?:localhost|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63})(?::\d{1,5})?(?:\/[^\s,]*)?$/i;
+const SCHEME_RULE_RE =
+  /^(?:about:[^\s,]+|(?:chrome|chrome-extension|edge|brave|https?|file):\/\/[^\s,]+)$/i;
+const IPV4_PART = '(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+const HOST_RULE_RE = new RegExp(
+  `^(?:\\*\\.)?(?:localhost|(?:${IPV4_PART}\\.){3}${IPV4_PART}|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63})(?::\\d{1,5})?(?:\\/[^\\s,]*)?$`,
+  'i',
+);
 
 export function validateDomainRules(rawText: string): {
   valid: string[];

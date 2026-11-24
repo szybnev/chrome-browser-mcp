@@ -65,6 +65,7 @@ export interface CdpEventCallbacks {
  */
 export class CdpManager {
   private sessions = new Map<number, TabCdpSession>();
+  private lastAttachErrors = new Map<number, string>();
   private initializedListeners = false;
 
   constructor(private readonly callbacks: CdpEventCallbacks) {}
@@ -87,6 +88,10 @@ export class CdpManager {
 
   isAttached(tabId: number): boolean {
     return this.sessions.get(tabId)?.state === 'attached';
+  }
+
+  getLastAttachError(tabId: number): string | undefined {
+    return this.lastAttachErrors.get(tabId);
   }
 
   getAttachedTabIds(): number[] {
@@ -129,10 +134,12 @@ export class CdpManager {
         chrome.debugger.sendCommand({ tabId }, 'Page.enable'),
       ]);
 
+      this.lastAttachErrors.delete(tabId);
       this.callbacks.onDetachChange(tabId, true);
       return true;
-    } catch {
-      // Often happens if user already has DevTools open on this tab — fall back cleanly
+    } catch (err) {
+      // Often happens if user already has DevTools open on this tab or chrome:// URL — record reason
+      this.lastAttachErrors.set(tabId, err instanceof Error ? err.message : String(err));
       this.sessions.delete(tabId);
       return false;
     }

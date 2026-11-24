@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
   APP_VERSION,
@@ -133,7 +133,15 @@ export class BrowserBrokerHub implements BrowserHubInterface {
   }
 
   verifyToken(candidate: string): boolean {
-    return candidate === this.token;
+    if (typeof candidate !== 'string' || !candidate) return false;
+    const a = Buffer.from(candidate, 'utf8');
+    const b = Buffer.from(this.token, 'utf8');
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  }
+
+  isSocketRegistered(ws: WebSocket): boolean {
+    return this.findBySocket(ws) !== undefined;
   }
 
   // -------------------------------------------------------------------------
@@ -334,7 +342,7 @@ export class BrowserBrokerHub implements BrowserHubInterface {
     const id = profileId || this.defaultProfileId;
     if (!id) {
       throw new Error(
-        'No Chrome Browser MCP extension is connected. Open Chrome, load the extension, and pair via http://127.0.0.1:43179/pair.',
+        `No Chrome Browser MCP extension is connected. Open Chrome, load the extension, and pair via ${this.brokerUrl}/pair.`,
       );
     }
     const found = this.profiles.get(id);

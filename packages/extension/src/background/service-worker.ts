@@ -945,10 +945,42 @@ async function dispatchRpc(
         await chrome.tabs.update(tab.id, { url: requestedUrl });
         await waitForTabLoad(tab.id, timeoutMs);
       } else if (action === 'back') {
-        await chrome.tabs.goBack(tab.id);
+        try {
+          await chrome.tabs.goBack(tab.id);
+        } catch (err) {
+          const [res] = await chrome.scripting
+            .executeScript({
+              target: { tabId: tab.id },
+              func: () => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                  return true;
+                }
+                return false;
+              },
+            })
+            .catch(() => [{ result: false }]);
+          if (!res?.result) throw err;
+        }
         await waitForTabLoad(tab.id, timeoutMs);
       } else if (action === 'forward') {
-        await chrome.tabs.goForward(tab.id);
+        try {
+          await chrome.tabs.goForward(tab.id);
+        } catch (err) {
+          const [res] = await chrome.scripting
+            .executeScript({
+              target: { tabId: tab.id },
+              func: () => {
+                if (window.history.length > 1) {
+                  window.history.forward();
+                  return true;
+                }
+                return false;
+              },
+            })
+            .catch(() => [{ result: false }]);
+          if (!res?.result) throw err;
+        }
         await waitForTabLoad(tab.id, timeoutMs);
       } else if (action === 'reload') {
         await chrome.tabs.reload(tab.id);
@@ -1471,21 +1503,36 @@ async function dispatchRpc(
 
     case 'devtools.console': {
       const tab = await resolveAccessibleTab(params.tabId as number | undefined);
+      let attached = cdp.isAttached(tab.id);
       if (params.attachCdp !== false) {
-        await cdp.ensureAttached(tab.id);
+        attached = await cdp.ensureAttached(tab.id);
       }
-      return cdp.getConsoleEntries(tab.id, String(params.level ?? 'all'), Number(params.limit ?? 50));
+      const entries = cdp.getConsoleEntries(
+        tab.id,
+        String(params.level ?? 'all'),
+        Number(params.limit ?? 50),
+      );
+      if (!attached && entries.length === 0 && params.attachCdp !== false) {
+        const reason = cdp.getLastAttachError(tab.id) ?? 'Chrome debugger could not attach (close DevTools on this tab and retry)';
+        throw new Error(`CDP debugger not attached on tab ${tab.id}: ${reason}`);
+      }
+      return entries;
     }
 
     case 'devtools.network': {
       const tab = await resolveAccessibleTab(params.tabId as number | undefined);
-      await cdp.ensureAttached(tab.id);
-      return cdp.getNetworkEntries(
+      const attached = await cdp.ensureAttached(tab.id);
+      const entries = cdp.getNetworkEntries(
         tab.id,
         Boolean(params.onlyFailed),
         typeof params.urlFilter === 'string' ? params.urlFilter : undefined,
         Number(params.limit ?? 40),
       );
+      if (!attached && entries.length === 0) {
+        const reason = cdp.getLastAttachError(tab.id) ?? 'Chrome debugger could not attach (close DevTools on this tab and retry)';
+        throw new Error(`CDP debugger not attached on tab ${tab.id}: ${reason}`);
+      }
+      return entries;
     }
 
     case 'devtools.eval': {

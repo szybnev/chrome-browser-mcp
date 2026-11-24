@@ -236,6 +236,9 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
   }
 
   async function renderSetOfMark(show: boolean): Promise<void> {
+    if (show && refMap.size === 0) {
+      buildSnapshot({ tabId: 0, includeOffscreen: false, maxNodes: 120 });
+    }
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
         ensureHud();
@@ -245,7 +248,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         }
         somContainer.textContent = '';
         if (!show) {
-          resolve();
+          requestAnimationFrame(() => resolve());
           return;
         }
         const entries = [...refMap.entries()].slice(0, 120);
@@ -270,7 +273,9 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
           frag.appendChild(tag);
         }
         somContainer.appendChild(frag);
-        resolve();
+        // Force layout & wait a second compositor frame so captureVisibleTab/CDP captures the painted badges
+        void somContainer.offsetHeight;
+        requestAnimationFrame(() => resolve());
       });
     });
   }
@@ -590,11 +595,13 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         name,
         tag,
         value: inputEl
-          ? inputEl.type === 'password'
-            ? inputEl.value
-              ? '••••••'
-              : ''
-            : inputEl.value
+          ? inputEl.type === 'checkbox' || inputEl.type === 'radio'
+            ? undefined
+            : inputEl.type === 'password'
+              ? inputEl.value
+                ? '••••••'
+                : ''
+              : inputEl.value
           : textAreaEl
             ? textAreaEl.value
             : selectEl
@@ -642,16 +649,11 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         if (child.shadowRoot) {
           traverseRoot(child.shadowRoot, true);
         }
-        if (child instanceof HTMLIFrameElement) {
-          try {
-            if (child.contentDocument?.body) {
-              traverseRoot(child.contentDocument.body, inShadowDom);
-            }
-          } catch {
-            // Cross-origin iframe — collected via service worker multi-frame injection
-          }
+        // Iframes (both same-origin and cross-origin) are collected by the service worker
+        // multi-frame collector with explicit f<frameId>:e<n> refs to prevent duplicate nodes.
+        if (!(child instanceof HTMLIFrameElement)) {
+          traverseRoot(child, inShadowDom);
         }
-        traverseRoot(child, inShadowDom);
       }
     };
 

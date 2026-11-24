@@ -1,4 +1,4 @@
-import { randomInt, randomUUID } from 'node:crypto';
+import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { WebSocketServer } from 'ws';
 import {
@@ -23,15 +23,56 @@ const LEASE_TTL_MS = 45_000;
 const IDLE_GRACE_MS = 20_000;
 const PIN_TTL_MS = 120_000;
 const MAX_PIN_ATTEMPTS = 5;
+const MAX_JSON_BODY_BYTES = 10 * 1024 * 1024;
+const WS_HANDSHAKE_TIMEOUT_MS = 5_000;
+
+class HttpBodyError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      (host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]')
+    );
+  } catch {
+    return false;
+  }
+}
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buf.length;
+    if (totalBytes > MAX_JSON_BODY_BYTES) {
+      throw new HttpBodyError(413, 'Request body exceeds 10 MB limit');
+    }
+    chunks.push(buf);
   }
   const raw = Buffer.concat(chunks).toString('utf8').trim();
   if (!raw) return {};
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new HttpBodyError(400, 'Malformed JSON request body');
+  }
 }
 
 function writeJson(res: ServerResponse, status: number, body: unknown): void {
@@ -95,12 +136,13 @@ export async function startBrokerDaemon(options?: {
 
       const url = new URL(req.url ?? '/', config.brokerUrl);
 
-      // Allow chrome-extension:// origin exclusively for 1-click PIN exchange & /health
+      // Allow chrome-extension:// origin STRICTLY for 1-click PIN exchange & /health (NEVER /mcp or /internal/*)
       const originHeader = req.headers.origin;
       const isExtOrigin =
         typeof originHeader === 'string' && originHeader.startsWith('chrome-extension://');
+      const isExtAllowedRoute = url.pathname === '/pair/exchange' || url.pathname === '/health';
 
-      if (req.method === 'OPTIONS' && isExtOrigin && (url.pathname === '/pair/exchange' || url.pathname === '/health')) {
+      if (req.method === 'OPTIONS' && isExtOrigin && isExtAllowedRoute) {
         res.writeHead(204, {
           'access-control-allow-origin': originHeader,
           'access-control-allow-methods': 'GET, POST, OPTIONS',
@@ -110,7 +152,7 @@ export async function startBrokerDaemon(options?: {
         return;
       }
 
-      if (!isExtOrigin && !validateOrigin(req, res)) return;
+      if (!(isExtOrigin && isExtAllowedRoute) && !validateOrigin(req, res)) return;
 
       // Public loopback health endpoint (never leaks token)
       if (req.method === 'GET' && url.pathname === '/health') {
@@ -232,7 +274,7 @@ export async function startBrokerDaemon(options?: {
         if (!activePin || Date.now() > activePin.expiresAt) {
           activePin = null;
           res.writeHead(401, corsHeaders);
-          res.end(JSON.stringify({ ok: false, error: 'No active pairing PIN — open http://127.0.0.1:43179/pair' }));
+          res.end(JSON.stringify({ ok: false, error: `No active pairing PIN — open ${config.brokerUrl}/pair` }));
           return;
         }
         if (activePin.attempts >= MAX_PIN_ATTEMPTS) {
@@ -242,7 +284,7 @@ export async function startBrokerDaemon(options?: {
           return;
         }
         activePin.attempts += 1;
-        if (submitted !== activePin.code) {
+        if (!timingSafeStringEqual(submitted, activePin.code)) {
           res.writeHead(401, corsHeaders);
           res.end(JSON.stringify({ ok: false, error: 'Incorrect 6-digit PIN' }));
           return;
@@ -376,6 +418,10 @@ export async function startBrokerDaemon(options?: {
         error: 'Not found. Use POST /mcp for Streamable HTTP MCP or GET /health.',
       });
     } catch (err) {
+      if (err instanceof HttpBodyError) {
+        writeJson(res, err.status, { ok: false, error: err.message });
+        return;
+      }
       writeJson(res, 500, {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
@@ -395,15 +441,33 @@ export async function startBrokerDaemon(options?: {
     }
 
     const url = new URL(req.url ?? '/', config.brokerUrl);
+    const originHeader = req.headers.origin;
+
     if (url.pathname === '/ws') {
+      // Allow absent Origin (Node clients), loopback origins, or chrome-extension:// ONLY
+      if (
+        typeof originHeader === 'string' &&
+        originHeader.length > 0 &&
+        !originHeader.startsWith('chrome-extension://') &&
+        !isLoopbackOrigin(originHeader)
+      ) {
+        socket.destroy();
+        return;
+      }
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit('connection', ws, req);
       });
       return;
     }
 
-    const cdpMatch = /^\/cdp\/(\d+)$/.exec(url.pathname);
-    if (cdpMatch && hub.getPolicy().cdpProxyEnabled) {
+    const cdpTabMatch = /^\/cdp\/(\d+)$/.exec(url.pathname);
+    const isCdpBrowser = url.pathname === '/cdp/browser';
+    if ((cdpTabMatch || isCdpBrowser) && hub.getPolicy().cdpProxyEnabled) {
+      // Reject cross-site browser origins on CDP WebSocket upgrades (CSWSH protection)
+      if (typeof originHeader === 'string' && originHeader.length > 0 && !isLoopbackOrigin(originHeader)) {
+        socket.destroy();
+        return;
+      }
       const tokenParam = url.searchParams.get('token') ?? '';
       const headerToken = req.headers['x-broker-token'];
       const candidate = typeof headerToken === 'string' ? headerToken : tokenParam;
@@ -411,11 +475,37 @@ export async function startBrokerDaemon(options?: {
         socket.destroy();
         return;
       }
-      const tabId = Number(cdpMatch[1]);
       const profileId = url.searchParams.get('profileId') ?? undefined;
-      cdpWss.handleUpgrade(req, socket, head, (ws) => {
-        attachCdpProxySocket(ws, tabId, profileId, hub);
-      });
+
+      const upgradeToTab = (tabId: number) => {
+        cdpWss.handleUpgrade(req, socket, head, (ws) => {
+          attachCdpProxySocket(ws, tabId, profileId, hub);
+        });
+      };
+
+      if (cdpTabMatch) {
+        upgradeToTab(Number(cdpTabMatch[1]));
+        return;
+      }
+
+      // /cdp/browser: resolve first scoped non-blocked agent tab
+      void (async () => {
+        try {
+          const state = await hub.getDeckState();
+          const targetProfile = profileId ?? state.defaultProfileId ?? state.profiles[0]?.profileId;
+          const tabs = targetProfile ? state.tabs[targetProfile] ?? [] : [];
+          const scoped =
+            state.policy.scopeMode === 'agent-group' ? tabs.filter((t) => t.inAgentGroup) : tabs;
+          const chosen = scoped.find((t) => t.active) ?? scoped[0];
+          if (!chosen) {
+            socket.destroy();
+            return;
+          }
+          upgradeToTab(chosen.tabId);
+        } catch {
+          socket.destroy();
+        }
+      })();
       return;
     }
 
@@ -423,6 +513,13 @@ export async function startBrokerDaemon(options?: {
   });
 
   wss.on('connection', (ws) => {
+    const handshakeTimer = setTimeout(() => {
+      if (!hub.isSocketRegistered(ws)) {
+        ws.close(4008, 'Handshake timeout');
+      }
+    }, WS_HANDSHAKE_TIMEOUT_MS);
+    handshakeTimer.unref();
+
     ws.on('message', (raw) => {
       try {
         const json = JSON.parse(raw.toString('utf8'));
@@ -432,12 +529,16 @@ export async function startBrokerDaemon(options?: {
           return;
         }
         hub.handleExtensionMessage(ws, parsed.data);
+        if (hub.isSocketRegistered(ws)) {
+          clearTimeout(handshakeTimer);
+        }
       } catch {
         ws.close(4000, 'Malformed JSON');
       }
     });
 
     ws.on('close', () => {
+      clearTimeout(handshakeTimer);
       hub.unregisterExtension(ws);
     });
   });
