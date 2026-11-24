@@ -1,6 +1,6 @@
-import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { deflateSync } from 'node:zlib';
 
 const rootDir = resolve(import.meta.dirname, '..');
 
@@ -29,16 +29,8 @@ function sampleCubic(p0, p1, p2, p3, steps = 32) {
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const mt = 1 - t;
-    const x =
-      mt * mt * mt * p0[0] +
-      3 * mt * mt * t * p1[0] +
-      3 * mt * t * t * p2[0] +
-      t * t * t * p3[0];
-    const y =
-      mt * mt * mt * p0[1] +
-      3 * mt * mt * t * p1[1] +
-      3 * mt * t * t * p2[1] +
-      t * t * t * p3[1];
+    const x = mt * mt * mt * p0[0] + 3 * mt * mt * t * p1[0] + 3 * mt * t * t * p2[0] + t * t * t * p3[0];
+    const y = mt * mt * mt * p0[1] + 3 * mt * mt * t * p1[1] + 3 * mt * t * t * p2[1] + t * t * t * p3[1];
     pts.push([x, y]);
   }
   return pts;
@@ -55,7 +47,7 @@ function distToSegment(px, py, ax, ay, bx, by) {
 }
 
 function distToPolyline(px, py, pts) {
-  let minD = Infinity;
+  let minD = Number.POSITIVE_INFINITY;
   for (let i = 0; i < pts.length - 1; i++) {
     const d = distToSegment(px, py, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
     if (d < minD) minD = d;
@@ -106,8 +98,7 @@ function renderBridgeApertureRgba(size) {
           // Rounded square background: x=4..124, y=4..124, rx=28 (half-extent 60)
           const qx = Math.abs(u - 64) - (60 - 28);
           const qy = Math.abs(v - 64) - (60 - 28);
-          const rectSdf =
-            Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - 28;
+          const rectSdf = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - 28;
           const bgA = cov(rectSdf);
           if (bgA <= 0) continue;
 
@@ -219,4 +210,6 @@ writeFileSync(resolve(iconDir, 'icon.svg'), BRIDGE_APERTURE_SVG);
 const pluginAssetsDir = resolve(rootDir, 'plugins/antigravity/assets');
 mkdirSync(pluginAssetsDir, { recursive: true });
 writeFileSync(resolve(pluginAssetsDir, 'logo.svg'), BRIDGE_APERTURE_SVG);
-console.log('Generated Bridge Aperture SVG -> packages/extension/public/icons/icon.svg & plugins/antigravity/assets/logo.svg');
+console.log(
+  'Generated Bridge Aperture SVG -> packages/extension/public/icons/icon.svg & plugins/antigravity/assets/logo.svg',
+);

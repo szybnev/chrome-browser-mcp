@@ -1,10 +1,10 @@
 import {
-  redactSensitiveBody,
-  redactSensitiveHeaders,
   type ConsoleEntry,
   type EmulationConfig,
   type NetworkEntry,
   type PendingDialog,
+  redactSensitiveBody,
+  redactSensitiveHeaders,
   type SnapshotNode,
 } from '@chrome-browser-mcp/protocol';
 
@@ -315,12 +315,7 @@ export class CdpManager {
     return filtered.slice(-limit);
   }
 
-  getNetworkEntries(
-    tabId: number,
-    onlyFailed = false,
-    urlFilter?: string,
-    limit = 40,
-  ): NetworkEntry[] {
+  getNetworkEntries(tabId: number, onlyFailed = false, urlFilter?: string, limit = 40): NetworkEntry[] {
     const map = this.sessions.get(tabId)?.networkEntries;
     if (!map) return [];
     let list = [...map.values()];
@@ -382,14 +377,10 @@ export class CdpManager {
     }
 
     if (!nodeId) {
-      const evaluated = await this.send<{ result?: { objectId?: string } }>(
-        tabId,
-        'Runtime.evaluate',
-        {
-          expression: `document.querySelector(${JSON.stringify(selector)})`,
-          returnByValue: false,
-        },
-      );
+      const evaluated = await this.send<{ result?: { objectId?: string } }>(tabId, 'Runtime.evaluate', {
+        expression: `document.querySelector(${JSON.stringify(selector)})`,
+        returnByValue: false,
+      });
       if (evaluated.result?.objectId) {
         const req = await this.send<{ nodeId?: number }>(tabId, 'DOM.requestNode', {
           objectId: evaluated.result.objectId,
@@ -417,11 +408,9 @@ export class CdpManager {
     truncated: boolean;
     redactedCount: number;
   }> {
-    const res = await this.send<{ body: string; base64Encoded: boolean }>(
-      tabId,
-      'Network.getResponseBody',
-      { requestId },
-    );
+    const res = await this.send<{ body: string; base64Encoded: boolean }>(tabId, 'Network.getResponseBody', {
+      requestId,
+    });
     if (res.base64Encoded) {
       return {
         requestId,
@@ -469,9 +458,7 @@ export class CdpManager {
 
     if (config.colorScheme) {
       const features =
-        config.colorScheme === 'auto'
-          ? []
-          : [{ name: 'prefers-color-scheme', value: config.colorScheme }];
+        config.colorScheme === 'auto' ? [] : [{ name: 'prefers-color-scheme', value: config.colorScheme }];
       await this.send(tabId, 'Emulation.setEmulatedMedia', { features });
       applied.push(`colorScheme:${config.colorScheme}`);
     }
@@ -547,11 +534,7 @@ export class CdpManager {
     }
   }
 
-  async sendRaw(
-    tabId: number,
-    method: string,
-    params?: Record<string, unknown>,
-  ): Promise<unknown> {
+  async sendRaw(tabId: number, method: string, params?: Record<string, unknown>): Promise<unknown> {
     return await this.send(tabId, method, params);
   }
 
@@ -573,10 +556,12 @@ export class CdpManager {
                 : 'log';
       const args = (params.args as Array<{ value?: unknown; description?: string }> | undefined) ?? [];
       const text = args
-        .map((a) => (a.value !== undefined ? String(a.value) : a.description ?? ''))
+        .map((a) => (a.value !== undefined ? String(a.value) : (a.description ?? '')))
         .join(' ')
         .slice(0, 1000);
-      const stack = params.stackTrace as { callFrames?: Array<{ url?: string; lineNumber?: number }> } | undefined;
+      const stack = params.stackTrace as
+        | { callFrames?: Array<{ url?: string; lineNumber?: number }> }
+        | undefined;
       const frame = stack?.callFrames?.[0];
 
       const entry: ConsoleEntry = {
@@ -619,7 +604,9 @@ export class CdpManager {
 
     if (method === 'Network.requestWillBeSent') {
       const requestId = String(params.requestId ?? '');
-      const req = params.request as { url?: string; method?: string; headers?: Record<string, string> } | undefined;
+      const req = params.request as
+        | { url?: string; method?: string; headers?: Record<string, string> }
+        | undefined;
       if (!requestId || !req?.url) return;
       if (req.headers) {
         redactSensitiveHeaders(req.headers);

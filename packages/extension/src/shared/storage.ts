@@ -1,14 +1,14 @@
 import {
-  DEFAULT_BROKER_HOST,
-  DEFAULT_BROKER_PORT,
-  resolveLocale,
-  SecurityPolicySchema,
   type ActivityEvent,
   type ApprovalRequest,
+  DEFAULT_BROKER_HOST,
+  DEFAULT_BROKER_PORT,
   type LocalePreference,
   type PendingDialog,
   type RecordedWorkflow,
+  resolveLocale,
   type SecurityPolicy,
+  SecurityPolicySchema,
 } from '@chrome-browser-mcp/protocol';
 
 export interface ExtensionSettings {

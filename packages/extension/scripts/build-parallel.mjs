@@ -1,4 +1,4 @@
-import { rmSync, mkdirSync, copyFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { build } from 'vite';
 

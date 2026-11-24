@@ -1,16 +1,16 @@
 import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { WebSocketServer } from 'ws';
+import { ExtensionToBrokerMessageSchema } from '@chrome-browser-mcp/protocol';
 import {
   localhostHostValidation,
   localhostOriginValidation,
   NodeStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/node';
-import { ExtensionToBrokerMessageSchema } from '@chrome-browser-mcp/protocol';
-import { loadBrokerConfig, type BrokerConfig } from './config.js';
+import { WebSocketServer } from 'ws';
+import { attachCdpProxySocket, handleCdpDiscoveryRequest } from './cdp-proxy.js';
+import { type BrokerConfig, loadBrokerConfig } from './config.js';
 import { BrowserBrokerHub, SERVER_VERSION } from './hub.js';
 import { createBrowserMcpServer } from './mcp-server.js';
-import { attachCdpProxySocket, handleCdpDiscoveryRequest } from './cdp-proxy.js';
 
 export interface BrokerDaemonHandle {
   config: BrokerConfig;
@@ -138,8 +138,7 @@ export async function startBrokerDaemon(options?: {
 
       // Allow chrome-extension:// origin STRICTLY for 1-click PIN exchange & /health (NEVER /mcp or /internal/*)
       const originHeader = req.headers.origin;
-      const isExtOrigin =
-        typeof originHeader === 'string' && originHeader.startsWith('chrome-extension://');
+      const isExtOrigin = typeof originHeader === 'string' && originHeader.startsWith('chrome-extension://');
       const isExtAllowedRoute = url.pathname === '/pair/exchange' || url.pathname === '/health';
 
       if (req.method === 'OPTIONS' && isExtOrigin && isExtAllowedRoute) {
@@ -274,7 +273,9 @@ export async function startBrokerDaemon(options?: {
         if (!activePin || Date.now() > activePin.expiresAt) {
           activePin = null;
           res.writeHead(401, corsHeaders);
-          res.end(JSON.stringify({ ok: false, error: `No active pairing PIN — open ${config.brokerUrl}/pair` }));
+          res.end(
+            JSON.stringify({ ok: false, error: `No active pairing PIN — open ${config.brokerUrl}/pair` }),
+          );
           return;
         }
         if (activePin.attempts >= MAX_PIN_ATTEMPTS) {
@@ -493,9 +494,8 @@ export async function startBrokerDaemon(options?: {
         try {
           const state = await hub.getDeckState();
           const targetProfile = profileId ?? state.defaultProfileId ?? state.profiles[0]?.profileId;
-          const tabs = targetProfile ? state.tabs[targetProfile] ?? [] : [];
-          const scoped =
-            state.policy.scopeMode === 'agent-group' ? tabs.filter((t) => t.inAgentGroup) : tabs;
+          const tabs = targetProfile ? (state.tabs[targetProfile] ?? []) : [];
+          const scoped = state.policy.scopeMode === 'agent-group' ? tabs.filter((t) => t.inAgentGroup) : tabs;
           const chosen = scoped.find((t) => t.active) ?? scoped[0];
           if (!chosen) {
             socket.destroy();

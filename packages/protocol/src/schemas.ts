@@ -368,11 +368,7 @@ export const DEFAULT_BLOCKED_DOMAINS = [
   '*.alfabank.ru',
 ];
 
-export const READ_ONLY_DOMAIN_PRESETS = [
-  'mail.google.com',
-  'github.com',
-  'linear.app',
-] as const;
+export const READ_ONLY_DOMAIN_PRESETS = ['mail.google.com', 'github.com', 'linear.app'] as const;
 
 export const SecurityPolicySchema = z.object({
   scopeMode: z.enum(['agent-group', 'all-tabs']).default('agent-group'),

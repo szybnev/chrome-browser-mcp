@@ -81,7 +81,7 @@ export function InfoTip({ label, text }: InfoTipProps) {
     closeTimerRef.current = setTimeout(() => {
       try {
         const el = popRef.current as (HTMLDivElement & { hidePopover?: () => void }) | null;
-        if (el && el.matches(':popover-open')) el.hidePopover?.();
+        if (el?.matches(':popover-open')) el.hidePopover?.();
       } catch {
         // ignore
       }

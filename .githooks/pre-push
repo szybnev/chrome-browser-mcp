@@ -4,7 +4,8 @@ set -euo pipefail
 echo "▶ [pre-push] Running full security, supply-chain & CVE audit..."
 node scripts/security-check.mjs --full
 
-echo "▶ [pre-push] Running full typecheck, build & automated tests..."
+echo "▶ [pre-push] Running full Biome check, typecheck, build & automated tests..."
+pnpm check
 pnpm typecheck
 pnpm build
 pnpm test

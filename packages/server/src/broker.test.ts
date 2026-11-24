@@ -1,10 +1,10 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { APP_VERSION, type BrokerToExtensionMessage } from '@chrome-browser-mcp/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { startBrokerDaemon, type BrokerDaemonHandle } from './broker.js';
-import { APP_VERSION, type BrokerToExtensionMessage } from '@chrome-browser-mcp/protocol';
+import { type BrokerDaemonHandle, startBrokerDaemon } from './broker.js';
 
 const cleanupDirs: string[] = [];
 let activeBroker: BrokerDaemonHandle | null = null;
@@ -155,9 +155,7 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
       expect(res.status).toBe(200);
       const text = await res.text();
       if (res.headers.get('content-type')?.includes('text/event-stream')) {
-        const dataLine = text
-          .split('\n')
-          .find((l) => l.startsWith('data: '));
+        const dataLine = text.split('\n').find((l) => l.startsWith('data: '));
         return JSON.parse(dataLine!.slice(6));
       }
       return JSON.parse(text);

@@ -308,8 +308,13 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
     // Native fast path (Chrome 105+): rejects display:none, visibility:hidden, opacity:0,
     // and content-visibility:hidden without calling getComputedStyle() or getBoundingClientRect().
-    if (typeof (el as Element & { checkVisibility?: (opts?: Record<string, boolean>) => boolean }).checkVisibility === 'function') {
-      const visible = (el as Element & { checkVisibility: (opts?: Record<string, boolean>) => boolean }).checkVisibility({
+    if (
+      typeof (el as Element & { checkVisibility?: (opts?: Record<string, boolean>) => boolean })
+        .checkVisibility === 'function'
+    ) {
+      const visible = (
+        el as Element & { checkVisibility: (opts?: Record<string, boolean>) => boolean }
+      ).checkVisibility({
         checkOpacity: true,
         checkVisibilityCSS: true,
       });
@@ -326,11 +331,11 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       style.display === 'none' ||
       style.visibility === 'hidden' ||
       style.visibility === 'collapse' ||
-      parseFloat(style.opacity || '1') <= 0.02
+      Number.parseFloat(style.opacity || '1') <= 0.02
     ) {
       return true;
     }
-    const fontSize = parseFloat(style.fontSize || '12');
+    const fontSize = Number.parseFloat(style.fontSize || '12');
     if (fontSize < 1 && el.children.length === 0) return true;
     const rect = el.getBoundingClientRect();
     const clipsChildren =
@@ -400,7 +405,11 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
       if (text) return text;
     }
 
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+    if (
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLSelectElement
+    ) {
       if (el.labels && el.labels.length > 0) {
         const labelText = [...el.labels]
           .map((l) => l.textContent?.trim() || '')
@@ -610,19 +619,14 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         placeholder: inputEl?.placeholder || textAreaEl?.placeholder || undefined,
         href: anchorEl?.href || undefined,
         inputType: inputEl?.type || undefined,
-        checked: inputEl && (inputEl.type === 'checkbox' || inputEl.type === 'radio') ? inputEl.checked : undefined,
+        checked:
+          inputEl && (inputEl.type === 'checkbox' || inputEl.type === 'radio') ? inputEl.checked : undefined,
         disabled:
           (inputEl?.disabled ?? textAreaEl?.disabled ?? selectEl?.disabled ?? false) ||
           el.getAttribute('aria-disabled') === 'true' ||
           undefined,
-        expanded:
-          el.hasAttribute('aria-expanded')
-            ? el.getAttribute('aria-expanded') === 'true'
-            : undefined,
-        selected:
-          el.hasAttribute('aria-selected')
-            ? el.getAttribute('aria-selected') === 'true'
-            : undefined,
+        expanded: el.hasAttribute('aria-expanded') ? el.getAttribute('aria-expanded') === 'true' : undefined,
+        selected: el.hasAttribute('aria-selected') ? el.getAttribute('aria-selected') === 'true' : undefined,
         focused: document.activeElement === el || undefined,
         interactive,
         inViewport,
@@ -689,10 +693,45 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
   // -------------------------------------------------------------------------
 
   const BLOCK_TAGS = new Set([
-    'address', 'article', 'aside', 'blockquote', 'dd', 'details', 'dialog', 'div',
-    'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2',
-    'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre',
-    'section', 'summary', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+    'address',
+    'article',
+    'aside',
+    'blockquote',
+    'dd',
+    'details',
+    'dialog',
+    'div',
+    'dl',
+    'dt',
+    'fieldset',
+    'figcaption',
+    'figure',
+    'footer',
+    'form',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'header',
+    'hr',
+    'li',
+    'main',
+    'nav',
+    'ol',
+    'p',
+    'pre',
+    'section',
+    'summary',
+    'table',
+    'tbody',
+    'td',
+    'tfoot',
+    'th',
+    'thead',
+    'tr',
+    'ul',
   ]);
 
   function extractCodeLanguage(pre: Element): string {
@@ -918,7 +957,10 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
     };
 
     walk(root);
-    const full = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    const full = lines
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
     const totalChars = full.length;
     const slice = full.slice(offset, offset + maxChars);
     const hasMore = offset + slice.length < totalChars;
@@ -1016,7 +1058,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
     // 1. Check PDF.js or embedded text layers first
     const textLayer = document.querySelector('.textLayer, #viewer');
-    if (textLayer && textLayer.textContent && textLayer.textContent.trim().length > 20) {
+    if (textLayer?.textContent && textLayer.textContent.trim().length > 20) {
       return textLayer.textContent.replace(/\s+/g, ' ').trim().slice(0, maxChars);
     }
 
@@ -1077,7 +1119,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
   function resolveTarget(ref?: string, selector?: string): Element | null {
     if (ref) {
       const el = refMap.get(ref);
-      if (el && el.isConnected) return el;
+      if (el?.isConnected) return el;
     }
     if (selector) {
       return querySelectorDeep(selector);
@@ -1086,7 +1128,8 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
   }
 
   function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
-    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const proto =
+      el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
     if (setter) {
       setter.call(el, value);
@@ -1179,7 +1222,9 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         el.focus({ preventScroll: true });
         el.click();
       } else {
-        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+        el.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }),
+        );
       }
       return { ok: true, coords: { x, y }, detail: `Clicked ${step.ref || step.selector}` };
     }
@@ -1215,7 +1260,8 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         return { ok: true, detail: `Entered ${textVal.length} chars into ${step.ref || step.selector}` };
       }
       if (el instanceof HTMLElement && el.isContentEditable) {
-        el.textContent = step.kind === 'fill' && step.clearFirst ? textVal : `${el.textContent ?? ''}${textVal}`;
+        el.textContent =
+          step.kind === 'fill' && step.clearFirst ? textVal : `${el.textContent ?? ''}${textVal}`;
         el.dispatchEvent(new InputEvent('input', { bubbles: true, data: textVal }));
         return { ok: true, detail: `Updated contenteditable ${step.ref || step.selector}` };
       }
@@ -1319,14 +1365,17 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
     const issues: string[] = [];
     if (missingAltImages > 0) issues.push(`${missingAltImages} <img> element(s) missing alt attribute`);
-    if (unlabeledControls > 0) issues.push(`${unlabeledControls} interactive control(s) missing accessible name`);
+    if (unlabeledControls > 0)
+      issues.push(`${unlabeledControls} interactive control(s) missing accessible name`);
     if (missingHeadingH1) issues.push('Page has no <h1> heading');
     if (duplicateIds > 0) issues.push(`${duplicateIds} duplicate id attribute(s) found`);
 
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
     const [lcpEntries, layoutShifts] = await Promise.all([
       readBufferedPerfEntries<PerformanceEntry>('largest-contentful-paint'),
-      readBufferedPerfEntries<PerformanceEntry & { value?: number; hadRecentInput?: boolean }>('layout-shift'),
+      readBufferedPerfEntries<PerformanceEntry & { value?: number; hadRecentInput?: boolean }>(
+        'layout-shift',
+      ),
     ]);
     const lastLcp = lcpEntries[lcpEntries.length - 1];
     const clsScore =
@@ -1387,9 +1436,17 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
   const onRecordClick = (ev: MouseEvent) => {
     if (!recordingActive || !ev.isTrusted) return;
-    const target = ev.target instanceof Element ? ev.target.closest('button, a, [role="button"], input[type="submit"], input[type="checkbox"], input[type="radio"], summary') || ev.target : null;
+    const target =
+      ev.target instanceof Element
+        ? ev.target.closest(
+            'button, a, [role="button"], input[type="submit"], input[type="checkbox"], input[type="radio"], summary',
+          ) || ev.target
+        : null;
     if (!target || target.id === 'chrome-browser-mcp-hud-host') return;
-    if (target instanceof HTMLInputElement && !['submit', 'button', 'checkbox', 'radio'].includes(target.type)) {
+    if (
+      target instanceof HTMLInputElement &&
+      !['submit', 'button', 'checkbox', 'radio'].includes(target.type)
+    ) {
       return;
     }
     const selector = buildSelectorHint(target);
@@ -1473,12 +1530,12 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             const format = String(msg.params?.format ?? 'markdown');
             const maxChars = Number(msg.params?.maxChars ?? 30_000);
             if (format === 'tables_json' || format === 'tables_csv') {
-              const root = pickReadRoot(msg.params?.selector, msg.params?.scope === 'body' ? 'body' : 'main') ?? document;
+              const root =
+                pickReadRoot(msg.params?.selector, msg.params?.scope === 'body' ? 'body' : 'main') ??
+                document;
               const tables = extractTablesFromRoot(root);
               const rendered =
-                format === 'tables_json'
-                  ? JSON.stringify(tables, null, 2)
-                  : formatTablesAsCsv(tables);
+                format === 'tables_json' ? JSON.stringify(tables, null, 2) : formatTablesAsCsv(tables);
               const slice = rendered.slice(0, maxChars);
               sendResponse({
                 ok: true,

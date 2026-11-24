@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 interface VirtualListProps<T> {
   items: T[];
@@ -66,11 +66,7 @@ export function VirtualList<T>({
     <div
       ref={containerRef}
       className={`scroller virtual-list ${fillHeight ? 'virtual-list-fill' : ''}`}
-      style={
-        fillHeight
-          ? { maxHeight: totalHeight }
-          : { height: viewportHeight, maxHeight }
-      }
+      style={fillHeight ? { maxHeight: totalHeight } : { height: viewportHeight, maxHeight }}
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
     >
       <div style={{ position: 'relative', height: totalHeight, width: '100%' }}>

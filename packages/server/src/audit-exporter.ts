@@ -32,13 +32,7 @@ export function renderAuditHtml(payload: AuditExportPayload): string {
     .map((ev) => {
       const time = new Date(ev.timestamp).toISOString().replace('T', ' ').slice(0, 19);
       const badgeClass =
-        ev.status === 'ok'
-          ? 'ok'
-          : ev.status === 'blocked'
-            ? 'warn'
-            : ev.status === 'error'
-              ? 'err'
-              : 'info';
+        ev.status === 'ok' ? 'ok' : ev.status === 'blocked' ? 'warn' : ev.status === 'error' ? 'err' : 'info';
       const thumb = ev.thumbnailDataUrl
         ? `<div class="thumb"><img src="${escapeHtml(ev.thumbnailDataUrl)}" alt="Step screenshot" loading="lazy" /></div>`
         : '';

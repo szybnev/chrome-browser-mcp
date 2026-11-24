@@ -36,13 +36,9 @@ const directAccessToken = (process.env.CWS_ACCESS_TOKEN || '').trim();
 const clientId = (process.env.CWS_CLIENT_ID || '').trim();
 const clientSecret = (process.env.CWS_CLIENT_SECRET || '').trim();
 const refreshToken = (process.env.CWS_REFRESH_TOKEN || '').trim();
-const publishType =
-  process.env.CWS_PUBLISH_TYPE === 'STAGED_PUBLISH' ? 'STAGED_PUBLISH' : 'DEFAULT_PUBLISH';
+const publishType = process.env.CWS_PUBLISH_TYPE === 'STAGED_PUBLISH' ? 'STAGED_PUBLISH' : 'DEFAULT_PUBLISH';
 
-const zipPath = resolve(
-  rootDir,
-  process.env.CWS_ZIP_PATH || 'release/chrome-browser-mcp-extension.zip',
-);
+const zipPath = resolve(rootDir, process.env.CWS_ZIP_PATH || 'release/chrome-browser-mcp-extension.zip');
 const manifestPath = resolve(rootDir, 'packages/extension/dist/manifest.json');
 
 function compareVersions(a, b) {
@@ -95,9 +91,7 @@ async function fetchItemStatus(token) {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(
-      `CWS fetchStatus failed (${res.status}): ${json.error?.message || JSON.stringify(json)}`,
-    );
+    throw new Error(`CWS fetchStatus failed (${res.status}): ${json.error?.message || JSON.stringify(json)}`);
   }
   return json;
 }
@@ -151,9 +145,7 @@ async function publishItem(token) {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(
-      `CWS publish failed (${res.status}): ${json.error?.message || JSON.stringify(json)}`,
-    );
+    throw new Error(`CWS publish failed (${res.status}): ${json.error?.message || JSON.stringify(json)}`);
   }
   return json;
 }
@@ -231,7 +223,9 @@ async function main() {
   }
 
   if (dryRun) {
-    console.log(`[publish-cws] --dry-run: would upload ${zipPath} (${localVersion}) and publish (${publishType}).`);
+    console.log(
+      `[publish-cws] --dry-run: would upload ${zipPath} (${localVersion}) and publish (${publishType}).`,
+    );
     return;
   }
 

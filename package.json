@@ -14,6 +14,9 @@
     "version:check": "node scripts/sync-version.mjs --check",
     "version:set": "node scripts/sync-version.mjs",
     "build": "node scripts/sync-version.mjs && pnpm --filter @chrome-browser-mcp/protocol build && pnpm --filter @chrome-browser-mcp/mcp-app build && pnpm --filter chrome-browser-mcp build && pnpm --filter @chrome-browser-mcp/extension build",
+    "lint": "biome lint --error-on-warnings .",
+    "check": "biome check --error-on-warnings .",
+    "format": "biome check --write .",
     "typecheck": "pnpm --filter @chrome-browser-mcp/protocol build && pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -27,6 +30,7 @@
     "publish:cws": "node scripts/publish-cws.mjs"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.8",
     "@types/node": "^26.6.6",
     "typescript": "^7.0.2",
     "vitest": "^5.1.1"

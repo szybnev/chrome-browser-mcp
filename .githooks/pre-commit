@@ -4,6 +4,9 @@ set -euo pipefail
 echo "▶ [pre-commit] Running security & secret scan on staged files..."
 node scripts/security-check.mjs --staged
 
+echo "▶ [pre-commit] Running Biome strict check & lint..."
+pnpm check
+
 echo "▶ [pre-commit] Running TypeScript typecheck..."
 pnpm typecheck
 

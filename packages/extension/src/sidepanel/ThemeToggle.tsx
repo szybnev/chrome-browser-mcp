@@ -5,8 +5,7 @@ export type ThemeOverride = 'light' | 'dark' | null;
 const STORAGE_KEY = 'color-scheme';
 
 function getSystemScheme(): 'light' | 'dark' {
-  return typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-color-scheme: dark)').matches
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
     ? 'dark'
     : 'light';
 }
@@ -57,8 +56,7 @@ export function ThemeToggle({ persistedTheme, onPersist }: ThemeToggleProps) {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY) return;
-      const next: ThemeOverride =
-        e.newValue === 'light' || e.newValue === 'dark' ? e.newValue : null;
+      const next: ThemeOverride = e.newValue === 'light' || e.newValue === 'dark' ? e.newValue : null;
       applyColorSchemeMeta(next);
     };
     window.addEventListener('storage', onStorage);
@@ -66,8 +64,7 @@ export function ThemeToggle({ persistedTheme, onPersist }: ThemeToggleProps) {
   }, []);
 
   const handleToggle = () => {
-    const currentOverride =
-      persistedTheme !== undefined ? persistedTheme : readStoredOverride();
+    const currentOverride = persistedTheme !== undefined ? persistedTheme : readStoredOverride();
     const system = getSystemScheme();
     const rendered = currentOverride ?? system;
     const target: 'light' | 'dark' = rendered === 'dark' ? 'light' : 'dark';

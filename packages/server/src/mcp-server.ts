@@ -2,35 +2,36 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { McpServer } from '@modelcontextprotocol/server';
-import { z } from 'zod';
 import {
+  type ActionStep,
   ActionStepSchema,
+  type AuditResult,
+  type BatchActResult,
+  type ConsoleEntry,
   computeSnapshotDiff,
+  type DownloadItem,
   EmulationConfigSchema,
   exportWorkflowToPlaywright,
   extractWorkflowParamNames,
   formatFullSnapshot,
   frameUntrustedPageContent,
   interpolateWorkflowSteps,
-  PageSnapshotSchema,
-  SecurityPolicySchema,
-  type ActionStep,
-  type AuditResult,
-  type BatchActResult,
-  type ConsoleEntry,
-  type DownloadItem,
   type NetworkEntry,
+  PageSnapshotSchema,
   type PendingDialog,
+  SecurityPolicySchema,
   type TabInfo,
   type WebMcpToolInfo,
 } from '@chrome-browser-mcp/protocol';
-import { SERVER_VERSION, type BrowserHubInterface } from './hub.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import { z } from 'zod';
+import { type BrowserHubInterface, SERVER_VERSION } from './hub.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const DECK_APP_URI = 'ui://chrome-browser/deck.html';
 
-const PAYMENT_KEYWORDS = /\b(pay\s*now|place\s*order|confirm\s*purchase|checkout|complete\s*payment|transfer\s*funds|delete\s*account)\b/i;
+const PAYMENT_KEYWORDS =
+  /\b(pay\s*now|place\s*order|confirm\s*purchase|checkout|complete\s*payment|transfer\s*funds|delete\s*account)\b/i;
 
 function loadDeckHtml(): string {
   const candidates = [
@@ -71,7 +72,10 @@ function errorResult(err: unknown) {
   };
 }
 
-function saveExportToDownloads(rawFilename: string, content: string): { savedPath: string; displayPath: string } {
+function saveExportToDownloads(
+  rawFilename: string,
+  content: string,
+): { savedPath: string; displayPath: string } {
   const safeBase = basename(rawFilename).replace(/[^a-zA-Z0-9._-]/g, '-') || 'export.json';
   const ext = extname(safeBase);
   const stem = ext ? safeBase.slice(0, -ext.length) : safeBase;
@@ -116,7 +120,8 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     DECK_APP_URI,
     {
       title: 'Browser Control Deck',
-      description: 'Live Antigravity MCP App for controlling connected Chrome tabs, approvals, DevTools errors, and recorded workflows.',
+      description:
+        'Live Antigravity MCP App for controlling connected Chrome tabs, approvals, DevTools errors, and recorded workflows.',
       mimeType: 'text/html;profile=mcp-app',
       _meta: {
         ui: {
@@ -143,7 +148,8 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'browser_profiles',
     {
       title: 'Browser Profiles',
-      description: 'List connected browser profiles (Chrome, Arc, Brave, Edge) or switch the default active profile.',
+      description:
+        'List connected browser profiles (Chrome, Arc, Brave, Edge) or switch the default active profile.',
       inputSchema: z.object({
         action: z.enum(['list', 'select']).default('list'),
         profileId: z.string().optional().describe('Target profileId when action is "select"'),
@@ -205,7 +211,10 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         tabId: z.number().int().optional(),
         url: z.string().url().optional().describe('URL to open when action is "open"'),
         active: z.boolean().default(true).describe('Focus newly opened tab'),
-        bringToFront: z.boolean().default(false).describe('Also raise the browser window to foreground when focusing a tab'),
+        bringToFront: z
+          .boolean()
+          .default(false)
+          .describe('Also raise the browser window to foreground when focusing a tab'),
         profileId: z.string().optional(),
       }),
     },
@@ -329,14 +338,29 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         tabId: z.number().int().optional(),
         mode: z.enum(['full', 'diff']).default('diff'),
         includeOffscreen: z.boolean().default(false),
-        includeIframes: z.boolean().default(true).describe('Traverse cross-origin & nested iframes (prefixed f<frameId>:e1)'),
-        includeClosedShadow: z.boolean().default(false).describe('Escalate to CDP Accessibility tree to inspect closed Shadow DOM'),
+        includeIframes: z
+          .boolean()
+          .default(true)
+          .describe('Traverse cross-origin & nested iframes (prefixed f<frameId>:e1)'),
+        includeClosedShadow: z
+          .boolean()
+          .default(false)
+          .describe('Escalate to CDP Accessibility tree to inspect closed Shadow DOM'),
         useCdp: z.boolean().default(false).describe('Escalate to chrome.debugger Accessibility tree'),
         maxNodes: z.number().int().min(20).max(500).default(220),
         profileId: z.string().optional(),
       }),
     },
-    async ({ tabId, mode, includeOffscreen, includeIframes, includeClosedShadow, useCdp, maxNodes, profileId }) => {
+    async ({
+      tabId,
+      mode,
+      includeOffscreen,
+      includeIframes,
+      includeClosedShadow,
+      useCdp,
+      maxNodes,
+      profileId,
+    }) => {
       try {
         const { profileId: resolvedProfile, data } = await hub.callExtension<unknown>(
           'page.snapshot',
@@ -390,10 +414,21 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
       inputSchema: z.object({
         tabId: z.number().int().optional(),
         selector: z.string().optional(),
-        format: z.enum(['markdown', 'tables_json', 'tables_csv']).default('markdown').describe('Output format: readable Markdown (default), or structured HTML tables as JSON/CSV'),
-        offset: z.number().int().min(0).default(0).describe('Character offset for paginating long pages without reloading'),
+        format: z
+          .enum(['markdown', 'tables_json', 'tables_csv'])
+          .default('markdown')
+          .describe('Output format: readable Markdown (default), or structured HTML tables as JSON/CSV'),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .default(0)
+          .describe('Character offset for paginating long pages without reloading'),
         maxChars: z.number().int().min(500).max(200000).default(30000),
-        scope: z.enum(['main', 'body']).default('main').describe('Read primary content ("main") or entire document body ("body")'),
+        scope: z
+          .enum(['main', 'body'])
+          .default('main')
+          .describe('Read primary content ("main") or entire document body ("body")'),
         profileId: z.string().optional(),
       }),
     },
@@ -476,7 +511,10 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         'Capture a compressed screenshot of the tab, optionally with Set-of-Mark element ref badges (e1, e2…) for visual grounding.',
       inputSchema: z.object({
         tabId: z.number().int().optional(),
-        setOfMark: z.boolean().default(false).describe('Overlay element ref badges on interactive elements before capture'),
+        setOfMark: z
+          .boolean()
+          .default(false)
+          .describe('Overlay element ref badges on interactive elements before capture'),
         fullPage: z.boolean().default(false),
         format: z.enum(['jpeg', 'webp', 'png']).default('webp'),
         quality: z.number().int().min(30).max(95).default(70),
@@ -486,7 +524,9 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           .min(320)
           .max(3840)
           .optional()
-          .describe('Optional max width in pixels to downscale screenshot in-browser for faster vision inference'),
+          .describe(
+            'Optional max width in pixels to downscale screenshot in-browser for faster vision inference',
+          ),
         profileId: z.string().optional(),
       }),
     },
@@ -730,7 +770,10 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         tabId: z.number().int().optional(),
         level: z.enum(['all', 'error', 'warn', 'info', 'log']).default('all'),
         limit: z.number().int().min(1).max(200).default(50),
-        attachCdp: z.boolean().default(true).describe('Ensure CDP Console/Runtime capture is active on the tab'),
+        attachCdp: z
+          .boolean()
+          .default(true)
+          .describe('Ensure CDP Console/Runtime capture is active on the tab'),
         profileId: z.string().optional(),
       }),
     },
@@ -745,7 +788,8 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           return { content: [{ type: 'text', text: 'No console messages captured.' }] };
         }
         const lines = data.map(
-          (c) => `[${new Date(c.timestamp).toISOString().slice(11, 23)}] [${c.level.toUpperCase()}] ${c.text}${c.source ? ` (${c.source}${c.line ? `:${c.line}` : ''})` : ''}`,
+          (c) =>
+            `[${new Date(c.timestamp).toISOString().slice(11, 23)}] [${c.level.toUpperCase()}] ${c.text}${c.source ? ` (${c.source}${c.line ? `:${c.line}` : ''})` : ''}`,
         );
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       } catch (err) {
@@ -880,8 +924,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         if (data.exception) {
           return errorResult(`JS exception: ${data.exception}`);
         }
-        const serialized =
-          typeof data.value === 'string' ? data.value : JSON.stringify(data.value, null, 2);
+        const serialized = typeof data.value === 'string' ? data.value : JSON.stringify(data.value, null, 2);
         return {
           content: [{ type: 'text', text: serialized ?? 'undefined' }],
         };
@@ -899,7 +942,8 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'browser_audit',
     {
       title: 'Audit Page (a11y / Perf / Storage)',
-      description: 'Run quick accessibility, performance timing (LCP/CLS/DOM size), and storage key audits on the tab.',
+      description:
+        'Run quick accessibility, performance timing (LCP/CLS/DOM size), and storage key audits on the tab.',
       inputSchema: z.object({
         tabId: z.number().int().optional(),
         profileId: z.string().optional(),
@@ -941,11 +985,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         const { data } = await hub.callExtension<{
           supported: boolean;
           tools: WebMcpToolInfo[];
-        }>(
-          'webmcp.list',
-          { tabId },
-          { profileId, toolLabel: 'browser_webmcp_list' },
-        );
+        }>('webmcp.list', { tabId }, { profileId, toolLabel: 'browser_webmcp_list' });
 
         if (!data.tools || data.tools.length === 0) {
           return {
@@ -991,10 +1031,7 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           content: [
             {
               type: 'text',
-              text:
-                typeof data.result === 'string'
-                  ? data.result
-                  : JSON.stringify(data.result, null, 2),
+              text: typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2),
             },
           ],
         };
@@ -1050,7 +1087,14 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         if (!workflowId) return errorResult('workflowId is required');
         if (action === 'delete') {
           const ok = await hub.deleteWorkflow(workflowId);
-          return { content: [{ type: 'text', text: ok ? `Deleted workflow ${workflowId}.` : `Workflow ${workflowId} not found.` }] };
+          return {
+            content: [
+              {
+                type: 'text',
+                text: ok ? `Deleted workflow ${workflowId}.` : `Workflow ${workflowId} not found.`,
+              },
+            ],
+          };
         }
 
         const wf = workflows.find((w) => w.id === workflowId);
@@ -1173,7 +1217,9 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
           { profileId, timeoutMs: timeoutMs + 5000, toolLabel: `browser_downloads:${action}` },
         );
         if (data.permissionRequired) {
-          return { content: [{ type: 'text', text: data.hint || 'Optional downloads permission not granted.' }] };
+          return {
+            content: [{ type: 'text', text: data.hint || 'Optional downloads permission not granted.' }],
+          };
         }
         if (action === 'wait') {
           if (!data.completed) {
@@ -1235,7 +1281,8 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
     'browser_audit_export',
     {
       title: 'Export Session Audit Report',
-      description: 'Export the broker session activity log as structured JSON or a self-contained HTML replay report.',
+      description:
+        'Export the broker session activity log as structured JSON or a self-contained HTML replay report.',
       inputSchema: z.object({
         format: z.enum(['json', 'html']).default('json'),
       }),
@@ -1452,7 +1499,11 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
       const wf = workflows.find((w) => w.id === workflowId);
       if (!wf) return errorResult(`Workflow "${workflowId}" not found`);
       const code = exportWorkflowToPlaywright(wf);
-      const slug = wf.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || wf.id;
+      const slug =
+        wf.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') || wf.id;
       const filename = `${slug}.spec.ts`;
       const { savedPath, displayPath } = saveExportToDownloads(filename, code);
       return {

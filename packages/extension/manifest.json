@@ -34,13 +34,8 @@
     "debugger",
     "contextMenus"
   ],
-  "optional_permissions": [
-    "downloads",
-    "nativeMessaging"
-  ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "optional_permissions": ["downloads", "nativeMessaging"],
+  "host_permissions": ["<all_urls>"],
   "commands": {
     "toggle-pause": {
       "suggested_key": {

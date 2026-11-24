@@ -1,13 +1,7 @@
+import { type SupportedLocale, translate } from '@chrome-browser-mcp/protocol';
 import { useState } from 'react';
-import { translate, type SupportedLocale } from '@chrome-browser-mcp/protocol';
 
-export function CopyableCode({
-  code,
-  locale,
-}: {
-  code: string;
-  locale: SupportedLocale;
-}) {
+export function CopyableCode({ code, locale }: { code: string; locale: SupportedLocale }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {

@@ -6,11 +6,11 @@
     <meta name="color-scheme" content="light dark" />
     <script>
       try {
-        var s = localStorage.getItem('color-scheme');
+        const s = localStorage.getItem('color-scheme');
         if (s === 'light' || s === 'dark') {
           document.querySelector('meta[name="color-scheme"]').content = s;
         }
-      } catch (e) {}
+      } catch {}
     </script>
     <title>Browser Control Deck — Chrome Browser MCP</title>
   </head>

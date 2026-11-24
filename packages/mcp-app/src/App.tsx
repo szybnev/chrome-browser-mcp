@@ -1,19 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useApp, useHostStyles } from '@modelcontextprotocol/ext-apps/react';
 import {
   APP_VERSION,
-  READ_ONLY_DOMAIN_PRESETS,
-  resolveLocale,
-  translate,
   type DeckState,
   type I18nKey,
   type LocalePreference,
+  READ_ONLY_DOMAIN_PRESETS,
   type RecordedWorkflow,
+  resolveLocale,
   type TabInfo,
+  translate,
 } from '@chrome-browser-mcp/protocol';
-import { VirtualList } from './VirtualList.js';
+import { useApp, useHostStyles } from '@modelcontextprotocol/ext-apps/react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { InfoTip } from './InfoTip.js';
 import { ThemeToggle } from './ThemeToggle.js';
+import { VirtualList } from './VirtualList.js';
 
 type DeckTab = 'overview' | 'timeline' | 'devtools' | 'workflows' | 'security';
 
@@ -130,14 +130,11 @@ export function App() {
 
   const activeProfileId = deckState?.defaultProfileId ?? deckState?.profiles[0]?.profileId ?? '';
   const profileTabs = useMemo(
-    () => (activeProfileId && deckState ? deckState.tabs[activeProfileId] ?? [] : []),
+    () => (activeProfileId && deckState ? (deckState.tabs[activeProfileId] ?? []) : []),
     [activeProfileId, deckState],
   );
 
-  const agentTabs = useMemo(
-    () => profileTabs.filter((t) => t.inAgentGroup),
-    [profileTabs],
-  );
+  const agentTabs = useMemo(() => profileTabs.filter((t) => t.inAgentGroup), [profileTabs]);
 
   const otherTabs = useMemo(() => {
     const q = tabQuery.trim().toLowerCase();
@@ -145,9 +142,7 @@ export function App() {
     if (!q) return list;
     return list.filter(
       (t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.url.toLowerCase().includes(q) ||
-        String(t.tabId).includes(q),
+        t.title.toLowerCase().includes(q) || t.url.toLowerCase().includes(q) || String(t.tabId).includes(q),
     );
   }, [profileTabs, tabQuery]);
 
@@ -207,8 +202,7 @@ export function App() {
     }
   };
 
-  const controlledCount =
-    deckState.policy.scopeMode === 'all-tabs' ? profileTabs.length : agentTabs.length;
+  const controlledCount = deckState.policy.scopeMode === 'all-tabs' ? profileTabs.length : agentTabs.length;
 
   const tabItems: Array<{ id: DeckTab; label: string }> = [
     { id: 'overview', label: `${tr('tab.overview')} (${controlledCount})` },
@@ -225,8 +219,7 @@ export function App() {
     <div key={t.tabId} className="item-row">
       <div className="item-meta">
         <div className="item-title">
-          [{t.tabId}] {t.title || '(untitled)'}{' '}
-          {t.active && <span className="pill">Active</span>}{' '}
+          [{t.tabId}] {t.title || '(untitled)'} {t.active && <span className="pill">Active</span>}{' '}
           {t.cdpAttached && <span className="pill warn">CDP</span>}
         </div>
         <div className="item-sub">{t.url}</div>
@@ -278,19 +271,19 @@ export function App() {
               </div>
             </div>
           </div>
-            <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
-              <select
-                className="select lang-select"
-                aria-label={tr('setting.language')}
-                value={locale}
-                onChange={(e) => handleLocaleChange(e.target.value as LocalePreference)}
-              >
-                <option value="en">EN</option>
-                <option value="ru">RU</option>
-                <option value="zh-CN">中文</option>
-              </select>
-              <ThemeToggle />
-            </div>
+          <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+            <select
+              className="select lang-select"
+              aria-label={tr('setting.language')}
+              value={locale}
+              onChange={(e) => handleLocaleChange(e.target.value as LocalePreference)}
+            >
+              <option value="en">EN</option>
+              <option value="ru">RU</option>
+              <option value="zh-CN">中文</option>
+            </select>
+            <ThemeToggle />
+          </div>
         </div>
 
         <div className="row">
@@ -299,9 +292,7 @@ export function App() {
               className="select"
               aria-label="Active browser profile"
               value={activeProfileId}
-              onChange={(e) =>
-                void callDeckTool('deck_select_profile', { profileId: e.target.value })
-              }
+              onChange={(e) => void callDeckTool('deck_select_profile', { profileId: e.target.value })}
             >
               {deckState.profiles.map((p) => (
                 <option key={p.profileId} value={p.profileId}>
@@ -365,11 +356,7 @@ export function App() {
 
       <main className="scroller deck-main">
         {/* OVERVIEW */}
-        <section
-          role="tabpanel"
-          aria-labelledby="deck-tab-overview"
-          hidden={activeTab !== 'overview'}
-        >
+        <section role="tabpanel" aria-labelledby="deck-tab-overview" hidden={activeTab !== 'overview'}>
           <div className="panel-inner panel-fill">
             {deckState.paused && (
               <div className="card danger">
@@ -427,9 +414,7 @@ export function App() {
               {agentTabs.length === 0 ? (
                 <div className="muted">{tr('empty.agentTabs')}</div>
               ) : (
-                <div className="scroller agent-tabs-scroll">
-                  {agentTabs.map((t) => renderTabRow(t))}
-                </div>
+                <div className="scroller agent-tabs-scroll">{agentTabs.map((t) => renderTabRow(t))}</div>
               )}
             </div>
 
@@ -485,11 +470,7 @@ export function App() {
         </section>
 
         {/* TIMELINE (DEDICATED TOP-LEVEL TAB) */}
-        <section
-          role="tabpanel"
-          aria-labelledby="deck-tab-timeline"
-          hidden={activeTab !== 'timeline'}
-        >
+        <section role="tabpanel" aria-labelledby="deck-tab-timeline" hidden={activeTab !== 'timeline'}>
           <div className="panel-inner panel-fill">
             <div className={`card ${deckState.recentActivity.length > 0 ? 'fill-card' : ''}`}>
               <div className="row-between">
@@ -519,9 +500,7 @@ export function App() {
                           {ev.durationMs !== undefined ? ` · ${ev.durationMs}ms` : ''}
                         </div>
                       </div>
-                      <span className={`pill ${ev.status === 'ok' ? 'accent' : 'danger'}`}>
-                        {ev.status}
-                      </span>
+                      <span className={`pill ${ev.status === 'ok' ? 'accent' : 'danger'}`}>{ev.status}</span>
                     </div>
                   )}
                 />
@@ -531,11 +510,7 @@ export function App() {
         </section>
 
         {/* DEVTOOLS */}
-        <section
-          role="tabpanel"
-          aria-labelledby="deck-tab-devtools"
-          hidden={activeTab !== 'devtools'}
-        >
+        <section role="tabpanel" aria-labelledby="deck-tab-devtools" hidden={activeTab !== 'devtools'}>
           <div className="panel-inner">
             <div className="card">
               <div className="row-between">
@@ -587,10 +562,7 @@ export function App() {
                       void handleSendDiagnosticsToAgent(
                         `Please investigate these failed browser network requests:\n${deckState.recentFailedNetwork
                           .slice(0, 8)
-                          .map(
-                            (n) =>
-                              `- ${n.method} ${n.status ?? 'ERR'} ${n.url} ${n.errorText ?? ''}`,
-                          )
+                          .map((n) => `- ${n.method} ${n.status ?? 'ERR'} ${n.url} ${n.errorText ?? ''}`)
                           .join('\n')}`,
                       )
                     }
@@ -608,9 +580,7 @@ export function App() {
                       <div className="item-title">
                         {net.method} {net.status ?? 'FAILED'} · {net.url}
                       </div>
-                      <div className="item-sub">
-                        {net.errorText || net.statusText || 'HTTP error'}
-                      </div>
+                      <div className="item-sub">{net.errorText || net.statusText || 'HTTP error'}</div>
                     </div>
                   </div>
                 ))
@@ -620,11 +590,7 @@ export function App() {
         </section>
 
         {/* WORKFLOWS */}
-        <section
-          role="tabpanel"
-          aria-labelledby="deck-tab-workflows"
-          hidden={activeTab !== 'workflows'}
-        >
+        <section role="tabpanel" aria-labelledby="deck-tab-workflows" hidden={activeTab !== 'workflows'}>
           <div className="panel-inner">
             <div className="card">
               <strong>{tr('section.savedWorkflows')}</strong>
@@ -653,9 +619,7 @@ export function App() {
                       <button
                         type="button"
                         className="btn small"
-                        onClick={() =>
-                          void callDeckTool('deck_delete_workflow', { workflowId: wf.id })
-                        }
+                        onClick={() => void callDeckTool('deck_delete_workflow', { workflowId: wf.id })}
                       >
                         {tr('btn.delete')}
                       </button>
@@ -668,21 +632,14 @@ export function App() {
         </section>
 
         {/* SECURITY */}
-        <section
-          role="tabpanel"
-          aria-labelledby="deck-tab-security"
-          hidden={activeTab !== 'security'}
-        >
+        <section role="tabpanel" aria-labelledby="deck-tab-security" hidden={activeTab !== 'security'}>
           <div className="panel-inner">
             <div className="card security-card">
               <strong>{tr('deck.securityTitle')}</strong>
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sec-all-tabs">{tr('setting.allowAllTabs')}</label>
-                  <InfoTip
-                    label={tr('setting.allowAllTabs')}
-                    text={tr('setting.allowAllTabsInfo')}
-                  />
+                  <InfoTip label={tr('setting.allowAllTabs')} text={tr('setting.allowAllTabsInfo')} />
                 </span>
                 <input
                   id="sec-all-tabs"
@@ -699,10 +656,7 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sec-shield">{tr('setting.shield')}</label>
-                  <InfoTip
-                    label={tr('setting.shield')}
-                    text={tr('setting.shieldInfo')}
-                  />
+                  <InfoTip label={tr('setting.shield')} text={tr('setting.shieldInfo')} />
                 </span>
                 <input
                   id="sec-shield"
@@ -719,10 +673,7 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sec-eval">{tr('setting.approvalEval')}</label>
-                  <InfoTip
-                    label={tr('setting.approvalEval')}
-                    text={tr('setting.approvalEvalInfo')}
-                  />
+                  <InfoTip label={tr('setting.approvalEval')} text={tr('setting.approvalEvalInfo')} />
                 </span>
                 <input
                   id="sec-eval"
@@ -759,10 +710,7 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sec-pay">{tr('setting.approvalPayments')}</label>
-                  <InfoTip
-                    label={tr('setting.approvalPayments')}
-                    text={tr('setting.approvalPaymentsInfo')}
-                  />
+                  <InfoTip label={tr('setting.approvalPayments')} text={tr('setting.approvalPaymentsInfo')} />
                 </span>
                 <input
                   id="sec-pay"
@@ -779,10 +727,7 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sec-upload">{tr('setting.approvalUploads')}</label>
-                  <InfoTip
-                    label={tr('setting.approvalUploads')}
-                    text={tr('setting.approvalUploadsInfo')}
-                  />
+                  <InfoTip label={tr('setting.approvalUploads')} text={tr('setting.approvalUploadsInfo')} />
                 </span>
                 <input
                   id="sec-upload"
@@ -804,10 +749,7 @@ export function App() {
                 <div>
                   <span className="security-label-group">
                     <strong>{tr('setting.readOnlyDomains')}</strong>
-                    <InfoTip
-                      label={tr('setting.readOnlyDomains')}
-                      text={tr('setting.readOnlyInfo')}
-                    />
+                    <InfoTip label={tr('setting.readOnlyDomains')} text={tr('setting.readOnlyInfo')} />
                   </span>
                   <div className="muted" style={{ marginBottom: 6 }}>
                     {tr('setting.readOnlyHint')}
@@ -822,9 +764,7 @@ export function App() {
                           className={`preset-chip ${active ? 'active' : ''}`}
                           onClick={() => {
                             const cur = deckState.policy.readOnlyDomains;
-                            const next = active
-                              ? cur.filter((d) => d !== domain)
-                              : [...cur, domain];
+                            const next = active ? cur.filter((d) => d !== domain) : [...cur, domain];
                             void callDeckTool('deck_update_policy', { readOnlyDomains: next });
                           }}
                         >
@@ -839,10 +779,7 @@ export function App() {
                 <div className="security-row">
                   <span className="security-label-group">
                     <label htmlFor="sec-dialog">{tr('setting.dialogPolicy')}</label>
-                    <InfoTip
-                      label={tr('setting.dialogPolicy')}
-                      text={tr('setting.dialogPolicyInfo')}
-                    />
+                    <InfoTip label={tr('setting.dialogPolicy')} text={tr('setting.dialogPolicyInfo')} />
                   </span>
                   <select
                     id="sec-dialog"
@@ -884,10 +821,7 @@ export function App() {
                     {deckState.policy.blockedDomains.slice(0, 6).join(', ')}
                     {deckState.policy.blockedDomains.length > 6 ? '…' : ''}
                   </div>
-                  <InfoTip
-                    label={tr('deck.blockedSummary')}
-                    text={tr('setting.blockedDomainsInfo')}
-                  />
+                  <InfoTip label={tr('deck.blockedSummary')} text={tr('setting.blockedDomainsInfo')} />
                 </div>
               </div>
             </details>

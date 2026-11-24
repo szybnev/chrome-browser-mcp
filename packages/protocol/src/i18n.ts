@@ -64,50 +64,66 @@ const EN = {
   'section.failedNetwork': 'Failed Network Requests',
   'section.savedWorkflows': 'Saved Workflows',
   'setting.allowAllTabs': 'Allow all tabs in window',
-  'setting.allowAllTabsInfo': 'By default, AI agents can only access tabs inside the cyan "AI Agent" tab group. Enable this to allow access to any tab in the window (blocked domains still stay protected).',
+  'setting.allowAllTabsInfo':
+    'By default, AI agents can only access tabs inside the cyan "AI Agent" tab group. Enable this to allow access to any tab in the window (blocked domains still stay protected).',
   'setting.visualHud': 'Visual Agent Cursor & Page Highlight',
-  'setting.visualHudDesc': 'Show animated cursor, element spotlight, and clickable Pause button while AI acts.',
+  'setting.visualHudDesc':
+    'Show animated cursor, element spotlight, and clickable Pause button while AI acts.',
   'setting.visualHudActive': 'Enabled: animated cursor, element highlight, and in-page Pause button',
   'setting.visualHudSilent': 'Silent mode: no on-page cursor or highlights during agent actions',
   'setting.shield': 'Prompt-Injection Shield',
-  'setting.shieldInfo': 'Filters hidden/zero-opacity/offscreen DOM traps, strips invisible Unicode characters, and wraps page text in UNTRUSTED_PAGE_CONTENT boundaries.',
+  'setting.shieldInfo':
+    'Filters hidden/zero-opacity/offscreen DOM traps, strips invisible Unicode characters, and wraps page text in UNTRUSTED_PAGE_CONTENT boundaries.',
   'setting.approvalEval': 'Approve JS Eval on new origins',
-  'setting.approvalEvalInfo': 'Requires explicit Approve/Reject confirmation the first time an agent runs arbitrary JavaScript on a website origin.',
+  'setting.approvalEvalInfo':
+    'Requires explicit Approve/Reject confirmation the first time an agent runs arbitrary JavaScript on a website origin.',
   'setting.approvalPasswords': 'Approve password & secret autofill',
-  'setting.approvalPasswordsInfo': 'Pauses for your confirmation before filling any password input or resolving a Zero-Secret reference.',
+  'setting.approvalPasswordsInfo':
+    'Pauses for your confirmation before filling any password input or resolving a Zero-Secret reference.',
   'setting.approvalPayments': 'Approve payment & checkout actions',
-  'setting.approvalPaymentsInfo': 'Pauses before clicking buttons related to checkout, payments, fund transfers, or account deletion.',
+  'setting.approvalPaymentsInfo':
+    'Pauses before clicking buttons related to checkout, payments, fund transfers, or account deletion.',
   'setting.approvalUploads': 'Approve local file uploads',
-  'setting.approvalUploadsInfo': 'Requires confirmation before attaching local files from your computer to any web form.',
+  'setting.approvalUploadsInfo':
+    'Requires confirmation before attaching local files from your computer to any web form.',
   'setting.language': 'Interface Language',
   'setting.readOnlyDomains': 'Read-Only Domains (one per line)',
   'setting.readOnlyOptional': 'Read-Only Domains (optional)',
   'setting.readOnlyHint': 'Reading is allowed; clicks, typing, and JS eval require explicit approval.',
-  'setting.readOnlyInfo': 'Domains where reading snapshots, text, and screenshots is allowed, while clicks, typing, uploads, and JS execution require approval. Format: example.com or *.example.com/path*.',
+  'setting.readOnlyInfo':
+    'Domains where reading snapshots, text, and screenshots is allowed, while clicks, typing, uploads, and JS execution require approval. Format: example.com or *.example.com/path*.',
   'setting.blockedDomains': 'Blocked Domains (one per line)',
-  'setting.blockedDomainsInfo': 'Wildcard rules (e.g. chrome://*, *.paypal.com) that completely block AI access even if "Allow all tabs" is enabled.',
+  'setting.blockedDomainsInfo':
+    'Wildcard rules (e.g. chrome://*, *.paypal.com) that completely block AI access even if "Allow all tabs" is enabled.',
   'setting.dialogPolicy': 'JS Dialog Policy (alert / confirm / prompt)',
-  'setting.dialogPolicyInfo': 'Controls how native browser dialogs are handled: pass to agent (browser_dialog), dismiss automatically, or ask for user approval.',
+  'setting.dialogPolicyInfo':
+    'Controls how native browser dialogs are handled: pass to agent (browser_dialog), dismiss automatically, or ask for user approval.',
   'setting.dialogAsk': 'Ask agent',
   'setting.dialogDismiss': 'Auto-dismiss',
   'setting.dialogApproval': 'Require approval',
   'setting.cdpDetach': 'CDP Idle Auto-Detach (sec)',
-  'setting.cdpDetachInfo': 'Seconds of inactivity (10–600) before chrome.debugger automatically detaches so Chrome hides the yellow debugger banner.',
+  'setting.cdpDetachInfo':
+    'Seconds of inactivity (10–600) before chrome.debugger automatically detaches so Chrome hides the yellow debugger banner.',
   'setting.cdpProxy': 'Enable Local CDP Proxy (/json/version)',
-  'setting.cdpProxyDesc': 'Allow external Playwright / Puppeteer scripts to attach via 127.0.0.1 while enforcing AI Tab Group, blocklist, read-only rules, and Pause.',
+  'setting.cdpProxyDesc':
+    'Allow external Playwright / Puppeteer scripts to attach via 127.0.0.1 while enforcing AI Tab Group, blocklist, read-only rules, and Pause.',
   'setting.downloadsPerm': 'Downloads tracking (browser_downloads)',
-  'setting.downloadsPermInfo': 'Grants optional Chrome "downloads" permission so agents can list recent downloads or wait for a file download to finish.',
+  'setting.downloadsPermInfo':
+    'Grants optional Chrome "downloads" permission so agents can list recent downloads or wait for a file download to finish.',
   'setting.nativeHostPerm': 'Native Messaging Host transport',
-  'setting.nativeHostPermInfo': 'Grants optional Chrome "nativeMessaging" permission to connect via a local Native Messaging Host instead of loopback WebSocket.',
+  'setting.nativeHostPermInfo':
+    'Grants optional Chrome "nativeMessaging" permission to connect via a local Native Messaging Host instead of loopback WebSocket.',
   'btn.askAgentFix': 'Ask Agent to Fix',
   'btn.askAgentDebug': 'Ask Agent to Debug',
-  'deck.workflowsDesc': 'Record multi-step flows in Chrome Side Panel, attach them to your conversation, or replay with {{variables}} via MCP.',
+  'deck.workflowsDesc':
+    'Record multi-step flows in Chrome Side Panel, attach them to your conversation, or replay with {{variables}} via MCP.',
   'deck.securityTitle': 'Security & Guardrails',
   'deck.blockedSummary': 'Blocked domains',
   'deck.waitingActions': 'Waiting for agent browser actions…',
   'tour.playwrightDocs': 'Learn more in Playwright docs ↗',
   'val.domainComma': 'Line {line} ("{val}"): enter one rule per line without spaces or commas.',
-  'val.domainInvalid': 'Line {line} ("{val}"): invalid domain pattern (e.g. example.com, *.example.com, chrome://*).',
+  'val.domainInvalid':
+    'Line {line} ("{val}"): invalid domain pattern (e.g. example.com, *.example.com, chrome://*).',
   'val.wsUrlProtocol': 'WebSocket URL must start with ws:// or wss://.',
   'val.wsUrlLoopback': 'For security, only local loopback hosts (127.0.0.1, localhost, ::1) are allowed.',
   'val.wsUrlInvalid': 'Enter a valid local WebSocket URL (e.g. ws://127.0.0.1:43179/ws).',
@@ -150,30 +166,38 @@ const EN = {
   'recorder.stop': 'Stop & Save',
   'recorder.namePlaceholder': 'Workflow name (e.g. Create Jira Ticket)',
   'recorder.varsHint': 'Use {{variable}} placeholders in step values for parameterized MCP replay.',
-  'recorder.restrictedUrl': 'Cannot record on browser system pages (chrome://, extensions, Web Store). Switch to an http:// or https:// tab first.',
+  'recorder.restrictedUrl':
+    'Cannot record on browser system pages (chrome://, extensions, Web Store). Switch to an http:// or https:// tab first.',
   'tour.step1.title': '1. AI Agent Tab Group',
-  'tour.step1.body': 'Only tabs you explicitly attach here are visible to AI agents. Your private tabs stay isolated by default.',
+  'tour.step1.body':
+    'Only tabs you explicitly attach here are visible to AI agents. Your private tabs stay isolated by default.',
   'tour.step2.title': '2. Instant Emergency Pause',
   'tour.step2.body': 'Click Pause or press {shortcut} anytime to freeze all agent actions immediately.',
   'tour.step3.title': '3. Workflow Recorder & Playwright Export',
-  'tour.step3.body': 'Demonstrate repetitive flows by hand, add {{variables}}, replay via MCP, or export clean Playwright tests.',
+  'tour.step3.body':
+    'Demonstrate repetitive flows by hand, add {{variables}}, replay via MCP, or export clean Playwright tests.',
   'tour.step4.title': '4. Security & Visual Cursor Settings',
-  'tour.step4.body': 'Toggle the in-page Visual Agent Cursor, manage Prompt-Injection Shield, or open Advanced Settings for Read-Only domains.',
+  'tour.step4.body':
+    'Toggle the in-page Visual Agent Cursor, manage Prompt-Injection Shield, or open Advanced Settings for Read-Only domains.',
   'welcome.heroTitle': 'Welcome to Chrome Browser MCP',
-  'welcome.heroSub': 'Connect local AI coding assistants to your real logged-in browser tabs — 100% local-first.',
+  'welcome.heroSub':
+    'Connect local AI coding assistants to your real logged-in browser tabs — 100% local-first.',
   'welcome.step1': 'Language & Theme',
   'welcome.step2': 'Pair Local Broker',
   'welcome.step3': 'Safety & Visuals',
   'welcome.step4': 'Launch Panel',
   'welcome.localTitle': '100% Local-First',
-  'welcome.localDesc': 'Strict 127.0.0.1 loopback connection. Zero cloud servers, zero telemetry, and dedicated AI Agent tab isolation.',
+  'welcome.localDesc':
+    'Strict 127.0.0.1 loopback connection. Zero cloud servers, zero telemetry, and dedicated AI Agent tab isolation.',
   'welcome.howTitle': 'How it works in 30 seconds',
-  'welcome.how1': 'Connect the extension to your local MCP (works with Antigravity, Claude Code, Cursor, and Codex).',
+  'welcome.how1':
+    'Connect the extension to your local MCP (works with Antigravity, Claude Code, Cursor, and Codex).',
   'welcome.how2': 'Attach only the tabs you want AI to access — all other tabs remain private.',
   'welcome.how3Prefix': 'Press',
   'welcome.how3Suffix': 'anytime for instant emergency pause.',
   'welcome.readyTitle': 'All set!',
-  'welcome.readyDesc': 'Click below to open the Control HUD Side Panel and take a quick 4-step guided tour of Tab Isolation, Emergency Pause, Workflow Recorder, and Security settings.',
+  'welcome.readyDesc':
+    'Click below to open the Control HUD Side Panel and take a quick 4-step guided tour of Tab Isolation, Emergency Pause, Workflow Recorder, and Security settings.',
   'welcome.openHud': 'Open Control HUD & Start Guided Tour',
 } as const;
 
@@ -242,52 +266,71 @@ const RU: Record<I18nKey, string> = {
   'section.failedNetwork': 'Ошибки сетевых запросов',
   'section.savedWorkflows': 'Сохранённые сценарии',
   'setting.allowAllTabs': 'Разрешить доступ ко всем вкладкам окна',
-  'setting.allowAllTabsInfo': 'По умолчанию AI-агент видит только вкладки в группе «AI Agent». Включите, чтобы открыть доступ ко всем вкладкам окна (заблокированные домены всё равно защищены).',
+  'setting.allowAllTabsInfo':
+    'По умолчанию AI-агент видит только вкладки в группе «AI Agent». Включите, чтобы открыть доступ ко всем вкладкам окна (заблокированные домены всё равно защищены).',
   'setting.visualHud': 'Визуальный курсор и подсветка на странице',
-  'setting.visualHudDesc': 'Показывать анимированный курсор, рамку вокруг элемента и кнопку паузы во время работы AI.',
+  'setting.visualHudDesc':
+    'Показывать анимированный курсор, рамку вокруг элемента и кнопку паузы во время работы AI.',
   'setting.visualHudActive': 'Включено: анимированный курсор, подсветка цели и кнопка паузы на странице',
   'setting.visualHudSilent': 'Тихий режим: без курсора и подсветки на странице во время действий агента',
   'setting.shield': 'Защита от Prompt Injection',
-  'setting.shieldInfo': 'Отфильтровывает скрытые и невидимые DOM-ловушки, удаляет невидимые символы Unicode и оборачивает текст страницы в маркеры UNTRUSTED_PAGE_CONTENT.',
+  'setting.shieldInfo':
+    'Отфильтровывает скрытые и невидимые DOM-ловушки, удаляет невидимые символы Unicode и оборачивает текст страницы в маркеры UNTRUSTED_PAGE_CONTENT.',
   'setting.approvalEval': 'Подтверждать выполнение JS на новых доменах',
-  'setting.approvalEvalInfo': 'Запрашивает явное подтверждение при первом запуске произвольного JavaScript агентом на новом сайте.',
+  'setting.approvalEvalInfo':
+    'Запрашивает явное подтверждение при первом запуске произвольного JavaScript агентом на новом сайте.',
   'setting.approvalPasswords': 'Подтверждать ввод паролей и секретов',
-  'setting.approvalPasswordsInfo': 'Останавливает выполнение и запрашивает подтверждение перед вводом данных в поле пароля или подстановкой секрета.',
+  'setting.approvalPasswordsInfo':
+    'Останавливает выполнение и запрашивает подтверждение перед вводом данных в поле пароля или подстановкой секрета.',
   'setting.approvalPayments': 'Подтверждать оплату и опасные действия',
-  'setting.approvalPaymentsInfo': 'Требует подтверждения перед нажатием кнопок оплаты, оформления заказа, перевода средств или удаления аккаунта.',
+  'setting.approvalPaymentsInfo':
+    'Требует подтверждения перед нажатием кнопок оплаты, оформления заказа, перевода средств или удаления аккаунта.',
   'setting.approvalUploads': 'Подтверждать загрузку локальных файлов',
-  'setting.approvalUploadsInfo': 'Запрашивает подтверждение перед прикреплением локальных файлов с вашего компьютера к веб-формам.',
+  'setting.approvalUploadsInfo':
+    'Запрашивает подтверждение перед прикреплением локальных файлов с вашего компьютера к веб-формам.',
   'setting.language': 'Язык интерфейса',
   'setting.readOnlyDomains': 'Домены «Только чтение» (по одному на строку)',
   'setting.readOnlyOptional': 'Домены «Только чтение» (необязательно)',
-  'setting.readOnlyHint': 'Чтение страниц разрешено; клики, ввод текста и выполнение JS потребуют подтверждения.',
-  'setting.readOnlyInfo': 'На этих доменах разрешены чтение и скриншоты, а любые клики, ввод текста, загрузка файлов и выполнение JS потребуют подтверждения. Формат: example.com или *.example.com/path*.',
+  'setting.readOnlyHint':
+    'Чтение страниц разрешено; клики, ввод текста и выполнение JS потребуют подтверждения.',
+  'setting.readOnlyInfo':
+    'На этих доменах разрешены чтение и скриншоты, а любые клики, ввод текста, загрузка файлов и выполнение JS потребуют подтверждения. Формат: example.com или *.example.com/path*.',
   'setting.blockedDomains': 'Заблокированные домены (по одному на строку)',
-  'setting.blockedDomainsInfo': 'Правила с масками (например, chrome://*, *.paypal.com), которые полностью запрещают доступ агента даже при включённом доступе ко всем вкладкам.',
+  'setting.blockedDomainsInfo':
+    'Правила с масками (например, chrome://*, *.paypal.com), которые полностью запрещают доступ агента даже при включённом доступе ко всем вкладкам.',
   'setting.dialogPolicy': 'Обработка JS-диалогов (alert / confirm / prompt)',
-  'setting.dialogPolicyInfo': 'Определяет реакцию на системные окна браузера: передать агенту (browser_dialog), закрывать автоматически или требовать подтверждение.',
+  'setting.dialogPolicyInfo':
+    'Определяет реакцию на системные окна браузера: передать агенту (browser_dialog), закрывать автоматически или требовать подтверждение.',
   'setting.dialogAsk': 'Передавать агенту',
   'setting.dialogDismiss': 'Закрывать автоматически',
   'setting.dialogApproval': 'Требовать подтверждение',
   'setting.cdpDetach': 'Автоотключение CDP при простое (сек)',
-  'setting.cdpDetachInfo': 'Время простоя в секундах (10–600), после которого chrome.debugger автоматически отключается, убирая жёлтую плашку Chrome.',
+  'setting.cdpDetachInfo':
+    'Время простоя в секундах (10–600), после которого chrome.debugger автоматически отключается, убирая жёлтую плашку Chrome.',
   'setting.cdpProxy': 'Локальный CDP-прокси (/json/version)',
-  'setting.cdpProxyDesc': 'Позволяет внешним скриптам Playwright и Puppeteer подключаться по 127.0.0.1 с соблюдением группы вкладок AI, блокировок и паузы.',
+  'setting.cdpProxyDesc':
+    'Позволяет внешним скриптам Playwright и Puppeteer подключаться по 127.0.0.1 с соблюдением группы вкладок AI, блокировок и паузы.',
   'setting.downloadsPerm': 'Отслеживание загрузок (browser_downloads)',
-  'setting.downloadsPermInfo': 'Запрашивает дополнительное право Chrome «downloads», чтобы агент мог видеть список скачанных файлов и ждать завершения загрузки.',
+  'setting.downloadsPermInfo':
+    'Запрашивает дополнительное право Chrome «downloads», чтобы агент мог видеть список скачанных файлов и ждать завершения загрузки.',
   'setting.nativeHostPerm': 'Транспорт Native Messaging Host',
-  'setting.nativeHostPermInfo': 'Запрашивает право «nativeMessaging» для подключения через локальный Native Messaging Host вместо WebSocket.',
+  'setting.nativeHostPermInfo':
+    'Запрашивает право «nativeMessaging» для подключения через локальный Native Messaging Host вместо WebSocket.',
   'btn.askAgentFix': 'Попросить агента исправить',
   'btn.askAgentDebug': 'Разобрать с агентом',
-  'deck.workflowsDesc': 'Записывайте сценарии в боковой панели Chrome, передавайте их агенту или запускайте с {{переменными}} через MCP.',
+  'deck.workflowsDesc':
+    'Записывайте сценарии в боковой панели Chrome, передавайте их агенту или запускайте с {{переменными}} через MCP.',
   'deck.securityTitle': 'Защита и ограничения',
   'deck.blockedSummary': 'Заблокированные домены',
   'deck.waitingActions': 'Ожидание действий агента в браузере…',
   'tour.playwrightDocs': 'Подробнее в документации Playwright ↗',
-  'val.domainComma': 'Строка {line} («{val}»): указывайте по одному домену на строку, без пробелов и запятых.',
-  'val.domainInvalid': 'Строка {line} («{val}»): некорректный домен (пример: example.com, *.example.com, chrome://*).',
+  'val.domainComma':
+    'Строка {line} («{val}»): указывайте по одному домену на строку, без пробелов и запятых.',
+  'val.domainInvalid':
+    'Строка {line} («{val}»): некорректный домен (пример: example.com, *.example.com, chrome://*).',
   'val.wsUrlProtocol': 'WebSocket URL должен начинаться с ws:// или wss://.',
-  'val.wsUrlLoopback': 'Из соображений безопасности разрешены только локальные адреса (127.0.0.1, localhost, ::1).',
+  'val.wsUrlLoopback':
+    'Из соображений безопасности разрешены только локальные адреса (127.0.0.1, localhost, ::1).',
   'val.wsUrlInvalid': 'Введите корректный локальный WebSocket URL (например, ws://127.0.0.1:43179/ws).',
   'val.labelEmpty': 'Название профиля не может быть пустым.',
   'val.labelLength': 'Название профиля не должно превышать 32 символа.',
@@ -313,7 +356,8 @@ const RU: Record<I18nKey, string> = {
   'pair.saveConnect': 'Сохранить и подключить',
   'pair.pairedOk': 'Подключение установлено! Переходим к следующему шагу…',
   'pair.savedReconnecting': 'Настройки сохранены — подключаемся…',
-  'empty.agentTabs': 'Пока нет подключённых вкладок. Нажмите «+ Текущая вкладка» выше или «Подключить» у нужной вкладки.',
+  'empty.agentTabs':
+    'Пока нет подключённых вкладок. Нажмите «+ Текущая вкладка» выше или «Подключить» у нужной вкладки.',
   'empty.matchingTabs': 'Подходящие вкладки не найдены.',
   'empty.timeline': 'В этой сессии пока нет записанных действий.',
   'empty.workflows': 'Сохранённых сценариев пока нет.',
@@ -327,31 +371,41 @@ const RU: Record<I18nKey, string> = {
   'recorder.start': 'Начать запись',
   'recorder.stop': 'Остановить и сохранить',
   'recorder.namePlaceholder': 'Название сценария (например: Создать задачу)',
-  'recorder.varsHint': 'Используйте {{переменная}} в значениях шагов для параметризованного запуска через MCP.',
-  'recorder.restrictedUrl': 'Нельзя записывать на системных страницах браузера (chrome://, расширения, Web Store). Сначала переключитесь на обычную веб-страницу (http:// или https://).',
+  'recorder.varsHint':
+    'Используйте {{переменная}} в значениях шагов для параметризованного запуска через MCP.',
+  'recorder.restrictedUrl':
+    'Нельзя записывать на системных страницах браузера (chrome://, расширения, Web Store). Сначала переключитесь на обычную веб-страницу (http:// или https://).',
   'tour.step1.title': '1. Группа вкладок AI-агента',
-  'tour.step1.body': 'Агент видит только те вкладки, которые вы явно подключили сюда. Личные вкладки изолированы по умолчанию.',
+  'tour.step1.body':
+    'Агент видит только те вкладки, которые вы явно подключили сюда. Личные вкладки изолированы по умолчанию.',
   'tour.step2.title': '2. Мгновенная пауза',
-  'tour.step2.body': 'Нажмите «Пауза» или {shortcut} в любой момент, чтобы мгновенно остановить автоматизацию.',
+  'tour.step2.body':
+    'Нажмите «Пауза» или {shortcut} в любой момент, чтобы мгновенно остановить автоматизацию.',
   'tour.step3.title': '3. Запись сценариев и экспорт Playwright',
-  'tour.step3.body': 'Покажите рутинный сценарий руками, добавьте {{переменные}} и экспортируйте тест в Playwright .spec.ts.',
+  'tour.step3.body':
+    'Покажите рутинный сценарий руками, добавьте {{переменные}} и экспортируйте тест в Playwright .spec.ts.',
   'tour.step4.title': '4. Безопасность и визуальный курсор',
-  'tour.step4.body': 'Здесь можно включить или отключить курсор агента, защиту от инъекций и открыть Расширенные настройки.',
+  'tour.step4.body':
+    'Здесь можно включить или отключить курсор агента, защиту от инъекций и открыть Расширенные настройки.',
   'welcome.heroTitle': 'Добро пожаловать в Chrome Browser MCP',
-  'welcome.heroSub': 'Подключите локальных AI-агентов к вашим реальным вкладкам браузера — полностью локально.',
+  'welcome.heroSub':
+    'Подключите локальных AI-агентов к вашим реальным вкладкам браузера — полностью локально.',
   'welcome.step1': 'Язык и тема',
   'welcome.step2': 'Подключение',
   'welcome.step3': 'Защита и визуал',
   'welcome.step4': 'Запуск панели',
   'welcome.localTitle': '100% локальная работа',
-  'welcome.localDesc': 'Строгое подключение по 127.0.0.1. Никаких облачных серверов, нулевая телеметрия и отдельная группа вкладок AI Agent.',
+  'welcome.localDesc':
+    'Строгое подключение по 127.0.0.1. Никаких облачных серверов, нулевая телеметрия и отдельная группа вкладок AI Agent.',
   'welcome.howTitle': 'Как это работает за 30 секунд',
-  'welcome.how1': 'Подключите расширение к локальному MCP (работает с Antigravity, Claude Code, Cursor и Codex).',
+  'welcome.how1':
+    'Подключите расширение к локальному MCP (работает с Antigravity, Claude Code, Cursor и Codex).',
   'welcome.how2': 'Добавляйте только те вкладки, с которыми нужно работать — остальные остаются приватными.',
   'welcome.how3Prefix': 'Нажмите',
   'welcome.how3Suffix': 'в любой момент для мгновенной паузы.',
   'welcome.readyTitle': 'Всё готово!',
-  'welcome.readyDesc': 'Нажмите кнопку ниже, чтобы открыть боковую панель управления и пройти короткий 4-шаговый тур по изоляции вкладок, паузе, записи сценариев и настройкам защиты.',
+  'welcome.readyDesc':
+    'Нажмите кнопку ниже, чтобы открыть боковую панель управления и пройти короткий 4-шаговый тур по изоляции вкладок, паузе, записи сценариев и настройкам защиты.',
   'welcome.openHud': 'Открыть панель управления и начать тур',
 };
 
@@ -418,15 +472,18 @@ const ZH_CN: Record<I18nKey, string> = {
   'section.failedNetwork': '失败的网络请求',
   'section.savedWorkflows': '已保存的工作流',
   'setting.allowAllTabs': '允许访问当前窗口中的所有标签',
-  'setting.allowAllTabsInfo': '默认情况下，AI 仅能访问青色“AI Agent”标签组内的标签页。开启后可访问当前窗口的所有标签（屏蔽域名仍受保护）。',
+  'setting.allowAllTabsInfo':
+    '默认情况下，AI 仅能访问青色“AI Agent”标签组内的标签页。开启后可访问当前窗口的所有标签（屏蔽域名仍受保护）。',
   'setting.visualHud': '页面可视化光标与操作高亮',
   'setting.visualHudDesc': '在 AI 执行操作时显示平滑光标、目标高亮框与页面内暂停按钮。',
   'setting.visualHudActive': '已开启：显示平滑光标、元素高亮框与页面内一键暂停按钮',
   'setting.visualHudSilent': '静默模式：执行操作时不在页面上显示光标或高亮',
   'setting.shield': '提示词注入防护 (Shield)',
-  'setting.shieldInfo': '过滤隐藏、零透明度和屏外 DOM 陷阱，清除不可见 Unicode 字符，并用 UNTRUSTED_PAGE_CONTENT 边界包裹网页内容。',
+  'setting.shieldInfo':
+    '过滤隐藏、零透明度和屏外 DOM 陷阱，清除不可见 Unicode 字符，并用 UNTRUSTED_PAGE_CONTENT 边界包裹网页内容。',
   'setting.approvalEval': '新域名执行 JS 时需审批',
-  'setting.approvalEvalInfo': '当 Agent 首次在某个网站上运行任意 JavaScript 代码时，暂停并请求您明确批准或拒绝。',
+  'setting.approvalEvalInfo':
+    '当 Agent 首次在某个网站上运行任意 JavaScript 代码时，暂停并请求您明确批准或拒绝。',
   'setting.approvalPasswords': '密码与密钥自动填充时需审批',
   'setting.approvalPasswordsInfo': '在填充任何密码输入框或解析本地密钥引用前，暂停并等待您的确认。',
   'setting.approvalPayments': '支付与高风险操作时需审批',
@@ -437,22 +494,29 @@ const ZH_CN: Record<I18nKey, string> = {
   'setting.readOnlyDomains': '只读域名（每行一个）',
   'setting.readOnlyOptional': '只读域名（可选）',
   'setting.readOnlyHint': '允许读取页面内容；点击、输入和执行 JS 均需人工批准。',
-  'setting.readOnlyInfo': '在这些域名上允许读取快照、正文和截图，但点击、输入、上传文件和执行 JS 必须经过批准。格式：example.com 或 *.example.com/path*。',
+  'setting.readOnlyInfo':
+    '在这些域名上允许读取快照、正文和截图，但点击、输入、上传文件和执行 JS 必须经过批准。格式：example.com 或 *.example.com/path*。',
   'setting.blockedDomains': '屏蔽域名（每行一个）',
-  'setting.blockedDomainsInfo': '通配符规则（如 chrome://*、*.paypal.com），即使开启“允许访问所有标签”，也会完全阻止 AI 访问这些站点。',
+  'setting.blockedDomainsInfo':
+    '通配符规则（如 chrome://*、*.paypal.com），即使开启“允许访问所有标签”，也会完全阻止 AI 访问这些站点。',
   'setting.dialogPolicy': 'JS 弹窗策略 (alert / confirm / prompt)',
-  'setting.dialogPolicyInfo': '设置遇到原生浏览器弹窗时的处理方式：交由 Agent 处理（browser_dialog）、自动取消，或请求人工确认。',
+  'setting.dialogPolicyInfo':
+    '设置遇到原生浏览器弹窗时的处理方式：交由 Agent 处理（browser_dialog）、自动取消，或请求人工确认。',
   'setting.dialogAsk': '交由 Agent 处理',
   'setting.dialogDismiss': '自动关闭',
   'setting.dialogApproval': '需要人工确认',
   'setting.cdpDetach': 'CDP 空闲自动断开（秒）',
-  'setting.cdpDetachInfo': '空闲指定秒数（10–600）后自动断开 chrome.debugger，从而隐藏浏览器顶部黄色调试横幅。',
+  'setting.cdpDetachInfo':
+    '空闲指定秒数（10–600）后自动断开 chrome.debugger，从而隐藏浏览器顶部黄色调试横幅。',
   'setting.cdpProxy': '启用本地 CDP 代理 (/json/version)',
-  'setting.cdpProxyDesc': '允许外部 Playwright / Puppeteer 脚本通过 127.0.0.1 接入，同时继续受 AI 标签组、屏蔽列表和紧急暂停保护。',
+  'setting.cdpProxyDesc':
+    '允许外部 Playwright / Puppeteer 脚本通过 127.0.0.1 接入，同时继续受 AI 标签组、屏蔽列表和紧急暂停保护。',
   'setting.downloadsPerm': '下载追踪 (browser_downloads)',
-  'setting.downloadsPermInfo': '按需授予 Chrome 可选“downloads”权限，让 Agent 可以查看最近下载或等待下载完成。',
+  'setting.downloadsPermInfo':
+    '按需授予 Chrome 可选“downloads”权限，让 Agent 可以查看最近下载或等待下载完成。',
   'setting.nativeHostPerm': 'Native Messaging 本地通道',
-  'setting.nativeHostPermInfo': '按需授予 Chrome 可选“nativeMessaging”权限，通过本地 Native Messaging Host 替代回环 WebSocket 连接。',
+  'setting.nativeHostPermInfo':
+    '按需授予 Chrome 可选“nativeMessaging”权限，通过本地 Native Messaging Host 替代回环 WebSocket 连接。',
   'btn.askAgentFix': '让 Agent 修复',
   'btn.askAgentDebug': '让 Agent 排查',
   'deck.workflowsDesc': '在 Chrome 侧边栏录制多步骤操作，发送给 Agent 或通过 MCP 使用 {{变量}} 回放。',
@@ -461,7 +525,8 @@ const ZH_CN: Record<I18nKey, string> = {
   'deck.waitingActions': '正在等待 Agent 执行浏览器操作…',
   'tour.playwrightDocs': '查看 Playwright 官方文档 ↗',
   'val.domainComma': '第 {line} 行（“{val}”）：每行仅填写一条规则，请勿包含空格或逗号。',
-  'val.domainInvalid': '第 {line} 行（“{val}”）：域名格式无效（示例：example.com、*.example.com、chrome://*）。',
+  'val.domainInvalid':
+    '第 {line} 行（“{val}”）：域名格式无效（示例：example.com、*.example.com、chrome://*）。',
   'val.wsUrlProtocol': 'WebSocket 地址必须以 ws:// 或 wss:// 开头。',
   'val.wsUrlLoopback': '出于安全限制，仅允许本地回环地址（127.0.0.1、localhost、::1）。',
   'val.wsUrlInvalid': '请输入有效的本地 WebSocket 地址（例如 ws://127.0.0.1:43179/ws）。',
@@ -504,13 +569,15 @@ const ZH_CN: Record<I18nKey, string> = {
   'recorder.stop': '停止并保存',
   'recorder.namePlaceholder': '工作流名称（例如：创建工单）',
   'recorder.varsHint': '在步骤值中使用 {{变量名}} 即可在 MCP 回放时动态传入参数。',
-  'recorder.restrictedUrl': '无法在浏览器系统页面（chrome://、扩展程序页或应用商店）录制。请先切换到普通网页（http:// 或 https://）。',
+  'recorder.restrictedUrl':
+    '无法在浏览器系统页面（chrome://、扩展程序页或应用商店）录制。请先切换到普通网页（http:// 或 https://）。',
   'tour.step1.title': '1. AI Agent 标签组',
   'tour.step1.body': 'AI 仅能访问您主动接入此处的标签页，其余私密标签默认完全隔离。',
   'tour.step2.title': '2. 一键紧急暂停',
   'tour.step2.body': '随时点击“暂停”或按 {shortcut}，即可立即冻结所有自动化操作。',
   'tour.step3.title': '3. 工作流录制与 Playwright 导出',
-  'tour.step3.body': '手动演示操作即可录制流程，支持 {{变量}} 参数化，并可导出为 Playwright .spec.ts 测试脚本。',
+  'tour.step3.body':
+    '手动演示操作即可录制流程，支持 {{变量}} 参数化，并可导出为 Playwright .spec.ts 测试脚本。',
   'tour.step4.title': '4. 安全策略与可视化光标',
   'tour.step4.body': '在此开关页面光标高亮、提示词注入防护，或在“高级设置”中配置只读域名。',
   'welcome.heroTitle': '欢迎使用 Chrome Browser MCP',
@@ -520,14 +587,16 @@ const ZH_CN: Record<I18nKey, string> = {
   'welcome.step3': '安全与视觉',
   'welcome.step4': '启动面板',
   'welcome.localTitle': '100% 本地优先',
-  'welcome.localDesc': '仅通过 127.0.0.1 本地回环通信。无云端服务器、零遥测数据，并提供独立的 AI Agent 标签页隔离。',
+  'welcome.localDesc':
+    '仅通过 127.0.0.1 本地回环通信。无云端服务器、零遥测数据，并提供独立的 AI Agent 标签页隔离。',
   'welcome.howTitle': '30 秒快速上手',
   'welcome.how1': '将扩展连接到本地 MCP（支持 Antigravity、Claude Code、Cursor 和 Codex）。',
   'welcome.how2': '仅接入需要 AI 协助的标签页，其余私人标签页始终保持隔离。',
   'welcome.how3Prefix': '随时按下',
   'welcome.how3Suffix': '即可一键紧急暂停。',
   'welcome.readyTitle': '全部就绪！',
-  'welcome.readyDesc': '点击下方按钮打开侧边控制面板，体验 4 步交互式引导，快速了解标签隔离、紧急暂停、工作流录制和安全设置。',
+  'welcome.readyDesc':
+    '点击下方按钮打开侧边控制面板，体验 4 步交互式引导，快速了解标签隔离、紧急暂停、工作流录制和安全设置。',
   'welcome.openHud': '打开控制面板并开始引导',
 };
 

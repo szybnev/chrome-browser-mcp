@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { WebSocket } from 'ws';
 import { APP_VERSION, isUrlBlocked } from '@chrome-browser-mcp/protocol';
+import type { WebSocket } from 'ws';
 import type { BrowserBrokerHub } from './hub.js';
 
 export function handleCdpDiscoveryRequest(
@@ -21,7 +21,8 @@ export function handleCdpDiscoveryRequest(
     res.end(
       JSON.stringify({
         ok: false,
-        error: 'Local CDP Proxy is disabled. Start daemon with --enable-cdp-proxy or enable it in Security -> Advanced Settings.',
+        error:
+          'Local CDP Proxy is disabled. Start daemon with --enable-cdp-proxy or enable it in Security -> Advanced Settings.',
       }),
     );
     return true;
@@ -29,10 +30,12 @@ export function handleCdpDiscoveryRequest(
 
   const headerToken = req.headers['x-broker-token'];
   const queryToken = url.searchParams.get('token');
-  const candidate = typeof headerToken === 'string' ? headerToken : queryToken ?? '';
+  const candidate = typeof headerToken === 'string' ? headerToken : (queryToken ?? '');
   if (!hub.verifyToken(candidate)) {
     res.writeHead(401, { 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ ok: false, error: 'Unauthorized CDP proxy token (pass ?token= or x-broker-token)' }));
+    res.end(
+      JSON.stringify({ ok: false, error: 'Unauthorized CDP proxy token (pass ?token= or x-broker-token)' }),
+    );
     return true;
   }
 

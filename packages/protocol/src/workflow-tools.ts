@@ -6,9 +6,7 @@ export function extractWorkflowParamNames(workflow: RecordedWorkflow): string[] 
   const names = new Set<string>();
   const scan = (text?: string) => {
     if (!text) return;
-    VAR_PLACEHOLDER_RE.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = VAR_PLACEHOLDER_RE.exec(text)) !== null) {
+    for (const match of text.matchAll(VAR_PLACEHOLDER_RE)) {
       if (match[1]) names.add(match[1]);
     }
   };
@@ -35,7 +33,7 @@ function interpolateString(
 ): string {
   VAR_PLACEHOLDER_RE.lastIndex = 0;
   return raw.replace(VAR_PLACEHOLDER_RE, (_full, name: string) => {
-    if (Object.prototype.hasOwnProperty.call(values, name)) {
+    if (Object.hasOwn(values, name)) {
       return values[name]!;
     }
     const fallback = defaults.get(name);
@@ -115,17 +113,16 @@ function formatTsValueExpr(raw: string, sensitiveNames: Set<string>): string {
   }
 
   // Support embedded {{var}} placeholders inside URLs/text via template literal
-  VAR_PLACEHOLDER_RE.lastIndex = 0;
-  if (VAR_PLACEHOLDER_RE.test(raw)) {
-    VAR_PLACEHOLDER_RE.lastIndex = 0;
+  const matches = [...raw.matchAll(new RegExp(VAR_PLACEHOLDER_RE.source, 'g'))];
+  if (matches.length > 0) {
     let out = '`';
     let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = VAR_PLACEHOLDER_RE.exec(raw)) !== null) {
-      out += escapeTemplateLiteralChunk(raw.slice(lastIndex, match.index));
+    for (const match of matches) {
+      const idx = match.index ?? 0;
+      out += escapeTemplateLiteralChunk(raw.slice(lastIndex, idx));
       const varName = match[1]!;
       out += `\${${formatVarExpr(varName, sensitiveNames)}}`;
-      lastIndex = match.index + match[0].length;
+      lastIndex = idx + match[0].length;
     }
     out += escapeTemplateLiteralChunk(raw.slice(lastIndex));
     out += '`';
@@ -137,32 +134,28 @@ function formatTsValueExpr(raw: string, sensitiveNames: Set<string>): string {
 
 export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
   const paramNames = extractWorkflowParamNames(workflow);
-  const sensitiveSet = new Set(
-    (workflow.parameters ?? []).filter((p) => p.sensitive).map((p) => p.name),
-  );
-  const defaults = new Map(
-    (workflow.parameters ?? []).map((p) => [p.name, p.defaultValue ?? '']),
-  );
+  const sensitiveSet = new Set((workflow.parameters ?? []).filter((p) => p.sensitive).map((p) => p.name));
+  const defaults = new Map((workflow.parameters ?? []).map((p) => [p.name, p.defaultValue ?? '']));
 
   const safeCommentName = workflow.name.replace(/[\r\n]+/g, ' ');
   const safeCommentId = workflow.id.replace(/[\r\n]+/g, ' ');
   const lines: string[] = [
     `import { test, expect } from '@playwright/test';`,
-    ``,
-    `// Exported from Chrome Browser MCP Workflow Recorder`,
+    '',
+    '// Exported from Chrome Browser MCP Workflow Recorder',
     `// Workflow: ${safeCommentName} (${safeCommentId})`,
     `test('${escapeSingleQuoted(workflow.name)}', async ({ page }) => {`,
   ];
 
   const nonSensitiveParams = paramNames.filter((n) => !sensitiveSet.has(n));
   if (nonSensitiveParams.length > 0) {
-    lines.push(`  const vars = {`);
+    lines.push('  const vars = {');
     for (const name of nonSensitiveParams) {
       const envKey = name.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
       const def = escapeSingleQuoted(defaults.get(name) ?? '');
       lines.push(`    ${name.replace(/[^A-Za-z0-9_]/g, '_')}: process.env.${envKey} ?? '${def}',`);
     }
-    lines.push(`  };`, ``);
+    lines.push('  };', '');
   }
 
   if (workflow.startUrl) {
@@ -198,7 +191,10 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
           const expr = entry.maskedSensitiveValue
             ? `process.env.SECRET_VALUE ?? ''`
             : s.secretRef
-              ? `process.env.${s.secretRef.replace(/^[^:]+:/, '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')} ?? ''`
+              ? `process.env.${s.secretRef
+                  .replace(/^[^:]+:/, '')
+                  .toUpperCase()
+                  .replace(/[^A-Z0-9_]/g, '_')} ?? ''`
               : formatTsValueExpr(s.value ?? '', sensitiveSet);
           lines.push(`  await ${locator}.fill(${expr});`);
           if (s.submit) lines.push(`  await ${locator}.press('Enter');`);
@@ -209,7 +205,10 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
           const expr = entry.maskedSensitiveValue
             ? `process.env.SECRET_VALUE ?? ''`
             : s.secretRef
-              ? `process.env.${s.secretRef.replace(/^[^:]+:/, '').toUpperCase().replace(/[^A-Z0-9_]/g, '_')} ?? ''`
+              ? `process.env.${s.secretRef
+                  .replace(/^[^:]+:/, '')
+                  .toUpperCase()
+                  .replace(/[^A-Z0-9_]/g, '_')} ?? ''`
               : formatTsValueExpr(s.text ?? '', sensitiveSet);
           lines.push(`  await ${locator}.pressSequentially(${expr}, { delay: ${s.delayMs} });`);
         }
@@ -243,9 +242,13 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
         break;
       case 'wait':
         if (s.selector) {
-          lines.push(`  await page.locator('${escapeSingleQuoted(s.selector)}').waitFor({ timeout: ${s.timeoutMs} });`);
+          lines.push(
+            `  await page.locator('${escapeSingleQuoted(s.selector)}').waitFor({ timeout: ${s.timeoutMs} });`,
+          );
         } else if (s.text) {
-          lines.push(`  await expect(page.getByText(${formatTsValueExpr(s.text, sensitiveSet)})).toBeVisible({ timeout: ${s.timeoutMs} });`);
+          lines.push(
+            `  await expect(page.getByText(${formatTsValueExpr(s.text, sensitiveSet)})).toBeVisible({ timeout: ${s.timeoutMs} });`,
+          );
         } else if (s.ms) {
           lines.push(`  await page.waitForTimeout(${s.ms});`);
         }
@@ -256,6 +259,6 @@ export function exportWorkflowToPlaywright(workflow: RecordedWorkflow): string {
     }
   }
 
-  lines.push(`});`, ``);
+  lines.push('});', '');
   return lines.join('\n');
 }

@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import {
   DEFAULT_BROKER_HOST,
   DEFAULT_BROKER_PORT,
-  RecordedWorkflowSchema,
-  SecurityPolicySchema,
   type RecordedWorkflow,
+  RecordedWorkflowSchema,
   type SecurityPolicy,
+  SecurityPolicySchema,
 } from '@chrome-browser-mcp/protocol';
 import { z } from 'zod';
 
@@ -24,9 +24,7 @@ export interface BrokerConfig {
 
 export function resolveDataDir(explicitDir?: string): string {
   const dir =
-    explicitDir ||
-    process.env.CHROME_BROWSER_MCP_DATA_DIR ||
-    join(homedir(), '.chrome-browser-mcp');
+    explicitDir || process.env.CHROME_BROWSER_MCP_DATA_DIR || join(homedir(), '.chrome-browser-mcp');
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -55,16 +53,11 @@ export function loadOrCreateToken(dataDir: string, rotate = false): string {
   return fresh;
 }
 
-export function loadBrokerConfig(options?: {
-  port?: number;
-  dataDir?: string;
-}): BrokerConfig {
+export function loadBrokerConfig(options?: { port?: number; dataDir?: string }): BrokerConfig {
   const host = DEFAULT_BROKER_HOST;
   const port =
     options?.port ??
-    (process.env.CHROME_BROWSER_MCP_PORT
-      ? Number(process.env.CHROME_BROWSER_MCP_PORT)
-      : DEFAULT_BROKER_PORT);
+    (process.env.CHROME_BROWSER_MCP_PORT ? Number(process.env.CHROME_BROWSER_MCP_PORT) : DEFAULT_BROKER_PORT);
   const dataDir = resolveDataDir(options?.dataDir);
   const token = loadOrCreateToken(dataDir);
   const brokerUrl = `http://${host}:${port}`;

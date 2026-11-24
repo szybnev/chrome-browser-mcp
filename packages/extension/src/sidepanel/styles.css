@@ -63,7 +63,7 @@
 }
 
 /* Reflect <meta name="color-scheme"> override back into CSS color-scheme */
-:root:has(> head > meta[name='color-scheme'][content='dark']) {
+:root:has(> head > meta[name="color-scheme"][content="dark"]) {
   color-scheme: dark;
   --bg: var(--bg-dark);
   --surface: var(--surface-dark);
@@ -86,12 +86,12 @@
   --scrollbar-track: var(--scroll-track-dark);
 }
 
-:root:has(> head > meta[name='color-scheme'][content='light']) {
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) {
     --bg: var(--bg-dark);
     --surface: var(--surface-dark);
     --surface-2: var(--surface-2-dark);
@@ -171,7 +171,12 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 400 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font:
+    400 13px / 1.45 system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 
 .sr-only {
@@ -201,20 +206,20 @@ body {
   display: inline-flex;
 }
 
-:root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-light {
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-opt-to-light {
   display: inline-flex;
 }
 
-:root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-dark {
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-opt-to-dark {
   display: none;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) .theme-opt-to-light {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) .theme-opt-to-light {
     display: inline-flex;
   }
 
-  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) .theme-opt-to-dark {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) .theme-opt-to-dark {
     display: none;
   }
 }
@@ -234,7 +239,7 @@ body {
   overflow-y: auto;
 }
 
-.sp-main > [role='tabpanel']:not([hidden]) {
+.sp-main > [role="tabpanel"]:not([hidden]) {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -296,7 +301,7 @@ body {
   color: var(--text);
   border: 1px solid var(--control-border);
   border-radius: 7px;
-  font: 500 11.5px/24px inherit;
+  font: 500 11.5px / 24px inherit;
   box-sizing: border-box;
   cursor: pointer;
 }
@@ -355,7 +360,7 @@ body {
   background: transparent;
   border: 0;
   color: var(--muted);
-  font: 600 12px/1.2 inherit;
+  font: 600 12px / 1.2 inherit;
   padding: 10px 10px;
   cursor: pointer;
 }
@@ -370,12 +375,12 @@ body {
   border-radius: 4px;
 }
 
-.tab-btn[aria-selected='true'] {
+.tab-btn[aria-selected="true"] {
   color: var(--accent-text);
 }
 
-.tab-btn[aria-selected='true']::after {
-  content: '';
+.tab-btn[aria-selected="true"]::after {
+  content: "";
   position: absolute;
   inset: auto 4px 0;
   border-block-end: 2px solid var(--accent-text);
@@ -440,7 +445,7 @@ body {
   border: 1px solid var(--control-border);
   border-radius: 7px;
   padding: 6px 10px;
-  font: 400 12px/1.3 inherit;
+  font: 400 12px / 1.3 inherit;
   flex: 0 0 auto;
 }
 
@@ -492,7 +497,7 @@ body {
   border: 1px solid var(--control-border);
   background: var(--surface-2);
   color: var(--muted);
-  font: 700 10.5px/1 inherit;
+  font: 700 10.5px / 1 inherit;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -500,19 +505,23 @@ body {
   cursor: pointer;
   flex: none;
   --interest-delay-start: 0.2s;
+  /* biome-ignore lint/correctness/noUnknownProperty: CSS Interest Invokers spec (Chrome 135+) */
   interest-delay-start: var(--interest-delay-start);
   --interest-delay-end: 0.12s;
+  /* biome-ignore lint/correctness/noUnknownProperty: CSS Interest Invokers spec (Chrome 135+) */
   interest-delay-end: var(--interest-delay-end);
 }
 
 .infotip-btn:hover,
 .infotip-btn:focus-visible,
+/* biome-ignore lint/correctness/noUnknownPseudoClass: CSS Interest Invokers spec (Chrome 135+) */
 .infotip-btn:is(:interest-source, .interest-source) {
   border-color: var(--accent-text);
   color: var(--accent-text);
   outline: none;
 }
 
+/* biome-ignore lint/correctness/noUnknownPseudoClass: CSS Interest Invokers spec (Chrome 135+) */
 .security-card:has([interestfor]:is(:interest-source, .interest-source)) [interestfor] {
   --interest-delay-start: 0s;
 }
@@ -524,7 +533,7 @@ body {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font: 400 11.5px/1.45 inherit;
+  font: 400 11.5px / 1.45 inherit;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
@@ -533,7 +542,10 @@ body {
     inset: auto;
     margin: 6px 0 0;
     position-area: block-end span-inline-end;
-    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    position-try-fallbacks:
+      flip-block,
+      flip-inline,
+      flip-block flip-inline;
   }
 }
 
@@ -584,7 +596,7 @@ body {
   color: var(--text);
   border-radius: 7px;
   padding: 6px 10px;
-  font: 600 12px/1.2 inherit;
+  font: 600 12px / 1.2 inherit;
   cursor: pointer;
 }
 
@@ -669,7 +681,11 @@ body {
   border: 1px solid var(--control-border);
   border-radius: 7px;
   padding: 7px 9px;
-  font: 400 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font:
+    400 12px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
 }
 
 .input:focus-visible,
@@ -736,7 +752,11 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 8px;
-  font: 400 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font:
+    400 11px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
@@ -764,7 +784,7 @@ body {
 }
 
 .advanced-box > summary::after {
-  content: '▸';
+  content: "▸";
   font-size: 11px;
   transition: transform 140ms ease;
 }
@@ -850,8 +870,10 @@ body {
   margin-top: 4px;
 }
 
+.input.input-invalid,
+.textarea.input-invalid,
 .input-invalid {
-  border-color: var(--danger, #f87171) !important;
+  border-color: var(--danger, #f87171);
 }
 
 .tour-actions {
@@ -875,7 +897,7 @@ body {
   color: var(--text);
   border-radius: 999px;
   padding: 3px 9px;
-  font: 500 11px/1.3 inherit;
+  font: 500 11px / 1.3 inherit;
   cursor: pointer;
 }
 
@@ -911,9 +933,16 @@ body {
   border: 1px solid var(--control-border);
   background: var(--surface-2);
   color: var(--accent-text);
-  font: 500 11.5px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font:
+    500 11.5px / 1.35 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
   cursor: pointer;
-  transition: border-color 140ms ease, background-color 140ms ease;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
 }
 
 .code-chip:hover {
@@ -949,7 +978,11 @@ body {
   border: 1px solid var(--control-border);
   background: var(--surface-2);
   color: var(--text);
-  font: 600 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font:
+    600 11px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
 }
 
 .inline-hint {

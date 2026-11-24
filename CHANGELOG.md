@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ## [2.0.0] - 2026-11-24
 
 ### Added
+
 - **Multi-Frame (`iframe`) & Shadow DOM Traversal**: `browser_snapshot` automatically indexes cross-origin and nested iframes (`f<frameId>:e1` refs) + open Shadow DOM, with optional CDP closed Shadow DOM fallback (`includeClosedShadow: true`).
 - **File Uploads (`upload` step) & Optional Downloads (`browser_downloads`)**: approval-gated local file upload via on-demand CDP `DOM.setFileInputFiles` (with canonical path & optional directory allowlist checks) and opt-in Chrome `downloads` tracking.
 - **Native JavaScript Dialog Handling (`browser_dialog`)**: non-blocking CDP interception for `alert`, `confirm`, `prompt`, and `beforeunload` dialogs, plus Accept/Dismiss controls in Side Panel and Control Deck.
@@ -27,6 +28,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ## [1.0.0] - 2026-11-24
 
 ### Added
+
 - **Unified Google Antigravity UI (Dark & Light)** across both Chrome Side Panel and Antigravity Browser Control Deck MCP App, with WCAG 2.1 AA/AAA verified contrast and a persistent, zero-FOUC theme toggle.
 - **Bridge Aperture brand icons** (`16/48/128px` 4×4 SSAA PNG + SVG) and Chrome Web Store submission readiness (`CHROMEWEBSTORE.md`, automated Chrome Web Store API v2 publisher in `scripts/publish-cws.mjs`).
 - **Automated GitHub Releases & GitHub Packages** publishing on version bumps to `main`, alongside Chrome Web Store API v2 auto-publish.
@@ -34,6 +36,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **In-browser screenshot downscaling** (`maxWidth` via `OffscreenCanvas`) for faster vision inference.
 
 ### Changed
+
 - **Modernized toolchain**: upgraded to **Node 26 LTS** (`engines.node >= 24.0.0`), **TypeScript 7.0** (`tsgo`), and **Vite 8.3** (Rolldown) with single-process 3× parallel extension builds (~100ms).
 - **End-to-end runtime performance**:
   - Native `el.checkVisibility()` fast-path and `MutationObserver`-driven `wait` steps in Content Script.
@@ -42,12 +45,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - Single-pass Prompt-Injection Shield pre-filter, cached wildcard `RegExp`s, zero-allocation snapshot diffing, and `perMessageDeflate: false` on loopback WebSocket.
 
 ### Fixed
+
 - Removed double accent border on attached tabs inside `AI Agent Tabs`.
 - Cleaned stale ZIP entries before packing Chrome Web Store releases (`scripts/pack-cws.mjs`).
 
 ## [0.2.0] - 2026-11-23
 
 ### Added
+
 - Auto-discovery of manually created `"AI Agent"` Chrome tab groups across browser reloads.
 - Dedicated `AI Agent Tabs` card, adaptive full-height virtualized searchable list for 100+ tabs, and top-level `Timeline` tab.
 - Paginated `browser_read` (`offset`, `maxChars` up to 200k, `scope: "main" | "body"`, `[TABS: ...]` hints), Shadow DOM / same-origin iframe / rich Markdown tables, and redirect reporting.
@@ -55,10 +60,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Single-source-of-truth versioning (`scripts/sync-version.mjs`).
 
 ### Fixed
+
 - Replaced deprecated `performance.getEntriesByType` LCP/CLS calls with `PerformanceObserver({ buffered: true })`.
 
 ## [0.1.0] - 2026-11-23
 
 ### Added
+
 - Initial Chrome MV3 Extension + MCP v2 Local Broker Daemon (Streamable HTTP + auto-spawn `stdio` shim) + Antigravity Browser Control Deck MCP App.
 - Hybrid Content Script + On-Demand `chrome.debugger` CDP engine, WebMCP (`navigator.modelContext`) bridge, Prompt-Injection Shield, Workflow Recorder with password masking, and local security/supply-chain git hooks.

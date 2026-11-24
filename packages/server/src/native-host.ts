@@ -17,10 +17,10 @@ function resolveNativeHostDir(): string {
   return join(homedir(), '.chrome-browser-mcp', 'native-messaging');
 }
 
-export function installNativeMessagingHost(options: {
-  extensionId: string;
-  dataDir?: string;
-}): { manifestPath: string; wrapperPath: string } {
+export function installNativeMessagingHost(options: { extensionId: string; dataDir?: string }): {
+  manifestPath: string;
+  wrapperPath: string;
+} {
   const extId = options.extensionId.trim();
   if (!/^[a-p]{32}$/.test(extId)) {
     throw new Error(`Invalid Chrome extension ID "${extId}" (expected 32 lowercase letters a-p).`);
@@ -37,11 +37,10 @@ export function installNativeMessagingHost(options: {
   if (process.platform === 'win32') {
     writeFileSync(wrapperPath, `@echo off\r\n"${process.execPath}" "${cliPath}" native-host\r\n`, 'utf8');
   } else {
-    writeFileSync(
-      wrapperPath,
-      `#!/bin/sh\nexec "${process.execPath}" "${cliPath}" native-host\n`,
-      { encoding: 'utf8', mode: 0o700 },
-    );
+    writeFileSync(wrapperPath, `#!/bin/sh\nexec "${process.execPath}" "${cliPath}" native-host\n`, {
+      encoding: 'utf8',
+      mode: 0o700,
+    });
     chmodSync(wrapperPath, 0o700);
   }
 
@@ -71,10 +70,7 @@ function writeNativeMessage(payload: unknown): void {
  * Runs a Chrome Native Messaging stdio bridge that forwards framed messages
  * between Chrome and the local Broker Daemon WebSocket (/ws).
  */
-export async function runNativeMessagingHost(options?: {
-  port?: number;
-  dataDir?: string;
-}): Promise<void> {
+export async function runNativeMessagingHost(options?: { port?: number; dataDir?: string }): Promise<void> {
   const config = loadBrokerConfig(options);
   const ws = new WebSocket(config.wsUrl);
   const outboundQueue: string[] = [];

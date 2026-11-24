@@ -1,22 +1,22 @@
 import {
-  APP_VERSION,
-  BrokerToExtensionMessageSchema,
-  EmulationConfigSchema,
-  ExtensionActParamsSchema,
-  isUrlBlocked,
-  isUrlReadOnly,
-  SecurityPolicySchema,
   type ActivityEvent,
+  APP_VERSION,
   type ApprovalRequest,
   type BatchActResult,
+  BrokerToExtensionMessageSchema,
   type DownloadItem,
+  EmulationConfigSchema,
+  ExtensionActParamsSchema,
   type ExtensionRpcMethod,
   type ExtensionToBrokerMessage,
   type FrameSummary,
+  isUrlBlocked,
+  isUrlReadOnly,
   type PageSnapshot,
   type PendingDialog,
   type RecordedStep,
   type RecordedWorkflow,
+  SecurityPolicySchema,
   type StepOutcome,
   type TabInfo,
   type WebMcpToolInfo,
@@ -328,7 +328,8 @@ async function connectBroker(): Promise<void> {
   if (!settings.token.trim()) {
     await saveRuntimeState({
       connected: false,
-      lastError: 'Pair at http://127.0.0.1:43179/pair or run node packages/server/dist/cli.js pair in the repo',
+      lastError:
+        'Pair at http://127.0.0.1:43179/pair or run node packages/server/dist/cli.js pair in the repo',
     });
     await updateBadge();
     await notifySidePanel();
@@ -578,11 +579,7 @@ async function listScopedTabs(includeUnattached = false): Promise<TabInfo[]> {
   return mapped.filter((t) => t.inAgentGroup);
 }
 
-function computeTabsFingerprint(
-  tabs: TabInfo[],
-  groupId: number | null,
-  allowAllTabs: boolean,
-): string {
+function computeTabsFingerprint(tabs: TabInfo[], groupId: number | null, allowAllTabs: boolean): string {
   let fp = `${groupId ?? -1}|${allowAllTabs ? 1 : 0}|${tabs.length}`;
   for (let i = 0; i < tabs.length; i++) {
     const t = tabs[i]!;
@@ -802,13 +799,25 @@ async function discoverWebMcp(tabId: number): Promise<{ supported: boolean; tool
     func: async () => {
       const nav = navigator as unknown as {
         modelContext?: {
-          getTools?: () => Promise<Array<{ name: string; description?: string; inputSchema?: Record<string, unknown>; annotations?: { readOnlyHint?: boolean } }>>;
-          tools?: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown>; annotations?: { readOnlyHint?: boolean } }>;
+          getTools?: () => Promise<
+            Array<{
+              name: string;
+              description?: string;
+              inputSchema?: Record<string, unknown>;
+              annotations?: { readOnlyHint?: boolean };
+            }>
+          >;
+          tools?: Array<{
+            name: string;
+            description?: string;
+            inputSchema?: Record<string, unknown>;
+            annotations?: { readOnlyHint?: boolean };
+          }>;
         };
       };
       const mc = nav.modelContext;
       if (!mc) return { supported: false, tools: [] };
-      const rawTools = typeof mc.getTools === 'function' ? await mc.getTools() : mc.tools ?? [];
+      const rawTools = typeof mc.getTools === 'function' ? await mc.getTools() : (mc.tools ?? []);
       return {
         supported: true,
         tools: rawTools.map((t) => ({
@@ -820,7 +829,9 @@ async function discoverWebMcp(tabId: number): Promise<{ supported: boolean; tool
       };
     },
   });
-  return (result?.result as { supported: boolean; tools: WebMcpToolInfo[] }) ?? { supported: false, tools: [] };
+  return (
+    (result?.result as { supported: boolean; tools: WebMcpToolInfo[] }) ?? { supported: false, tools: [] }
+  );
 }
 
 async function invokeWebMcp(
@@ -857,10 +868,7 @@ async function invokeWebMcp(
 // Main RPC Dispatcher
 // ---------------------------------------------------------------------------
 
-async function dispatchRpc(
-  method: ExtensionRpcMethod,
-  params: Record<string, unknown>,
-): Promise<unknown> {
+async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, unknown>): Promise<unknown> {
   switch (method) {
     case 'ping':
       return { pong: true, version: EXTENSION_VERSION };
@@ -1023,9 +1031,7 @@ async function dispatchRpc(
         refPrefix: '',
       });
 
-      const frames: FrameSummary[] = [
-        { frameId: 0, url: snapshot.url, title: snapshot.title },
-      ];
+      const frames: FrameSummary[] = [{ frameId: 0, url: snapshot.url, title: snapshot.title }];
 
       // Multi-frame traversal (including cross-origin iframes)
       if (includeIframes && snapshot.nodes.length < maxNodes) {
@@ -1034,9 +1040,7 @@ async function dispatchRpc(
             target: { tabId: tab.id, allFrames: true },
             func: () => ({ url: location.href, title: document.title }),
           });
-          const childFrames = probe.filter(
-            (r) => typeof r.frameId === 'number' && r.frameId > 0 && r.result,
-          );
+          const childFrames = probe.filter((r) => typeof r.frameId === 'number' && r.frameId > 0 && r.result);
           if (childFrames.length > 0) {
             await ensureContentScript(tab.id, true).catch(() => {});
             for (const f of childFrames) {
@@ -1201,8 +1205,7 @@ async function dispatchRpc(
         for (let i = 0; i < parsed.steps.length; i++) {
           const step = parsed.steps[i]!;
           const started = Date.now();
-          const targetRef =
-            'ref' in step ? step.ref : 'sourceRef' in step ? step.sourceRef : undefined;
+          const targetRef = 'ref' in step ? step.ref : 'sourceRef' in step ? step.sourceRef : undefined;
           const { frameId } = parseFrameRef(targetRef);
 
           if (hudEnabled) {
@@ -1513,7 +1516,9 @@ async function dispatchRpc(
         Number(params.limit ?? 50),
       );
       if (!attached && entries.length === 0 && params.attachCdp !== false) {
-        const reason = cdp.getLastAttachError(tab.id) ?? 'Chrome debugger could not attach (close DevTools on this tab and retry)';
+        const reason =
+          cdp.getLastAttachError(tab.id) ??
+          'Chrome debugger could not attach (close DevTools on this tab and retry)';
         throw new Error(`CDP debugger not attached on tab ${tab.id}: ${reason}`);
       }
       return entries;
@@ -1529,7 +1534,9 @@ async function dispatchRpc(
         Number(params.limit ?? 40),
       );
       if (!attached && entries.length === 0) {
-        const reason = cdp.getLastAttachError(tab.id) ?? 'Chrome debugger could not attach (close DevTools on this tab and retry)';
+        const reason =
+          cdp.getLastAttachError(tab.id) ??
+          'Chrome debugger could not attach (close DevTools on this tab and retry)';
         throw new Error(`CDP debugger not attached on tab ${tab.id}: ${reason}`);
       }
       return entries;
@@ -1662,8 +1669,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           if (!active?.id) throw new Error('No active tab to record');
           const url = active.url ?? '';
           const isWebPage = /^https?:\/\//i.test(url);
-          const isWebStore =
-            /^https?:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/i.test(url);
+          const isWebStore = /^https?:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/i.test(
+            url,
+          );
           if (!isWebPage || isWebStore) {
             throw new Error('RESTRICTED_RECORD_URL');
           }

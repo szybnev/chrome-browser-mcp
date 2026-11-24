@@ -29,15 +29,15 @@ Hybrid Content Script + On-Demand CDP · Native WebMCP · Prompt-Injection Shiel
 
 Most browser-use extensions force painful trade-offs: they either spin up logged-out headless browsers, permanently show Chrome's yellow debugger banner, burn 30K+ tokens per step with raw screenshots/HTML, conflict when two agents run simultaneously, or expose every private tab to prompt injection.
 
-| Capability | Chrome Browser MCP | Typical Browser Relay / Visual Extensions |
-| :--- | :--- | :--- |
-| **Real Logged-In Sessions** | Works in your daily Chrome / Arc / Brave / Edge profile — no `--remote-debugging-port` hacks | Often needs separate debug profile or loses sessions |
-| **Hybrid Adaptive Engine** | Silent Content Script + WebMCP by default; **on-demand `chrome.debugger` CDP** with idle auto-detach & DevTools-open fallback | Always-on yellow debugger banner or brittle synthetic-only clicks |
-| **Token Efficiency** | Pruned a11y/DOM snapshot with short refs (`e1`, `e2`…), **incremental diffs**, and **batch `browser_act`** (multi-step forms in 1 round-trip) | Full DOM/screenshot every step; 1 LLM call per click |
-| **Multi-Agent & Multi-Profile** | Shared local Broker Daemon (Streamable HTTP + auto-spawn `stdio` shim with lease lifecycle) multiplexing multiple agents & browsers | Single-client port conflicts (`EADDRINUSE`) |
-| **Security & Control** | Dedicated colored **AI Agent Tab Group**, editable domain blocklist, risky-action approval gates, **Prompt-Injection Shield**, instant `Alt+Shift+P` Pause | Full unguarded browser access or constant friction |
-| **WebMCP & Workflow Recorder** | Native `navigator.modelContext` tool discovery + “Show by hand” workflow recorder with password masking | Manual clicking only |
-| **Antigravity MCP App UI** | Built-in **Browser Control Deck** (`ui://chrome-browser/deck.html`) in `aux_pane` & `global` views | Text-only tool output |
+| Capability                      | Chrome Browser MCP                                                                                                                                         | Typical Browser Relay / Visual Extensions                         |
+| :------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------- |
+| **Real Logged-In Sessions**     | Works in your daily Chrome / Arc / Brave / Edge profile — no `--remote-debugging-port` hacks                                                               | Often needs separate debug profile or loses sessions              |
+| **Hybrid Adaptive Engine**      | Silent Content Script + WebMCP by default; **on-demand `chrome.debugger` CDP** with idle auto-detach & DevTools-open fallback                              | Always-on yellow debugger banner or brittle synthetic-only clicks |
+| **Token Efficiency**            | Pruned a11y/DOM snapshot with short refs (`e1`, `e2`…), **incremental diffs**, and **batch `browser_act`** (multi-step forms in 1 round-trip)              | Full DOM/screenshot every step; 1 LLM call per click              |
+| **Multi-Agent & Multi-Profile** | Shared local Broker Daemon (Streamable HTTP + auto-spawn `stdio` shim with lease lifecycle) multiplexing multiple agents & browsers                        | Single-client port conflicts (`EADDRINUSE`)                       |
+| **Security & Control**          | Dedicated colored **AI Agent Tab Group**, editable domain blocklist, risky-action approval gates, **Prompt-Injection Shield**, instant `Alt+Shift+P` Pause | Full unguarded browser access or constant friction                |
+| **WebMCP & Workflow Recorder**  | Native `navigator.modelContext` tool discovery + “Show by hand” workflow recorder with password masking                                                    | Manual clicking only                                              |
+| **Antigravity MCP App UI**      | Built-in **Browser Control Deck** (`ui://chrome-browser/deck.html`) in `aux_pane` & `global` views                                                         | Text-only tool output                                             |
 
 ---
 
@@ -45,20 +45,20 @@ Most browser-use extensions force painful trade-offs: they either spin up logged
 
 There are several strong browser-automation extensions and MCP bridges in the ecosystem, each optimizing for a different workflow. Below is a technical comparison across the criteria that matter most for real-session AI browser use.
 
-| Criterion | **Chrome Browser MCP** | **Claude for Chrome** | **ChatGPT for Chrome** | **omp browser relay** | **Kimi Browser Ext.** | **Playwright MCP** (`--extension`) | **BrowserMCP** |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Open Source & License** | ✅ MIT | ❌ Closed | ❌ Closed | ✅ Open source | ❌ Closed *(community MCP wrappers)* | ✅ Apache-2.0 | ✅ Open source |
-| **Agent-Agnostic MCP v2** | ✅ Any MCP host *(HTTP + `stdio` + Apps)* | ⚠️ Claude / Claude Code only | ❌ ChatGPT only | ⚠️ `omp` CLI / raw CDP relay | ⚠️ Kimi ecosystem *(+ wrappers)* | ✅ Any MCP host | ✅ Any MCP host |
-| **Real Logged-In Sessions** | ✅ Daily profile *(Chrome/Arc/Brave/Edge)* | ✅ Daily profile | ✅ Daily profile | ✅ Daily profile *(bypasses Chrome 136+ lock)* | ✅ Daily profile | ⚠️ Manual *"Share This Tab"* *(isolated by default)* | ✅ Daily profile |
-| **No Permanent Debugger Banner** | ✅ Hybrid CS + WebMCP; **on-demand CDP** auto-detach | ❌ Active CDP banner | ⚠️ Browser debugger perms | ❌ Always-on `chrome.debugger` | ❌ Always-on `chrome.debugger` | ❌ Always-on `chrome.debugger` | ❌ Always-on `chrome.debugger` |
-| **Works While DevTools Is Open** | ✅ Content Script fallback | ❌ CDP attach conflict | ⚠️ Limited | ❌ Single-debugger conflict | ❌ Single-debugger conflict | ❌ Single-debugger conflict | ❌ Single-debugger conflict |
-| **Token Efficiency (Diffs & Batching)** | ✅ Pruned refs + **incremental diffs** + **batch actions** | ⚠️ Full snapshots / screenshots | ⚠️ Backend-managed | ⚠️ Raw CDP *(depends on client)* | ⚠️ Markdown/CSV extract; no diffs | ⚠️ Full a11y tree per step; 1 action/call | ⚠️ Full ARIA snapshot; 1 action/call |
-| **Multi-Agent & Multi-Profile** | ✅ Shared Broker Daemon *(leases + named profiles)* | ❌ Single Claude session | ❌ Single ChatGPT session | ✅ Global daemon + Puppeteer mux | ❌ Single local bridge | ⚠️ Single shared tab in bridge mode | ❌ Single WS port / client |
-| **Tab Isolation & Human Controls** | ✅ **AI Agent** Tab Group, blocklist, approvals, `Alt+Shift+P` | ⚠️ Tab group + noisy per-site prompts | ⚠️ Prompts on sensitive pages | ❌ Basic relay attach | ⚠️ Basic sidebar/bridge controls | ⚠️ Manual per-tab share only | ⚠️ Manual popup connect |
-| **Prompt-Injection Shield** | ✅ Local untrusted-DOM sanitizer & hidden-text filter | ⚠️ Provider-side only | ⚠️ Provider-side only | ❌ None | ❌ None | ❌ None | ❌ None |
-| **Native WebMCP (`navigator.modelContext`)** | ✅ Built-in discovery & call | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Workflow Recorder ("Show by hand")** | ✅ Side Panel recorder *(password masking + replay)* | ⚠️ Saved prompts / shortcuts | ❌ No | ❌ No | ✅ Recorded Skills / CLI flows | ❌ Separate `codegen` tool | ❌ No |
-| **100% Local-First / No Cloud Account** | ✅ `127.0.0.1` + token, zero telemetry | ❌ Anthropic account | ❌ OpenAI account | ✅ 100% local | ⚠️ Local bridge; Kimi account for sidebar | ✅ 100% local | ✅ 100% local |
+| Criterion                                    |                     **Chrome Browser MCP**                     |         **Claude for Chrome**         |    **ChatGPT for Chrome**     |             **omp browser relay**              |           **Kimi Browser Ext.**           |          **Playwright MCP** (`--extension`)          |            **BrowserMCP**            |
+| :------------------------------------------- | :------------------------------------------------------------: | :-----------------------------------: | :---------------------------: | :--------------------------------------------: | :---------------------------------------: | :--------------------------------------------------: | :----------------------------------: |
+| **Open Source & License**                    |                             ✅ MIT                             |               ❌ Closed               |           ❌ Closed           |                 ✅ Open source                 |   ❌ Closed _(community MCP wrappers)_    |                    ✅ Apache-2.0                     |            ✅ Open source            |
+| **Agent-Agnostic MCP v2**                    |           ✅ Any MCP host _(HTTP + `stdio` + Apps)_            |     ⚠️ Claude / Claude Code only      |        ❌ ChatGPT only        |          ⚠️ `omp` CLI / raw CDP relay          |     ⚠️ Kimi ecosystem _(+ wrappers)_      |                   ✅ Any MCP host                    |           ✅ Any MCP host            |
+| **Real Logged-In Sessions**                  |           ✅ Daily profile _(Chrome/Arc/Brave/Edge)_           |           ✅ Daily profile            |       ✅ Daily profile        | ✅ Daily profile _(bypasses Chrome 136+ lock)_ |             ✅ Daily profile              | ⚠️ Manual _"Share This Tab"_ _(isolated by default)_ |           ✅ Daily profile           |
+| **No Permanent Debugger Banner**             |      ✅ Hybrid CS + WebMCP; **on-demand CDP** auto-detach      |         ❌ Active CDP banner          |   ⚠️ Browser debugger perms   |         ❌ Always-on `chrome.debugger`         |      ❌ Always-on `chrome.debugger`       |            ❌ Always-on `chrome.debugger`            |    ❌ Always-on `chrome.debugger`    |
+| **Works While DevTools Is Open**             |                   ✅ Content Script fallback                   |        ❌ CDP attach conflict         |          ⚠️ Limited           |          ❌ Single-debugger conflict           |        ❌ Single-debugger conflict        |             ❌ Single-debugger conflict              |     ❌ Single-debugger conflict      |
+| **Token Efficiency (Diffs & Batching)**      |   ✅ Pruned refs + **incremental diffs** + **batch actions**   |    ⚠️ Full snapshots / screenshots    |      ⚠️ Backend-managed       |        ⚠️ Raw CDP _(depends on client)_        |     ⚠️ Markdown/CSV extract; no diffs     |      ⚠️ Full a11y tree per step; 1 action/call       | ⚠️ Full ARIA snapshot; 1 action/call |
+| **Multi-Agent & Multi-Profile**              |      ✅ Shared Broker Daemon _(leases + named profiles)_       |       ❌ Single Claude session        |   ❌ Single ChatGPT session   |        ✅ Global daemon + Puppeteer mux        |          ❌ Single local bridge           |         ⚠️ Single shared tab in bridge mode          |      ❌ Single WS port / client      |
+| **Tab Isolation & Human Controls**           | ✅ **AI Agent** Tab Group, blocklist, approvals, `Alt+Shift+P` | ⚠️ Tab group + noisy per-site prompts | ⚠️ Prompts on sensitive pages |             ❌ Basic relay attach              |     ⚠️ Basic sidebar/bridge controls      |             ⚠️ Manual per-tab share only             |       ⚠️ Manual popup connect        |
+| **Prompt-Injection Shield**                  |     ✅ Local untrusted-DOM sanitizer & hidden-text filter      |         ⚠️ Provider-side only         |     ⚠️ Provider-side only     |                    ❌ None                     |                  ❌ None                  |                       ❌ None                        |               ❌ None                |
+| **Native WebMCP (`navigator.modelContext`)** |                  ✅ Built-in discovery & call                  |                 ❌ No                 |             ❌ No             |                     ❌ No                      |                   ❌ No                   |                        ❌ No                         |                ❌ No                 |
+| **Workflow Recorder ("Show by hand")**       |      ✅ Side Panel recorder _(password masking + replay)_      |     ⚠️ Saved prompts / shortcuts      |             ❌ No             |                     ❌ No                      |      ✅ Recorded Skills / CLI flows       |              ❌ Separate `codegen` tool              |                ❌ No                 |
+| **100% Local-First / No Cloud Account**      |             ✅ `127.0.0.1` + token, zero telemetry             |         ❌ Anthropic account          |       ❌ OpenAI account       |                 ✅ 100% local                  | ⚠️ Local bridge; Kimi account for sidebar |                    ✅ 100% local                     |            ✅ 100% local             |
 
 ### How to Choose
 
@@ -66,10 +66,10 @@ There are several strong browser-automation extensions and MCP bridges in the ec
 - **Choose Claude for Chrome** or **ChatGPT for Chrome** if you work exclusively inside Anthropic's or OpenAI's first-party UI and want zero local CLI/daemon setup rather than cross-agent MCP interoperability.
 - **Choose omp browser relay** if you live inside the `oh-my-pi` (`omp`) ecosystem and specifically need a raw CDP/Puppeteer multiplexer over your real Chrome profile.
 - **Choose Kimi Browser Extension** if your workflow centers on Moonshot's Kimi sidebar, Kimi Work, and Kimi Skill/CLI routines.
-- **Choose Playwright MCP (isolated mode)** for deterministic headless/clean-profile E2E testing and CI pipelines where you intentionally do *not* want personal cookies or active logins.
-- **Choose Chrome DevTools MCP (`chrome-devtools-mcp`)** *(non-extension CLI/CDP server)* when your primary goal is deep frontend performance tracing, Lighthouse audits, and heap/network profiling rather than everyday authenticated browsing.
+- **Choose Playwright MCP (isolated mode)** for deterministic headless/clean-profile E2E testing and CI pipelines where you intentionally do _not_ want personal cookies or active logins.
+- **Choose Chrome DevTools MCP (`chrome-devtools-mcp`)** _(non-extension CLI/CDP server)_ when your primary goal is deep frontend performance tracing, Lighthouse audits, and heap/network profiling rather than everyday authenticated browsing.
 
-> *Comparison snapshot as of late 2026. Browser-agent tools evolve quickly — if something above is outdated, PRs to keep this matrix accurate are welcome.*
+> _Comparison snapshot as of late 2026. Browser-agent tools evolve quickly — if something above is outdated, PRs to keep this matrix accurate are welcome._
 
 ---
 
@@ -110,6 +110,7 @@ flowchart LR
 ## Quick Start
 
 ### 1. Build from source
+
 ```bash
 git clone https://github.com/szybnev/chrome-browser-mcp.git
 cd chrome-browser-mcp
@@ -118,12 +119,15 @@ pnpm build
 ```
 
 ### 2. Load the Chrome Extension (MV3)
+
 1. Open `chrome://extensions` and enable **Developer mode**.
 2. Click **Load unpacked** and select `packages/extension/dist`.
 3. Click the **Chrome Browser MCP** icon in Chrome's toolbar to open the **Control HUD** Side Panel.
 
 ### 3. Pair with your local Broker (1-Click PIN or Token)
+
 Generate a 2-minute 6-digit pairing PIN (recommended for the post-install Welcome Wizard & Side Panel):
+
 ```bash
 node packages/server/dist/cli.js pair
 ```
@@ -132,17 +136,22 @@ Enter the 6-digit PIN in the **Welcome Tour** or **Pair** tab of the Chrome Side
 ### 4. Connect your AI Agent
 
 #### Antigravity (Plugin + Browser Control Deck MCP App + Skill)
+
 Link `plugins/antigravity` into `~/.gemini/config/plugins/chrome-browser-mcp`:
+
 ```bash
 ln -s "$(pwd)/plugins/antigravity" ~/.gemini/config/plugins/chrome-browser-mcp
 ```
 Antigravity automatically discovers:
+
 - The MCP server (`chrome-browser-mcp_browser`)
 - The **Browser Control Deck** MCP App in the side pane `+` menu (`aux_pane`) and left sidebar (`global`)
 - The `chrome-browser-mcp` agent skill playbook
 
 #### Claude Code / Cursor / Codex (`stdio` with automatic shared broker)
+
 Add to your MCP config (`mcp_config.json`, `.mcp.json`, or Claude Desktop config):
+
 ```json
 {
   "mcpServers": {
@@ -156,7 +165,9 @@ Add to your MCP config (`mcp_config.json`, `.mcp.json`, or Claude Desktop config
 Multiple MCP clients share one local Broker Daemon automatically via lease heartbeats.
 
 #### Streamable HTTP MCP (2026 spec)
+
 Start the daemon directly:
+
 ```bash
 node packages/server/dist/cli.js daemon
 ```
@@ -166,25 +177,25 @@ Connect any Streamable HTTP MCP client to `http://127.0.0.1:43179/mcp`.
 
 ## MCP Tool Catalog
 
-| Tool | Purpose |
-| :--- | :--- |
-| `browser_profiles` | List connected Chrome/Arc/Brave/Edge profiles and switch the active default profile |
-| `browser_tabs` | List, open, focus, close, attach, or detach tabs in the **AI Agent** tab group |
-| `browser_navigate` | Go to URL, back/forward, reload, or wait for selector/text |
-| `browser_snapshot` | Compact a11y/DOM snapshot across top frame, cross-origin `iframe`s (`f<id>:e1`), and Shadow DOM, with incremental **diff** mode and **Prompt-Injection Shield** |
-| `browser_read` | Clean readable Markdown, structured HTML tables (`tables_csv` / `tables_json`), or PDF text extraction with pagination and hidden-DOM filtering |
-| `browser_screenshot` | Compressed WebP/JPEG/PNG screenshot with optional **Set-of-Mark** ref badges and `maxWidth` resizing |
-| `browser_act` | Execute 1 action or a **batch sequence** (`click`, `fill`, `type`, `press`, `select`, `check`, `scroll`, `hover`, `drag`, `upload`, `wait`) with **Zero-Secret `secretRef`**, optional in-page **Visual Agent Cursor**, and post-action diff snapshot |
-| `browser_dialog` | Inspect, accept, or dismiss native JS `alert` / `confirm` / `prompt` / `beforeunload` dialogs without hanging |
-| `browser_downloads` | List recent downloads or wait for completion (opt-in `downloads` permission) |
-| `browser_emulate` | Emulate mobile/desktop viewports (`iphone-15`, `pixel-9`, `ipad`, `reset`), `light`/`dark` scheme, network throttling (`slow-3g`/`offline`), or geolocation |
-| `browser_console` | Read captured browser console logs, warnings, and uncaught exceptions |
-| `browser_network` | Inspect XHR/fetch requests & failures, plus redacted response body inspection (`includeBodyForRequestId`) |
-| `browser_eval` | Evaluate JavaScript in page context via CDP (approval-gated on new origins & read-only domains) |
-| `browser_audit` / `browser_audit_export` | Quick a11y/CWV/storage audit and self-contained **JSON / HTML Session Replay** audit export |
-| `browser_webmcp_list` / `browser_webmcp_call` | Discover and invoke native client-side WebMCP tools (`navigator.modelContext`) |
-| `browser_workflows` | List, inspect, replay with `{{variables}}`, or export recorded flows to **Playwright `.spec.ts`** |
-| `browser_deck` | Open or refresh the **Browser Control Deck** interactive MCP App (EN / RU / 中文, Dark / Light) |
+| Tool                                          | Purpose                                                                                                                                                                                                                                               |
+| :-------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `browser_profiles`                            | List connected Chrome/Arc/Brave/Edge profiles and switch the active default profile                                                                                                                                                                   |
+| `browser_tabs`                                | List, open, focus, close, attach, or detach tabs in the **AI Agent** tab group                                                                                                                                                                        |
+| `browser_navigate`                            | Go to URL, back/forward, reload, or wait for selector/text                                                                                                                                                                                            |
+| `browser_snapshot`                            | Compact a11y/DOM snapshot across top frame, cross-origin `iframe`s (`f<id>:e1`), and Shadow DOM, with incremental **diff** mode and **Prompt-Injection Shield**                                                                                       |
+| `browser_read`                                | Clean readable Markdown, structured HTML tables (`tables_csv` / `tables_json`), or PDF text extraction with pagination and hidden-DOM filtering                                                                                                       |
+| `browser_screenshot`                          | Compressed WebP/JPEG/PNG screenshot with optional **Set-of-Mark** ref badges and `maxWidth` resizing                                                                                                                                                  |
+| `browser_act`                                 | Execute 1 action or a **batch sequence** (`click`, `fill`, `type`, `press`, `select`, `check`, `scroll`, `hover`, `drag`, `upload`, `wait`) with **Zero-Secret `secretRef`**, optional in-page **Visual Agent Cursor**, and post-action diff snapshot |
+| `browser_dialog`                              | Inspect, accept, or dismiss native JS `alert` / `confirm` / `prompt` / `beforeunload` dialogs without hanging                                                                                                                                         |
+| `browser_downloads`                           | List recent downloads or wait for completion (opt-in `downloads` permission)                                                                                                                                                                          |
+| `browser_emulate`                             | Emulate mobile/desktop viewports (`iphone-15`, `pixel-9`, `ipad`, `reset`), `light`/`dark` scheme, network throttling (`slow-3g`/`offline`), or geolocation                                                                                           |
+| `browser_console`                             | Read captured browser console logs, warnings, and uncaught exceptions                                                                                                                                                                                 |
+| `browser_network`                             | Inspect XHR/fetch requests & failures, plus redacted response body inspection (`includeBodyForRequestId`)                                                                                                                                             |
+| `browser_eval`                                | Evaluate JavaScript in page context via CDP (approval-gated on new origins & read-only domains)                                                                                                                                                       |
+| `browser_audit` / `browser_audit_export`      | Quick a11y/CWV/storage audit and self-contained **JSON / HTML Session Replay** audit export                                                                                                                                                           |
+| `browser_webmcp_list` / `browser_webmcp_call` | Discover and invoke native client-side WebMCP tools (`navigator.modelContext`)                                                                                                                                                                        |
+| `browser_workflows`                           | List, inspect, replay with `{{variables}}`, or export recorded flows to **Playwright `.spec.ts`**                                                                                                                                                     |
+| `browser_deck`                                | Open or refresh the **Browser Control Deck** interactive MCP App (EN / RU / 中文, Dark / Light)                                                                                                                                                       |
 
 ---
 
@@ -230,9 +241,11 @@ pnpm pack:cws        # Package clean Chrome Web Store ZIP in release/
 ---
 
 ## Roadmap
+
 - Firefox & Safari WebExtension parity
 - Multi-step visual diff assertions for exported Playwright tests
 - Team-shareable signed security policy bundles
 
 ## License
+
 MIT — see [LICENSE](./LICENSE).

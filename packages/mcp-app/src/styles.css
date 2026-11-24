@@ -78,7 +78,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']):not(:has(> head > meta[name='color-scheme'][content='light'])) {
+  :root:not([data-theme="light"]):not(:has(> head > meta[name="color-scheme"][content="light"])) {
     --fb-bg: var(--fallback-bg-dark);
     --fb-surface: var(--fallback-surface-dark);
     --fb-surface-2: var(--fallback-surface-2-dark);
@@ -104,56 +104,36 @@
     --fb-bg: light-dark(var(--fallback-bg-light), var(--fallback-bg-dark));
     --fb-surface: light-dark(var(--fallback-surface-light), var(--fallback-surface-dark));
     --fb-surface-2: light-dark(var(--fallback-surface-2-light), var(--fallback-surface-2-dark));
-    --fb-surface-hover: light-dark(
-      var(--fallback-surface-hover-light),
-      var(--fallback-surface-hover-dark)
-    );
+    --fb-surface-hover: light-dark(var(--fallback-surface-hover-light), var(--fallback-surface-hover-dark));
     --fb-border: light-dark(var(--fallback-border-light), var(--fallback-border-dark));
     --fb-control-border: light-dark(
       var(--fallback-control-border-light),
       var(--fallback-control-border-dark)
     );
-    --fb-agent-border: light-dark(
-      var(--fallback-agent-border-light),
-      var(--fallback-agent-border-dark)
-    );
+    --fb-agent-border: light-dark(var(--fallback-agent-border-light), var(--fallback-agent-border-dark));
     --fb-text: light-dark(var(--fallback-text-light), var(--fallback-text-dark));
     --fb-muted: light-dark(var(--fallback-muted-light), var(--fallback-muted-dark));
-    --fb-accent-fill: light-dark(
-      var(--fallback-accent-fill-light),
-      var(--fallback-accent-fill-dark)
-    );
+    --fb-accent-fill: light-dark(var(--fallback-accent-fill-light), var(--fallback-accent-fill-dark));
     --fb-accent-fill-hover: light-dark(
       var(--fallback-accent-fill-hover-light),
       var(--fallback-accent-fill-hover-dark)
     );
-    --fb-accent-text: light-dark(
-      var(--fallback-accent-text-light),
-      var(--fallback-accent-text-dark)
-    );
-    --fb-danger-fill: light-dark(
-      var(--fallback-danger-fill-light),
-      var(--fallback-danger-fill-dark)
-    );
+    --fb-accent-text: light-dark(var(--fallback-accent-text-light), var(--fallback-accent-text-dark));
+    --fb-danger-fill: light-dark(var(--fallback-danger-fill-light), var(--fallback-danger-fill-dark));
     --fb-danger-fill-hover: light-dark(
       var(--fallback-danger-fill-hover-light),
       var(--fallback-danger-fill-hover-dark)
     );
-    --fb-danger-text: light-dark(
-      var(--fallback-danger-text-light),
-      var(--fallback-danger-text-dark)
-    );
+    --fb-danger-text: light-dark(var(--fallback-danger-text-light), var(--fallback-danger-text-dark));
     --fb-warn: light-dark(var(--fallback-warn-light), var(--fallback-warn-dark));
-    --fb-scroll-thumb: light-dark(
-      var(--fallback-scroll-thumb-light),
-      var(--fallback-scroll-thumb-dark)
-    );
+    --fb-scroll-thumb: light-dark(var(--fallback-scroll-thumb-light), var(--fallback-scroll-thumb-dark));
   }
 }
 
 /* Explicit user toggle overrides MUST come after @supports(light-dark) and beat host inline color-scheme */
-:root[data-theme='light'],
-:root:has(> head > meta[name='color-scheme'][content='light']) {
+:root[data-theme="light"],
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
+  /* biome-ignore lint/complexity/noImportantStyles: overrides inline color-scheme injected by host useHostStyles */
   color-scheme: light !important;
   --fb-bg: var(--fallback-bg-light);
   --fb-surface: var(--fallback-surface-light);
@@ -183,8 +163,9 @@
   --warn: var(--fallback-warn-light);
 }
 
-:root[data-theme='dark'],
-:root:has(> head > meta[name='color-scheme'][content='dark']) {
+:root[data-theme="dark"],
+:root:has(> head > meta[name="color-scheme"][content="dark"]) {
+  /* biome-ignore lint/complexity/noImportantStyles: overrides inline color-scheme injected by host useHostStyles */
   color-scheme: dark !important;
   --fb-bg: var(--fallback-bg-dark);
   --fb-surface: var(--fallback-surface-dark);
@@ -247,7 +228,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -279,33 +260,33 @@ body {
   display: inline-flex;
 }
 
-:root[data-theme='dark'] .theme-opt-to-light,
-:root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-light {
+:root[data-theme="dark"] .theme-opt-to-light,
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-opt-to-light {
   display: inline-flex;
 }
 
-:root[data-theme='dark'] .theme-opt-to-dark,
-:root:has(> head > meta[name='color-scheme'][content='dark']) .theme-opt-to-dark {
+:root[data-theme="dark"] .theme-opt-to-dark,
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-opt-to-dark {
   display: none;
 }
 
-:root[data-theme='light'] .theme-opt-to-light,
-:root:has(> head > meta[name='color-scheme'][content='light']) .theme-opt-to-light {
+:root[data-theme="light"] .theme-opt-to-light,
+:root:has(> head > meta[name="color-scheme"][content="light"]) .theme-opt-to-light {
   display: none;
 }
 
-:root[data-theme='light'] .theme-opt-to-dark,
-:root:has(> head > meta[name='color-scheme'][content='light']) .theme-opt-to-dark {
+:root[data-theme="light"] .theme-opt-to-dark,
+:root:has(> head > meta[name="color-scheme"][content="light"]) .theme-opt-to-dark {
   display: inline-flex;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']):not(:has(> head > meta[name='color-scheme'][content='light']))
+  :root:not([data-theme="light"]):not(:has(> head > meta[name="color-scheme"][content="light"]))
     .theme-opt-to-light {
     display: inline-flex;
   }
 
-  :root:not([data-theme='light']):not(:has(> head > meta[name='color-scheme'][content='light']))
+  :root:not([data-theme="light"]):not(:has(> head > meta[name="color-scheme"][content="light"]))
     .theme-opt-to-dark {
     display: none;
   }
@@ -326,7 +307,7 @@ body {
   overflow-y: auto;
 }
 
-.deck-main > [role='tabpanel']:not([hidden]) {
+.deck-main > [role="tabpanel"]:not([hidden]) {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -403,7 +384,7 @@ body {
   background: transparent;
   border: 0;
   color: var(--muted);
-  font: 600 12px/1.2 inherit;
+  font: 600 12px / 1.2 inherit;
   padding: 10px 10px;
   cursor: pointer;
 }
@@ -418,12 +399,12 @@ body {
   border-radius: 4px;
 }
 
-.tab-btn[aria-selected='true'] {
+.tab-btn[aria-selected="true"] {
   color: var(--accent-text);
 }
 
-.tab-btn[aria-selected='true']::after {
-  content: '';
+.tab-btn[aria-selected="true"]::after {
+  content: "";
   position: absolute;
   inset: auto 4px 0;
   border-block-end: 2px solid var(--accent-text);
@@ -495,7 +476,7 @@ body {
   border: 1px solid var(--control-border);
   border-radius: 7px;
   padding: 6px 10px;
-  font: 400 12px/1.3 inherit;
+  font: 400 12px / 1.3 inherit;
   flex: 0 0 auto;
 }
 
@@ -547,7 +528,7 @@ body {
   border: 1px solid var(--control-border);
   background: var(--surface-2);
   color: var(--muted);
-  font: 700 11px/1 inherit;
+  font: 700 11px / 1 inherit;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -555,19 +536,23 @@ body {
   cursor: pointer;
   flex: none;
   --interest-delay-start: 0.2s;
+  /* biome-ignore lint/correctness/noUnknownProperty: CSS Interest Invokers spec (Chrome 135+) */
   interest-delay-start: var(--interest-delay-start);
   --interest-delay-end: 0.12s;
+  /* biome-ignore lint/correctness/noUnknownProperty: CSS Interest Invokers spec (Chrome 135+) */
   interest-delay-end: var(--interest-delay-end);
 }
 
 .infotip-btn:hover,
 .infotip-btn:focus-visible,
+/* biome-ignore lint/correctness/noUnknownPseudoClass: CSS Interest Invokers spec (Chrome 135+) */
 .infotip-btn:is(:interest-source, .interest-source) {
   border-color: var(--accent-text);
   color: var(--accent-text);
   outline: none;
 }
 
+/* biome-ignore lint/correctness/noUnknownPseudoClass: CSS Interest Invokers spec (Chrome 135+) */
 .security-card:has([interestfor]:is(:interest-source, .interest-source)) [interestfor] {
   --interest-delay-start: 0s;
 }
@@ -579,7 +564,7 @@ body {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font: 400 12px/1.45 inherit;
+  font: 400 12px / 1.45 inherit;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
@@ -588,7 +573,10 @@ body {
     inset: auto;
     margin: 6px 0 0;
     position-area: block-end span-inline-end;
-    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    position-try-fallbacks:
+      flip-block,
+      flip-inline,
+      flip-block flip-inline;
   }
 }
 
@@ -628,7 +616,7 @@ body {
   color: var(--text);
   border-radius: 7px;
   padding: 5px 10px;
-  font: 600 12px/1.2 inherit;
+  font: 600 12px / 1.2 inherit;
   cursor: pointer;
 }
 
@@ -689,7 +677,7 @@ body {
   border: 1px solid var(--control-border);
   border-radius: 7px;
   padding: 4px 8px;
-  font: 500 12px/1.2 inherit;
+  font: 500 12px / 1.2 inherit;
 }
 
 .select.lang-select {
@@ -780,7 +768,11 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 7px 9px;
-  font: 400 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font:
+    400 11px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -807,7 +799,7 @@ body {
 }
 
 .advanced-box > summary::after {
-  content: '▸';
+  content: "▸";
   font-size: 11px;
   transition: transform 140ms ease;
 }
@@ -841,7 +833,7 @@ body {
   color: var(--text);
   border-radius: 999px;
   padding: 3px 9px;
-  font: 500 11px/1.3 inherit;
+  font: 500 11px / 1.3 inherit;
   cursor: pointer;
 }
 
@@ -872,7 +864,7 @@ body {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font: 600 15px/1 inherit;
+  font: 600 15px / 1 inherit;
   cursor: pointer;
   padding: 0 4px;
   flex: none;

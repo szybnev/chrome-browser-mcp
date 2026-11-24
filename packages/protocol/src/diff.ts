@@ -54,8 +54,7 @@ export function formatFullSnapshot(snapshot: PageSnapshot, maxNodes = 250): stri
       ? Math.round((viewport.scrollY / Math.max(1, viewport.scrollHeight - viewport.height)) * 100)
       : 0;
 
-  const framePart =
-    snapshot.frames && snapshot.frames.length > 1 ? ` frames=${snapshot.frames.length}` : '';
+  const framePart = snapshot.frames && snapshot.frames.length > 1 ? ` frames=${snapshot.frames.length}` : '';
 
   const lines: string[] = [
     `PAGE: ${snapshot.title} | ${snapshot.url}`,
@@ -67,9 +66,7 @@ export function formatFullSnapshot(snapshot: PageSnapshot, maxNodes = 250): stri
     lines.push(formatSnapshotNodeLine(snapshot.nodes[i]!));
   }
   if (snapshot.nodes.length > maxNodes) {
-    lines.push(
-      `... (${snapshot.nodes.length - maxNodes} more nodes truncated; scroll or narrow query)`,
-    );
+    lines.push(`... (${snapshot.nodes.length - maxNodes} more nodes truncated; scroll or narrow query)`);
   }
   return lines.join('\n');
 }

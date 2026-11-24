@@ -13,6 +13,7 @@ pnpm security:check
 ```
 
 To test the Chrome Extension locally:
+
 1. Open `chrome://extensions` and enable **Developer mode**.
 2. Click **Load unpacked** and select `packages/extension/dist`.
 3. Run `node packages/server/dist/cli.js token` and paste the token into the extension's **Pair** tab.
@@ -36,6 +37,7 @@ pnpm version:set <next-version>
 ## Quality & Security Guardrails
 
 Git hooks (`.githooks/pre-commit`, `.githooks/pre-push`) run automatically after `pnpm install`:
+
 - Secret & static security scan (`scripts/security-check.mjs`)
 - Single-source version sync verification (`pnpm version:check`)
 - Lockfile SHA-512 & npm registry supply-chain audit + `pnpm audit --audit-level=moderate`

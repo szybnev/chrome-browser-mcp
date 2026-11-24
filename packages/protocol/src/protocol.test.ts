@@ -10,6 +10,8 @@ import {
   interpolateWorkflowSteps,
   isUrlBlocked,
   isUrlReadOnly,
+  type PageSnapshot,
+  type RecordedWorkflow,
   redactSensitiveBody,
   redactSensitiveHeaders,
   resolveLocale,
@@ -20,8 +22,6 @@ import {
   validatePairingToken,
   validateProfileLabel,
   validateWsUrl,
-  type PageSnapshot,
-  type RecordedWorkflow,
 } from './index.js';
 
 function makeSnapshot(overrides: Partial<PageSnapshot> = {}): PageSnapshot {
@@ -120,9 +120,9 @@ describe('Prompt-Injection Shield & Security Helpers', () => {
     expect(
       isUrlBlocked('https://dashboard.stripe.com/dashboard/payments', DEFAULT_BLOCKED_DOMAINS).blocked,
     ).toBe(true);
-    expect(isUrlBlocked('https://github.com/szybnev/chrome-browser-mcp', DEFAULT_BLOCKED_DOMAINS).blocked).toBe(
-      false,
-    );
+    expect(
+      isUrlBlocked('https://github.com/szybnev/chrome-browser-mcp', DEFAULT_BLOCKED_DOMAINS).blocked,
+    ).toBe(false);
   });
 
   it('enforces optional allowlist when configured', () => {
@@ -145,11 +145,7 @@ describe('Snapshot Formatter & Incremental Diff Engine', () => {
     const prev = makeSnapshot();
     const next = makeSnapshot({
       snapshotId: 'snap-2',
-      nodes: [
-        { ...prev.nodes[0]!, value: 'alice@example.com' },
-        prev.nodes[1]!,
-        prev.nodes[2]!,
-      ],
+      nodes: [{ ...prev.nodes[0]!, value: 'alice@example.com' }, prev.nodes[1]!, prev.nodes[2]!],
     });
     const diff = computeSnapshotDiff(prev, next);
     expect(diff.urlChanged).toBe(false);
@@ -240,7 +236,9 @@ describe('v2.0 Protocol Enhancements (Read-Only, Body Redaction, Workflows, i18n
   });
 
   it('strictly validates domain rules, loopback WS URLs, profile labels, tokens, and CDP timeouts', () => {
-    const domains = validateDomainRules('mail.google.com\n*.github.com/settings*\nchrome://*\nmail.google.com,\n111\n,,111');
+    const domains = validateDomainRules(
+      'mail.google.com\n*.github.com/settings*\nchrome://*\nmail.google.com,\n111\n,,111',
+    );
     expect(domains.valid).toEqual(['mail.google.com', '*.github.com/settings*', 'chrome://*']);
     expect(domains.issues).toHaveLength(3);
     expect(domains.issues[0]?.kind).toBe('whitespace_or_comma');
@@ -319,7 +317,9 @@ describe('v2.0 Protocol Enhancements (Read-Only, Body Redaction, Workflows, i18n
     expect(spec).not.toContain("\nconsole.log('INJECTED')");
     expect(spec).not.toContain('999888');
     expect(spec).toContain('process.env.SECRET_VALUE');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting generated TypeScript template literal syntax
     expect(spec).toContain('`https://app.example.com/${vars.tenant}/login`');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting generated TypeScript template literal syntax
     expect(spec).toContain('`Welcome ${vars.tenant}`');
   });
 });

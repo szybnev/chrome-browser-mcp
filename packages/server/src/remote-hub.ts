@@ -11,8 +11,8 @@ import type {
   ScreenshotRecord,
   SecurityPolicy,
 } from '@chrome-browser-mcp/protocol';
-import type { BrowserHubInterface } from './hub.js';
 import { isUrlBlocked, isUrlReadOnly, SecurityPolicySchema } from '@chrome-browser-mcp/protocol';
+import type { BrowserHubInterface } from './hub.js';
 
 /**
  * HTTP proxy implementation of BrowserHubInterface used by stdio shims to

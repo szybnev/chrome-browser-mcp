@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Publishes @szybnev/chrome-browser-mcp-protocol and @szybnev/chrome-browser-mcp
  * to GitHub Packages (https://npm.pkg.github.com) using GITHUB_TOKEN / NODE_AUTH_TOKEN.
@@ -7,8 +8,8 @@
  * untouched for local monorepo development and npmjs.com compatibility.
  */
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -50,7 +51,9 @@ function stageAndPublish(spec) {
   );
 
   if (isAlreadyPublished(spec.name, version, npmrcPath)) {
-    console.log(`[publish-gh-packages] ${spec.name}@${version} already exists on GitHub Packages — skipping.`);
+    console.log(
+      `[publish-gh-packages] ${spec.name}@${version} already exists on GitHub Packages — skipping.`,
+    );
     return;
   }
 
@@ -64,16 +67,20 @@ function stageAndPublish(spec) {
   }
 
   const srcPkg = JSON.parse(readFileSync(resolve(rootDir, spec.pkgJsonPath), 'utf8'));
-  const deps = { ...(srcPkg.dependencies || {}) };
-  if ('@chrome-browser-mcp/protocol' in deps) {
-    delete deps['@chrome-browser-mcp/protocol'];
+  const { '@chrome-browser-mcp/protocol': protocolDep, ...restDeps } = srcPkg.dependencies || {};
+  const deps = { ...restDeps };
+  if (protocolDep !== undefined) {
     deps[`@${repoOwner}/chrome-browser-mcp-protocol`] = version;
   }
 
   // Rewrite compiled imports from @chrome-browser-mcp/protocol -> @<owner>/chrome-browser-mcp-protocol
   if (spec.rewriteProtocolImport) {
     const walk = (dir) => {
-      for (const entry of execFileSync('find', [dir, '-type', 'f', '(', '-name', '*.js', '-o', '-name', '*.d.ts', ')'], { encoding: 'utf8' })
+      for (const entry of execFileSync(
+        'find',
+        [dir, '-type', 'f', '(', '-name', '*.js', '-o', '-name', '*.d.ts', ')'],
+        { encoding: 'utf8' },
+      )
         .split('\n')
         .filter(Boolean)) {
         const content = readFileSync(entry, 'utf8');

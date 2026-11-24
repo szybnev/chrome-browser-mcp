@@ -6,8 +6,7 @@ export interface DomainValidationIssue {
   kind: DomainValidationIssueKind;
 }
 
-const SCHEME_RULE_RE =
-  /^(?:about:[^\s,]+|(?:chrome|chrome-extension|edge|brave|https?|file):\/\/[^\s,]+)$/i;
+const SCHEME_RULE_RE = /^(?:about:[^\s,]+|(?:chrome|chrome-extension|edge|brave|https?|file):\/\/[^\s,]+)$/i;
 const IPV4_PART = '(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
 const HOST_RULE_RE = new RegExp(
   `^(?:\\*\\.)?(?:localhost|(?:${IPV4_PART}\\.){3}${IPV4_PART}|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63})(?::\\d{1,5})?(?:\\/[^\\s,]*)?$`,
@@ -41,7 +40,11 @@ export function validateDomainRules(rawText: string): {
   return { valid, issues };
 }
 
-export function validateWsUrl(raw: string): { ok: boolean; normalized?: string; errorCode?: 'empty' | 'protocol' | 'loopback' | 'invalid' } {
+export function validateWsUrl(raw: string): {
+  ok: boolean;
+  normalized?: string;
+  errorCode?: 'empty' | 'protocol' | 'loopback' | 'invalid';
+} {
   const trimmed = raw.trim();
   if (!trimmed) return { ok: false, errorCode: 'empty' };
   let parsed: URL;
@@ -60,7 +63,11 @@ export function validateWsUrl(raw: string): { ok: boolean; normalized?: string; 
   return { ok: true, normalized: trimmed };
 }
 
-export function validateProfileLabel(raw: string): { ok: boolean; normalized?: string; errorCode?: 'empty' | 'length' | 'chars' } {
+export function validateProfileLabel(raw: string): {
+  ok: boolean;
+  normalized?: string;
+  errorCode?: 'empty' | 'length' | 'chars';
+} {
   const trimmed = raw.trim();
   if (!trimmed) return { ok: false, errorCode: 'empty' };
   if (trimmed.length > 32) return { ok: false, errorCode: 'length' };
@@ -70,7 +77,11 @@ export function validateProfileLabel(raw: string): { ok: boolean; normalized?: s
   return { ok: true, normalized: trimmed };
 }
 
-export function validatePairingToken(raw: string): { ok: boolean; normalized?: string; errorCode?: 'empty' | 'whitespace' | 'too_short' } {
+export function validatePairingToken(raw: string): {
+  ok: boolean;
+  normalized?: string;
+  errorCode?: 'empty' | 'whitespace' | 'too_short';
+} {
   const trimmed = raw.trim();
   if (!trimmed) return { ok: false, errorCode: 'empty' };
   if (/\s/.test(trimmed)) return { ok: false, errorCode: 'whitespace' };
@@ -84,10 +95,22 @@ export function validatePairingPin(raw: string): { ok: boolean; normalized?: str
   return { ok: true, normalized: trimmed };
 }
 
-export function validateWorkflowName(raw: string): { ok: boolean; normalized?: string; errorCode?: 'length' | 'control' } {
+function hasControlChars(str: string): boolean {
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
+export function validateWorkflowName(raw: string): {
+  ok: boolean;
+  normalized?: string;
+  errorCode?: 'length' | 'control';
+} {
   const trimmed = raw.trim();
   if (trimmed.length > 80) return { ok: false, errorCode: 'length' };
-  if (/[\u0000-\u001F\u007F]/.test(trimmed)) return { ok: false, errorCode: 'control' };
+  if (hasControlChars(trimmed)) return { ok: false, errorCode: 'control' };
   return { ok: true, normalized: trimmed };
 }
 

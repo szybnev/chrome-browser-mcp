@@ -8,7 +8,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, extname, join, relative, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -75,8 +75,21 @@ const STATIC_SECURITY_RULES = [
 ];
 
 const TEXT_EXTENSIONS = new Set([
-  '.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.md', '.yml', '.yaml',
-  '.html', '.css', '.sh', '.txt', '.svg', '.toml',
+  '.ts',
+  '.tsx',
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.json',
+  '.md',
+  '.yml',
+  '.yaml',
+  '.html',
+  '.css',
+  '.sh',
+  '.txt',
+  '.svg',
+  '.toml',
 ]);
 
 const failures = [];
@@ -91,10 +104,7 @@ function warn(msg) {
 }
 
 function getTargetFiles() {
-  const gitArgs =
-    mode === 'staged'
-      ? ['diff', '--cached', '--name-only', '--diff-filter=ACM']
-      : ['ls-files'];
+  const gitArgs = mode === 'staged' ? ['diff', '--cached', '--name-only', '--diff-filter=ACM'] : ['ls-files'];
   const out = execFileSync('git', gitArgs, { cwd: rootDir, encoding: 'utf8' });
   return out
     .split('\n')
@@ -133,7 +143,7 @@ function scanFiles(files) {
       }
       for (const rule of STATIC_SECURITY_RULES) {
         if (!rule.include.test(relPath)) continue;
-        if (rule.exclude && rule.exclude.test(relPath)) continue;
+        if (rule.exclude?.test(relPath)) continue;
         if (rule.regex.test(line)) {
           fail(`[SECURITY] ${rule.name} in ${relPath}:${i + 1}`);
         }

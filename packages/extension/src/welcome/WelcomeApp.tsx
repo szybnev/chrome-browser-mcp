@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
 import {
   getPauseShortcut,
+  type I18nKey,
+  type LocalePreference,
   READ_ONLY_DOMAIN_PRESETS,
   resolveLocale,
   translate,
   validatePairingPin,
   validatePairingToken,
   validateProfileLabel,
-  type I18nKey,
-  type LocalePreference,
 } from '@chrome-browser-mcp/protocol';
+import { useCallback, useEffect, useState } from 'react';
 import type { ExtensionRuntimeState, ExtensionSettings } from '../shared/storage.js';
-import { ThemeToggle, type ThemeOverride } from '../sidepanel/ThemeToggle.js';
 import { CopyableCode } from '../sidepanel/CopyableCode.js';
+import { type ThemeOverride, ThemeToggle } from '../sidepanel/ThemeToggle.js';
 
 interface StatePayload {
   settings: ExtensionSettings;
@@ -163,10 +163,7 @@ export function WelcomeApp() {
     }
     setBusy(true);
     try {
-      await updateSettings(
-        { token: tokenCheck.normalized, profileLabel: labelCheck.normalized },
-        true,
-      );
+      await updateSettings({ token: tokenCheck.normalized, profileLabel: labelCheck.normalized }, true);
       setFeedback(t('pair.pairedOk'));
       await loadState();
       setTimeout(() => {
@@ -198,12 +195,7 @@ export function WelcomeApp() {
     window.close();
   };
 
-  const steps = [
-    t('welcome.step1'),
-    t('welcome.step2'),
-    t('welcome.step3'),
-    t('welcome.step4'),
-  ];
+  const steps = [t('welcome.step1'), t('welcome.step2'), t('welcome.step3'), t('welcome.step4')];
 
   return (
     <div className="welcome-page">
@@ -244,9 +236,7 @@ export function WelcomeApp() {
                   <select
                     className="input"
                     value={locale}
-                    onChange={(e) =>
-                      void updateSettings({ locale: e.target.value as LocalePreference })
-                    }
+                    onChange={(e) => void updateSettings({ locale: e.target.value as LocalePreference })}
                   >
                     <option value="en">English</option>
                     <option value="ru">Русский</option>
@@ -374,9 +364,7 @@ export function WelcomeApp() {
                 </div>
                 <div className="cursor-preview">
                   <span className="muted">
-                    {settings.visualHudEnabled
-                      ? t('setting.visualHudActive')
-                      : t('setting.visualHudSilent')}
+                    {settings.visualHudEnabled ? t('setting.visualHudActive') : t('setting.visualHudSilent')}
                   </span>
                   <span className={`pill ${settings.visualHudEnabled ? 'accent' : ''}`}>
                     {settings.visualHudEnabled ? t('status.on') : t('status.off')}
@@ -437,19 +425,11 @@ export function WelcomeApp() {
               </button>
             )}
             {step < steps.length - 1 ? (
-              <button
-                type="button"
-                className="btn primary small"
-                onClick={() => setStep((s) => s + 1)}
-              >
+              <button type="button" className="btn primary small" onClick={() => setStep((s) => s + 1)}>
                 {t('btn.next')}
               </button>
             ) : (
-              <button
-                type="button"
-                className="btn primary small"
-                onClick={() => void handleOpenHud()}
-              >
+              <button type="button" className="btn primary small" onClick={() => void handleOpenHud()}>
                 {t('btn.finish')}
               </button>
             )}

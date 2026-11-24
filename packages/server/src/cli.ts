@@ -2,11 +2,11 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
-import { loadBrokerConfig, loadOrCreateToken, resolveDataDir } from './config.js';
 import { startBrokerDaemon } from './broker.js';
+import { loadBrokerConfig, loadOrCreateToken, resolveDataDir } from './config.js';
 import { createBrowserMcpServer } from './mcp-server.js';
-import { RemoteBrokerHub } from './remote-hub.js';
 import { installNativeMessagingHost, runNativeMessagingHost } from './native-host.js';
+import { RemoteBrokerHub } from './remote-hub.js';
 
 function parseArgs(argv: string[]) {
   const args = argv.slice(2);
@@ -144,9 +144,7 @@ async function runStdioShim(port?: number, dataDir?: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const { command, port, dataDir, idleExit, rotate, enableCdpProxy, extensionId } = parseArgs(
-    process.argv,
-  );
+  const { command, port, dataDir, idleExit, rotate, enableCdpProxy, extensionId } = parseArgs(process.argv);
 
   if (command === 'help') {
     console.log(`chrome-browser-mcp — Next-gen Chrome Extension & MCP Server
@@ -184,9 +182,9 @@ Usage:
       process.exitCode = 1;
       return;
     }
-    console.log(`Chrome Browser MCP — 1-Click Pairing PIN (valid for 2 minutes):`);
+    console.log('Chrome Browser MCP — 1-Click Pairing PIN (valid for 2 minutes):');
     console.log(`\n    PIN:  ${json.data.pin}\n`);
-    console.log(`Enter this PIN in the Chrome Browser MCP Welcome Tour or Side Panel -> Pair tab.`);
+    console.log('Enter this PIN in the Chrome Browser MCP Welcome Tour or Side Panel -> Pair tab.');
     console.log(`Helper page: ${config.brokerUrl}/pair`);
     return;
   }
@@ -198,7 +196,7 @@ Usage:
       return;
     }
     const { manifestPath, wrapperPath } = installNativeMessagingHost({ extensionId, dataDir });
-    console.log(`Installed Chrome Native Messaging Host:`);
+    console.log('Installed Chrome Native Messaging Host:');
     console.log(`  Manifest: ${manifestPath}`);
     console.log(`  Wrapper:  ${wrapperPath}`);
     return;

@@ -33,6 +33,9 @@ jobs:
       - name: Security, secret scan, supply-chain & CVE audit
         run: pnpm security:check
 
+      - name: Biome strict check & lint
+        run: pnpm check
+
       - name: Typecheck
         run: pnpm typecheck
 

@@ -70,9 +70,7 @@ if (versionArg) {
   } else if (isValidSemver(versionArg)) {
     targetVersion = versionArg;
   } else {
-    console.error(
-      `[sync-version] Invalid version "${versionArg}". Expected x.y.z or patch|minor|major.`,
-    );
+    console.error(`[sync-version] Invalid version "${versionArg}". Expected x.y.z or patch|minor|major.`);
     process.exit(1);
   }
 

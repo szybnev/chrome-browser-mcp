@@ -19,10 +19,7 @@ function parseSecretsEnvFile(filePath: string): Map<string, string> {
     if (eq <= 0) continue;
     const key = trimmed.slice(0, eq).trim();
     let val = trimmed.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
     if (ENV_KEY_RE.test(key)) {
@@ -47,9 +44,7 @@ export async function resolveSecretRef(
   const trimmed = secretRef.trim();
   const colon = trimmed.indexOf(':');
   if (colon <= 0) {
-    throw new Error(
-      `Invalid secretRef "${trimmed}". Expected "env:VAR_NAME" or "keychain:ACCOUNT".`,
-    );
+    throw new Error(`Invalid secretRef "${trimmed}". Expected "env:VAR_NAME" or "keychain:ACCOUNT".`);
   }
 
   const scheme = trimmed.slice(0, colon).toLowerCase();
@@ -70,14 +65,14 @@ export async function resolveSecretRef(
     if (prefixedEnv !== undefined) {
       return { value: prefixedEnv, maskedLabel };
     }
-    throw new Error(
-      `Secret "${key}" not found in ${secretsFile} or env CBMCP_SECRET_${key}.`,
-    );
+    throw new Error(`Secret "${key}" not found in ${secretsFile} or env CBMCP_SECRET_${key}.`);
   }
 
   if (scheme === 'keychain') {
     if (process.platform !== 'darwin') {
-      throw new Error('keychain: secretRef is currently supported on macOS only (use env: on Linux/Windows).');
+      throw new Error(
+        'keychain: secretRef is currently supported on macOS only (use env: on Linux/Windows).',
+      );
     }
     if (!ACCOUNT_RE.test(key)) {
       throw new Error(`Invalid keychain account name "${key}".`);

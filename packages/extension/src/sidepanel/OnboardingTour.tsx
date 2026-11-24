@@ -1,10 +1,10 @@
-import { useEffect } from 'react';
 import {
   getPauseShortcut,
-  translate,
   type I18nKey,
   type SupportedLocale,
+  translate,
 } from '@chrome-browser-mcp/protocol';
+import { useEffect } from 'react';
 
 export interface TourStep {
   titleKey: I18nKey;
@@ -51,8 +51,7 @@ export function OnboardingTour({
   if (!step) return null;
 
   const isLast = stepIndex >= SIDE_PANEL_TOUR_STEPS.length - 1;
-  const t = (key: I18nKey, vars?: Record<string, string | number>) =>
-    translate(locale, key, vars);
+  const t = (key: I18nKey, vars?: Record<string, string | number>) => translate(locale, key, vars);
   const pauseShortcut = getPauseShortcut();
 
   return (
@@ -67,12 +66,7 @@ export function OnboardingTour({
         </div>
         <div className="tour-body">{t(step.bodyKey, { shortcut: pauseShortcut })}</div>
         {step.docUrl && step.docLabelKey && (
-          <a
-            className="tour-link"
-            href={step.docUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a className="tour-link" href={step.docUrl} target="_blank" rel="noopener noreferrer">
             {t(step.docLabelKey)}
           </a>
         )}
@@ -82,11 +76,7 @@ export function OnboardingTour({
           </button>
           <div className="row">
             {stepIndex > 0 && (
-              <button
-                type="button"
-                className="btn small"
-                onClick={() => onStepChange(stepIndex - 1)}
-              >
+              <button type="button" className="btn small" onClick={() => onStepChange(stepIndex - 1)}>
                 {t('btn.back')}
               </button>
             )}

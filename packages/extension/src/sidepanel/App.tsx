@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   exportWorkflowToPlaywright,
   extractWorkflowParamNames,
   getPauseShortcut,
+  type I18nKey,
+  type LocalePreference,
   READ_ONLY_DOMAIN_PRESETS,
+  type RecordedStep,
+  type RecordedWorkflow,
   resolveLocale,
+  type TabInfo,
   translate,
   validateCdpIdleSeconds,
   validateDomainRules,
@@ -13,18 +17,14 @@ import {
   validateProfileLabel,
   validateWorkflowName,
   validateWsUrl,
-  type I18nKey,
-  type LocalePreference,
-  type RecordedStep,
-  type RecordedWorkflow,
-  type TabInfo,
 } from '@chrome-browser-mcp/protocol';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ExtensionRuntimeState, ExtensionSettings } from '../shared/storage.js';
-import { VirtualList } from './VirtualList.js';
-import { InfoTip } from './InfoTip.js';
-import { ThemeToggle, type ThemeOverride } from './ThemeToggle.js';
-import { OnboardingTour, SIDE_PANEL_TOUR_STEPS } from './OnboardingTour.js';
 import { CopyableCode } from './CopyableCode.js';
+import { InfoTip } from './InfoTip.js';
+import { OnboardingTour, SIDE_PANEL_TOUR_STEPS } from './OnboardingTour.js';
+import { type ThemeOverride, ThemeToggle } from './ThemeToggle.js';
+import { VirtualList } from './VirtualList.js';
 
 interface SidePanelPayload {
   settings: ExtensionSettings;
@@ -188,10 +188,7 @@ export function App() {
     return () => clearTimeout(id);
   }, [statusMsg]);
 
-  const attachedTabs = useMemo(
-    () => (data ? data.tabs.filter((t) => t.inAgentGroup) : []),
-    [data],
-  );
+  const attachedTabs = useMemo(() => (data ? data.tabs.filter((t) => t.inAgentGroup) : []), [data]);
 
   const otherTabs = useMemo(() => {
     if (!data) return [];
@@ -200,9 +197,7 @@ export function App() {
     if (!q) return list;
     return list.filter(
       (t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.url.toLowerCase().includes(q) ||
-        String(t.tabId).includes(q),
+        t.title.toLowerCase().includes(q) || t.url.toLowerCase().includes(q) || String(t.tabId).includes(q),
     );
   }, [data, tabQuery]);
 
@@ -514,7 +509,11 @@ export function App() {
 
   const handleExportPlaywright = (wf: RecordedWorkflow) => {
     const code = exportWorkflowToPlaywright(wf);
-    const slug = wf.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || wf.id;
+    const slug =
+      wf.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || wf.id;
     downloadTextFile(`${slug}.spec.ts`, code, 'text/typescript;charset=utf-8');
   };
 
@@ -566,8 +565,7 @@ export function App() {
     <div key={tab.tabId} className="tab-row">
       <div className="tab-meta">
         <div className="tab-title">
-          {tab.title || '(untitled)'}{' '}
-          {tab.cdpAttached && <span className="pill accent">CDP</span>}
+          {tab.title || '(untitled)'} {tab.cdpAttached && <span className="pill accent">CDP</span>}
         </div>
         <div className="tab-url">{tab.url}</div>
       </div>
@@ -651,11 +649,7 @@ export function App() {
 
       <main className="scroller sp-main">
         {/* CONTROL TAB */}
-        <section
-          role="tabpanel"
-          aria-labelledby="tab-control"
-          hidden={activeTab !== 'control'}
-        >
+        <section role="tabpanel" aria-labelledby="tab-control" hidden={activeTab !== 'control'}>
           <div className="tab-panel-inner panel-fill">
             {runtime.paused && (
               <div className="card paused-banner">
@@ -670,11 +664,7 @@ export function App() {
               <div className="card approval">
                 <div className="card-title">{t('status.offline')}</div>
                 <div className="muted">{t('pair.pinSimpleHint')}</div>
-                <button
-                  type="button"
-                  className="btn primary small"
-                  onClick={() => setActiveTab('connect')}
-                >
+                <button type="button" className="btn primary small" onClick={() => setActiveTab('connect')}>
                   {t('pair.pinButton')}
                 </button>
               </div>
@@ -746,10 +736,7 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-ctrl-all-tabs">{t('setting.allowAllTabs')}</label>
-                  <InfoTip
-                    label={t('setting.allowAllTabs')}
-                    text={t('setting.allowAllTabsInfo')}
-                  />
+                  <InfoTip label={t('setting.allowAllTabs')} text={t('setting.allowAllTabsInfo')} />
                 </span>
                 <input
                   id="sp-ctrl-all-tabs"
@@ -800,11 +787,7 @@ export function App() {
         </section>
 
         {/* TIMELINE TAB */}
-        <section
-          role="tabpanel"
-          aria-labelledby="tab-timeline"
-          hidden={activeTab !== 'timeline'}
-        >
+        <section role="tabpanel" aria-labelledby="tab-timeline" hidden={activeTab !== 'timeline'}>
           <div className="tab-panel-inner panel-fill">
             <div className={`card ${runtime.recentActivity.length > 0 ? 'fill-card' : ''}`}>
               <div className="card-header">
@@ -836,9 +819,7 @@ export function App() {
                           {ev.durationMs !== undefined ? ` · ${ev.durationMs}ms` : ''}
                         </div>
                       </div>
-                      <span className={`pill ${ev.status === 'ok' ? 'accent' : 'warn'}`}>
-                        {ev.status}
-                      </span>
+                      <span className={`pill ${ev.status === 'ok' ? 'accent' : 'warn'}`}>{ev.status}</span>
                     </div>
                   )}
                 />
@@ -848,11 +829,7 @@ export function App() {
         </section>
 
         {/* WORKFLOW RECORDER TAB */}
-        <section
-          role="tabpanel"
-          aria-labelledby="tab-workflows"
-          hidden={activeTab !== 'workflows'}
-        >
+        <section role="tabpanel" aria-labelledby="tab-workflows" hidden={activeTab !== 'workflows'}>
           <div className="tab-panel-inner">
             <div className="card">
               <div className="card-header">
@@ -889,11 +866,7 @@ export function App() {
                     >
                       {t('recorder.stop')} ({recordingSteps.length})
                     </button>
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => void handleStopRecording(false)}
-                    >
+                    <button type="button" className="btn" onClick={() => void handleStopRecording(false)}>
                       {t('btn.discard')}
                     </button>
                   </div>
@@ -955,11 +928,7 @@ export function App() {
         </section>
 
         {/* SECURITY & SETTINGS TAB (with Progressive Disclosure Advanced Settings) */}
-        <section
-          role="tabpanel"
-          aria-labelledby="tab-security"
-          hidden={activeTab !== 'security'}
-        >
+        <section role="tabpanel" aria-labelledby="tab-security" hidden={activeTab !== 'security'}>
           <div className="tab-panel-inner">
             <div className="card security-card">
               <div className="card-title">{t('tab.security')}</div>
@@ -968,10 +937,7 @@ export function App() {
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-hud">{t('setting.visualHud')}</label>
-                  <InfoTip
-                    label={t('setting.visualHud')}
-                    text={t('setting.visualHudDesc')}
-                  />
+                  <InfoTip label={t('setting.visualHud')} text={t('setting.visualHudDesc')} />
                 </span>
                 <input
                   id="sp-sec-hud"
@@ -990,81 +956,59 @@ export function App() {
                   id="sp-sec-shield"
                   type="checkbox"
                   checked={settings.policy.promptInjectionShield}
-                  onChange={(e) =>
-                    void handlePolicyPatch({ promptInjectionShield: e.target.checked })
-                  }
+                  onChange={(e) => void handlePolicyPatch({ promptInjectionShield: e.target.checked })}
                 />
               </div>
 
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-eval">{t('setting.approvalEval')}</label>
-                  <InfoTip
-                    label={t('setting.approvalEval')}
-                    text={t('setting.approvalEvalInfo')}
-                  />
+                  <InfoTip label={t('setting.approvalEval')} text={t('setting.approvalEvalInfo')} />
                 </span>
                 <input
                   id="sp-sec-eval"
                   type="checkbox"
                   checked={settings.policy.requireApprovalForEval}
-                  onChange={(e) =>
-                    void handlePolicyPatch({ requireApprovalForEval: e.target.checked })
-                  }
+                  onChange={(e) => void handlePolicyPatch({ requireApprovalForEval: e.target.checked })}
                 />
               </div>
 
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-pass">{t('setting.approvalPasswords')}</label>
-                  <InfoTip
-                    label={t('setting.approvalPasswords')}
-                    text={t('setting.approvalPasswordsInfo')}
-                  />
+                  <InfoTip label={t('setting.approvalPasswords')} text={t('setting.approvalPasswordsInfo')} />
                 </span>
                 <input
                   id="sp-sec-pass"
                   type="checkbox"
                   checked={settings.policy.requireApprovalForPasswords}
-                  onChange={(e) =>
-                    void handlePolicyPatch({ requireApprovalForPasswords: e.target.checked })
-                  }
+                  onChange={(e) => void handlePolicyPatch({ requireApprovalForPasswords: e.target.checked })}
                 />
               </div>
 
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-pay">{t('setting.approvalPayments')}</label>
-                  <InfoTip
-                    label={t('setting.approvalPayments')}
-                    text={t('setting.approvalPaymentsInfo')}
-                  />
+                  <InfoTip label={t('setting.approvalPayments')} text={t('setting.approvalPaymentsInfo')} />
                 </span>
                 <input
                   id="sp-sec-pay"
                   type="checkbox"
                   checked={settings.policy.requireApprovalForPayments}
-                  onChange={(e) =>
-                    void handlePolicyPatch({ requireApprovalForPayments: e.target.checked })
-                  }
+                  onChange={(e) => void handlePolicyPatch({ requireApprovalForPayments: e.target.checked })}
                 />
               </div>
 
               <div className="security-row">
                 <span className="security-label-group">
                   <label htmlFor="sp-sec-upload">{t('setting.approvalUploads')}</label>
-                  <InfoTip
-                    label={t('setting.approvalUploads')}
-                    text={t('setting.approvalUploadsInfo')}
-                  />
+                  <InfoTip label={t('setting.approvalUploads')} text={t('setting.approvalUploadsInfo')} />
                 </span>
                 <input
                   id="sp-sec-upload"
                   type="checkbox"
                   checked={settings.policy.requireApprovalForUploads}
-                  onChange={(e) =>
-                    void handlePolicyPatch({ requireApprovalForUploads: e.target.checked })
-                  }
+                  onChange={(e) => void handlePolicyPatch({ requireApprovalForUploads: e.target.checked })}
                 />
               </div>
 
@@ -1089,10 +1033,7 @@ export function App() {
                 <div>
                   <div className="card-header" style={{ marginBottom: 4 }}>
                     <span className="card-title">{t('setting.readOnlyDomains')}</span>
-                    <InfoTip
-                      label={t('setting.readOnlyDomains')}
-                      text={t('setting.readOnlyInfo')}
-                    />
+                    <InfoTip label={t('setting.readOnlyDomains')} text={t('setting.readOnlyInfo')} />
                   </div>
                   <div className="muted" style={{ marginBottom: 6 }}>
                     {t('setting.readOnlyHint')}
@@ -1136,10 +1077,7 @@ export function App() {
                 <div>
                   <div className="card-header" style={{ marginBottom: 4 }}>
                     <span className="card-title">{t('setting.blockedDomains')}</span>
-                    <InfoTip
-                      label={t('setting.blockedDomains')}
-                      text={t('setting.blockedDomainsInfo')}
-                    />
+                    <InfoTip label={t('setting.blockedDomains')} text={t('setting.blockedDomainsInfo')} />
                   </div>
                   <textarea
                     className={`textarea ${blockedError ? 'input-invalid' : ''}`}
@@ -1164,10 +1102,7 @@ export function App() {
                 <div className="security-row">
                   <span className="security-label-group">
                     <label htmlFor="sp-adv-dialog">{t('setting.dialogPolicy')}</label>
-                    <InfoTip
-                      label={t('setting.dialogPolicy')}
-                      text={t('setting.dialogPolicyInfo')}
-                    />
+                    <InfoTip label={t('setting.dialogPolicy')} text={t('setting.dialogPolicyInfo')} />
                   </span>
                   <select
                     id="sp-adv-dialog"
@@ -1190,10 +1125,7 @@ export function App() {
                   <div className="security-row">
                     <span className="security-label-group">
                       <label htmlFor="sp-adv-cdp-idle">{t('setting.cdpDetach')}</label>
-                      <InfoTip
-                        label={t('setting.cdpDetach')}
-                        text={t('setting.cdpDetachInfo')}
-                      />
+                      <InfoTip label={t('setting.cdpDetach')} text={t('setting.cdpDetachInfo')} />
                     </span>
                     <input
                       id="sp-adv-cdp-idle"
@@ -1218,9 +1150,7 @@ export function App() {
                     id="sp-adv-cdp-proxy"
                     type="checkbox"
                     checked={settings.policy.cdpProxyEnabled}
-                    onChange={(e) =>
-                      void handlePolicyPatch({ cdpProxyEnabled: e.target.checked })
-                    }
+                    onChange={(e) => void handlePolicyPatch({ cdpProxyEnabled: e.target.checked })}
                   />
                 </div>
 
@@ -1230,10 +1160,7 @@ export function App() {
                 <div className="security-row">
                   <span className="security-label-group">
                     <label htmlFor="sp-perm-dl">{t('setting.downloadsPerm')}</label>
-                    <InfoTip
-                      label={t('setting.downloadsPerm')}
-                      text={t('setting.downloadsPermInfo')}
-                    />
+                    <InfoTip label={t('setting.downloadsPerm')} text={t('setting.downloadsPermInfo')} />
                   </span>
                   <input
                     id="sp-perm-dl"
@@ -1245,18 +1172,13 @@ export function App() {
                 <div className="security-row">
                   <span className="security-label-group">
                     <label htmlFor="sp-perm-nm">{t('setting.nativeHostPerm')}</label>
-                    <InfoTip
-                      label={t('setting.nativeHostPerm')}
-                      text={t('setting.nativeHostPermInfo')}
-                    />
+                    <InfoTip label={t('setting.nativeHostPerm')} text={t('setting.nativeHostPermInfo')} />
                   </span>
                   <input
                     id="sp-perm-nm"
                     type="checkbox"
                     checked={hasNativePerm}
-                    onChange={(e) =>
-                      void handleToggleOptionalPerm('nativeMessaging', e.target.checked)
-                    }
+                    onChange={(e) => void handleToggleOptionalPerm('nativeMessaging', e.target.checked)}
                   />
                 </div>
               </div>
@@ -1267,11 +1189,7 @@ export function App() {
         </section>
 
         {/* PAIR / CONNECT TAB (with Progressive Disclosure Advanced Connection) */}
-        <section
-          role="tabpanel"
-          aria-labelledby="tab-connect"
-          hidden={activeTab !== 'connect'}
-        >
+        <section role="tabpanel" aria-labelledby="tab-connect" hidden={activeTab !== 'connect'}>
           <div className="tab-panel-inner">
             <div className="card">
               <div className="card-header">
@@ -1290,9 +1208,7 @@ export function App() {
                   <button
                     type="button"
                     className="btn small"
-                    onClick={() =>
-                      void chrome.tabs.create({ url: `${brokerHttpBase}/pair`, active: true })
-                    }
+                    onClick={() => void chrome.tabs.create({ url: `${brokerHttpBase}/pair`, active: true })}
                   >
                     {t('btn.openPairPage')}
                   </button>
@@ -1308,11 +1224,7 @@ export function App() {
                     setPinError(null);
                   }}
                 />
-                <button
-                  type="button"
-                  className="btn primary small"
-                  onClick={() => void handlePairPin()}
-                >
+                <button type="button" className="btn primary small" onClick={() => void handlePairPin()}>
                   {t('pair.pinButton')}
                 </button>
               </div>

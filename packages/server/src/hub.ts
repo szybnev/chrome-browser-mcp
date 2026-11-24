@@ -1,11 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import type { WebSocket } from 'ws';
 import {
-  APP_VERSION,
-  isUrlBlocked,
-  isUrlReadOnly,
-  SecurityPolicySchema,
   type ActivityEvent,
+  APP_VERSION,
   type ApprovalRequest,
   type BrokerToExtensionMessage,
   type BrowserProfileInfo,
@@ -13,6 +9,8 @@ import {
   type DeckState,
   type ExtensionRpcMethod,
   type ExtensionToBrokerMessage,
+  isUrlBlocked,
+  isUrlReadOnly,
   type NetworkEntry,
   type PageSnapshot,
   type PendingDialog,
@@ -20,15 +18,17 @@ import {
   type RiskLevel,
   type ScreenshotRecord,
   type SecurityPolicy,
+  SecurityPolicySchema,
   type TabInfo,
 } from '@chrome-browser-mcp/protocol';
+import type { WebSocket } from 'ws';
+import { renderAuditHtml, renderAuditJson } from './audit-exporter.js';
 import {
   loadPersistedPolicy,
   loadPersistedWorkflows,
   savePersistedPolicy,
   savePersistedWorkflows,
 } from './config.js';
-import { renderAuditHtml, renderAuditJson } from './audit-exporter.js';
 import { resolveSecretRef } from './secrets.js';
 
 export const SERVER_VERSION = APP_VERSION;
@@ -668,7 +668,10 @@ export class BrowserBrokerHub implements BrowserHubInterface {
       pendingApprovals: [...this.pendingApprovals.values()].map((e) => e.request),
       pendingDialogs: Object.fromEntries(this.pendingDialogs.entries()),
       recentActivity: this.activity.slice(-30).reverse(),
-      recentErrors: this.consoleBuffer.filter((c) => c.level === 'error' || c.level === 'warn').slice(-20).reverse(),
+      recentErrors: this.consoleBuffer
+        .filter((c) => c.level === 'error' || c.level === 'warn')
+        .slice(-20)
+        .reverse(),
       recentFailedNetwork: this.networkBuffer
         .filter((n) => n.failed || (n.status !== undefined && n.status >= 400))
         .slice(-20)
