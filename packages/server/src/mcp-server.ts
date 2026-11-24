@@ -12,6 +12,7 @@ import {
   computeSnapshotDiff,
   type DownloadItem,
   EmulationConfigSchema,
+  type ExtensionActionStep,
   exportWorkflowToPlaywright,
   extractWorkflowParamNames,
   formatFullSnapshot,
@@ -24,6 +25,7 @@ import {
   type PendingDialog,
   type SecurityPolicy,
   SecurityPolicySchema,
+  sanitizePageText,
   type TabInfo,
   type WebMcpToolInfo,
 } from '@chrome-browser-mcp/protocol';
@@ -170,9 +172,12 @@ function safeOriginFromUrl(url: string): string {
   }
 }
 
-export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
-  // Per-server capability secret embedded strictly in deck.html (never shown to the LLM)
-  const deckSecret = randomBytes(24).toString('hex');
+export function createBrowserMcpServer(
+  hub: BrowserHubInterface,
+  options?: { deckSecret?: string },
+): McpServer {
+  // Per-server (or per-broker HTTP) capability secret embedded strictly in deck.html
+  const deckSecret = options?.deckSecret || randomBytes(24).toString('hex');
   const assertDeckSecret = (candidate?: string): void => {
     if (typeof candidate !== 'string' || !candidate) {
       throw new Error(
@@ -717,8 +722,15 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
       }
     }
 
-    const preparedSteps: ActionStep[] = [];
-    for (const step of opts.steps) {
+    const preparedSteps: ExtensionActionStep[] = [];
+    for (const rawInputStep of opts.steps) {
+      // Defense-in-depth: strip any caller-supplied internal approval/secret flags
+      const {
+        preApproved: _ignoredPreApproved,
+        isSecret: _ignoredIsSecret,
+        ...cleanStep
+      } = rawInputStep as ActionStep & { preApproved?: unknown; isSecret?: unknown };
+      const step = cleanStep as ActionStep;
       if (step.kind === 'upload') {
         const preCheck = validateUploadPaths(step.files, policy);
         if (!preCheck.ok) {
@@ -892,9 +904,17 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
         ];
 
         if (data.pendingDialog) {
+          const cleanDialogMsg = sanitizePageText(data.pendingDialog.message).sanitized;
+          const framedDialog = frameUntrustedPageContent({
+            origin: data.pendingDialog.url ? safeOriginFromUrl(data.pendingDialog.url) : 'browser-dialog',
+            url: data.pendingDialog.url || `tab://${data.tabId}`,
+            content: `[PENDING_DIALOG type="${data.pendingDialog.type}" message=${JSON.stringify(cleanDialogMsg)}]`,
+            shieldEnabled: policy.promptInjectionShield,
+          });
           summaryLines.push(
             '',
-            `[PENDING_DIALOG type="${data.pendingDialog.type}" message=${JSON.stringify(data.pendingDialog.message)}] Call browser_dialog(action="accept"|"dismiss") to handle it.`,
+            framedDialog.text,
+            'Call browser_dialog(action="accept"|"dismiss") to handle this dialog.',
           );
         }
 
@@ -1011,11 +1031,12 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
             { tabId, requestId: includeBodyForRequestId },
             { profileId, toolLabel: 'browser_network:body' },
           );
+          const bodyPolicy = await hub.getLivePolicy();
           const framed = frameUntrustedPageContent({
             origin: 'network-response',
             url: `request://${bodyData.requestId}`,
             content: bodyData.body,
-            shieldEnabled: hub.getPolicy().promptInjectionShield,
+            shieldEnabled: bodyPolicy.promptInjectionShield,
           });
           const note = `[requestId=${bodyData.requestId} redacted=${bodyData.redactedCount}${bodyData.truncated ? ' truncated=true' : ''}]\n`;
           return { content: [{ type: 'text', text: `${note}${framed.text}` }] };
@@ -1438,11 +1459,28 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
             content: [{ type: 'text', text: framed.text }],
           };
         }
+        if (data.previous) {
+          const cleanPrev = sanitizePageText(data.previous.message).sanitized;
+          const framedPrev = frameUntrustedPageContent({
+            origin,
+            url: liveUrl || `tab://${tabId ?? 'active'}`,
+            content: `${data.previous.type}: ${JSON.stringify(cleanPrev)}`,
+            shieldEnabled: policy.promptInjectionShield,
+          });
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `${action === 'accept' ? 'Accepted' : 'Dismissed'} dialog.\n${framedPrev.text}`,
+              },
+            ],
+          };
+        }
         return {
           content: [
             {
               type: 'text',
-              text: `${action === 'accept' ? 'Accepted' : 'Dismissed'} dialog${data.previous ? ` (${data.previous.type}: ${JSON.stringify(data.previous.message)})` : ''}.`,
+              text: `${action === 'accept' ? 'Accepted' : 'Dismissed'} dialog.`,
             },
           ],
         };

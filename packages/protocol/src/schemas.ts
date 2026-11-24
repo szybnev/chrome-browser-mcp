@@ -106,89 +106,122 @@ export type PageSnapshot = z.infer<typeof PageSnapshotSchema>;
 // Actions (Single & Batch)
 // ---------------------------------------------------------------------------
 
+const ClickStepSchema = z.object({
+  kind: z.literal('click'),
+  ref: z.string().optional(),
+  selector: z.string().optional(),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  button: z.enum(['left', 'right', 'middle']).default('left'),
+  clickCount: z.number().int().min(1).max(3).default(1),
+  useCdp: z.boolean().optional(),
+});
+
+const HoverStepSchema = z.object({
+  kind: z.literal('hover'),
+  ref: z.string().optional(),
+  selector: z.string().optional(),
+});
+
+const FillStepSchema = z.object({
+  kind: z.literal('fill'),
+  ref: z.string().optional(),
+  selector: z.string().optional(),
+  value: z.string().optional(),
+  secretRef: z.string().optional(),
+  clearFirst: z.boolean().default(true),
+  submit: z.boolean().default(false),
+});
+
+const TypeStepSchema = z.object({
+  kind: z.literal('type'),
+  ref: z.string().optional(),
+  selector: z.string().optional(),
+  text: z.string().optional(),
+  secretRef: z.string().optional(),
+  delayMs: z.number().int().min(0).max(200).default(15),
+});
+
+const PressStepSchema = z.object({
+  kind: z.literal('press'),
+  key: z.string(),
+  ref: z.string().optional(),
+  modifiers: z.array(z.enum(['Alt', 'Control', 'Meta', 'Shift'])).optional(),
+});
+
+const SelectStepSchema = z.object({
+  kind: z.literal('select'),
+  ref: z.string().optional(),
+  selector: z.string().optional(),
+  value: z.string(),
+});
+
+const CheckStepSchema = z.object({
+  kind: z.literal('check'),
+  ref: z.string().optional(),
+  selector: z.string().optional(),
+  checked: z.boolean(),
+});
+
+const ScrollStepSchema = z.object({
+  kind: z.literal('scroll'),
+  direction: z.enum(['up', 'down', 'left', 'right']).default('down'),
+  amount: z.number().int().min(50).max(5000).default(600),
+  ref: z.string().optional(),
+});
+
+const DragStepSchema = z.object({
+  kind: z.literal('drag'),
+  sourceRef: z.string(),
+  targetRef: z.string(),
+});
+
+const UploadStepSchema = z.object({
+  kind: z.literal('upload'),
+  ref: z.string().optional(),
+  selector: z.string().optional(),
+  files: z.array(z.string().min(1)).min(1).max(20),
+});
+
+const WaitStepSchema = z.object({
+  kind: z.literal('wait'),
+  ms: z.number().int().min(50).max(15000).optional(),
+  selector: z.string().optional(),
+  text: z.string().optional(),
+  timeoutMs: z.number().int().min(200).max(30000).default(5000),
+});
+
+// Public MCP caller schema (never exposes internal preApproved / isSecret flags)
 export const ActionStepSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('click'),
-    ref: z.string().optional(),
-    selector: z.string().optional(),
-    x: z.number().optional(),
-    y: z.number().optional(),
-    button: z.enum(['left', 'right', 'middle']).default('left'),
-    clickCount: z.number().int().min(1).max(3).default(1),
-    useCdp: z.boolean().optional(),
-    preApproved: z.boolean().optional(),
-  }),
-  z.object({
-    kind: z.literal('hover'),
-    ref: z.string().optional(),
-    selector: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal('fill'),
-    ref: z.string().optional(),
-    selector: z.string().optional(),
-    value: z.string().optional(),
-    secretRef: z.string().optional(),
-    isSecret: z.boolean().optional(),
-    preApproved: z.boolean().optional(),
-    clearFirst: z.boolean().default(true),
-    submit: z.boolean().default(false),
-  }),
-  z.object({
-    kind: z.literal('type'),
-    ref: z.string().optional(),
-    selector: z.string().optional(),
-    text: z.string().optional(),
-    secretRef: z.string().optional(),
-    isSecret: z.boolean().optional(),
-    preApproved: z.boolean().optional(),
-    delayMs: z.number().int().min(0).max(200).default(15),
-  }),
-  z.object({
-    kind: z.literal('press'),
-    key: z.string(),
-    ref: z.string().optional(),
-    modifiers: z.array(z.enum(['Alt', 'Control', 'Meta', 'Shift'])).optional(),
-    preApproved: z.boolean().optional(),
-  }),
-  z.object({
-    kind: z.literal('select'),
-    ref: z.string().optional(),
-    selector: z.string().optional(),
-    value: z.string(),
-  }),
-  z.object({
-    kind: z.literal('check'),
-    ref: z.string().optional(),
-    selector: z.string().optional(),
-    checked: z.boolean(),
-  }),
-  z.object({
-    kind: z.literal('scroll'),
-    direction: z.enum(['up', 'down', 'left', 'right']).default('down'),
-    amount: z.number().int().min(50).max(5000).default(600),
-    ref: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal('drag'),
-    sourceRef: z.string(),
-    targetRef: z.string(),
-  }),
-  z.object({
-    kind: z.literal('upload'),
-    ref: z.string().optional(),
-    selector: z.string().optional(),
-    files: z.array(z.string().min(1)).min(1).max(20),
-  }),
-  z.object({
-    kind: z.literal('wait'),
-    ms: z.number().int().min(50).max(15000).optional(),
-    selector: z.string().optional(),
-    text: z.string().optional(),
-    timeoutMs: z.number().int().min(200).max(30000).default(5000),
-  }),
+  ClickStepSchema,
+  HoverStepSchema,
+  FillStepSchema,
+  TypeStepSchema,
+  PressStepSchema,
+  SelectStepSchema,
+  CheckStepSchema,
+  ScrollStepSchema,
+  DragStepSchema,
+  UploadStepSchema,
+  WaitStepSchema,
 ]);
 export type ActionStep = z.infer<typeof ActionStepSchema>;
+
+// Internal Broker -> Extension schema carrying server-verified approval & secret markers
+export const ExtensionActionStepSchema = z.discriminatedUnion('kind', [
+  ClickStepSchema.extend({ preApproved: z.boolean().optional() }),
+  HoverStepSchema,
+  FillStepSchema.extend({ isSecret: z.boolean().optional(), preApproved: z.boolean().optional() }),
+  TypeStepSchema.extend({ isSecret: z.boolean().optional(), preApproved: z.boolean().optional() }),
+  PressStepSchema.extend({ preApproved: z.boolean().optional() }),
+  SelectStepSchema,
+  CheckStepSchema,
+  ScrollStepSchema,
+  DragStepSchema,
+  UploadStepSchema,
+  WaitStepSchema,
+]);
+export type ExtensionActionStep = z.infer<typeof ExtensionActionStepSchema>;
 
 export const PendingDialogSchema = z.object({
   tabId: z.number().int(),

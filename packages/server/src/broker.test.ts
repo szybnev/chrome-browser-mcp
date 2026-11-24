@@ -225,6 +225,18 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
     expect(contents[0]?.mimeType).toBe('text/html;profile=mcp-app');
     expect(contents[0]?.text).toContain('Browser Control Deck');
     expect(contents[0]?.text).toContain('__CBMCP_DECK_SECRET__');
+
+    // Shared HTTP deckSecret allows legitimate Deck UI calls across stateless HTTP /mcp requests
+    const secretMatch = /window\.__CBMCP_DECK_SECRET__="([0-9a-f]+)"/.exec(contents[0]?.text ?? '');
+    expect(secretMatch?.[1]).toBeTruthy();
+    const deckPinRes = await mcpPost({
+      jsonrpc: '2.0',
+      id: 100,
+      method: 'tools/call',
+      params: { name: 'deck_create_pin', arguments: { deckSecret: secretMatch![1] } },
+    });
+    expect(deckPinRes.result?.isError).not.toBe(true);
+    expect(deckPinRes.result?.structuredContent?.pin).toMatch(/^\d{6}$/);
   });
 
   it('supports 6-digit single-use PIN pairing, Zero-Secret env resolution, opt-in CDP proxy & audit export', async () => {

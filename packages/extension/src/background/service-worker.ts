@@ -1020,6 +1020,15 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
     case 'tabs.detach': {
       const tabId = params.tabId as number | undefined;
       if (tabId === undefined) throw new Error('tabId required');
+      const targetTab = await chrome.tabs.get(tabId);
+      const groupIds = await getAgentGroupIds();
+      const inAgentGroup =
+        targetTab.groupId !== undefined &&
+        targetTab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE &&
+        groupIds.has(targetTab.groupId);
+      if (!inAgentGroup) {
+        throw new Error(`Tab ${tabId} is not in the AI Agent tab group`);
+      }
       await detachTabFromAgentGroup(tabId);
       await sendToastToTab(tabId, 'Detached from AI Agent group');
       await pushTabsSnapshotToBroker();
@@ -1301,16 +1310,18 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
     case 'page.act': {
       const parsed = ExtensionActParamsSchema.parse(params);
       const tab = await resolveAccessibleTab(parsed.tabId);
-      if (parsed.expectedOrigin && tab.url) {
+      if (parsed.expectedOrigin) {
         let liveOrigin: string | null = null;
-        try {
-          liveOrigin = new URL(tab.url).origin;
-        } catch {
-          liveOrigin = null;
+        if (tab.url) {
+          try {
+            liveOrigin = new URL(tab.url).origin;
+          } catch {
+            liveOrigin = null;
+          }
         }
-        if (liveOrigin && liveOrigin !== parsed.expectedOrigin) {
+        if (!liveOrigin || liveOrigin !== parsed.expectedOrigin) {
           throw new Error(
-            `Origin changed before action (expected ${parsed.expectedOrigin}, got ${liveOrigin}) — approval invalidated`,
+            `Origin changed before action (expected ${parsed.expectedOrigin}, got ${liveOrigin ?? 'unknown'}) — approval invalidated`,
           );
         }
       }
@@ -1345,6 +1356,9 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
               })
               .catch(() => [{ result: '' }]);
             const frameUrl = typeof frameProbe?.result === 'string' ? frameProbe.result : '';
+            if (!frameUrl) {
+              throw new Error(`Iframe ${frameId} URL could not be verified — action blocked`);
+            }
             const frameBlocked = isUrlBlocked(
               frameUrl,
               settings.policy.blockedDomains,
@@ -1352,6 +1366,12 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
             );
             if (frameBlocked.blocked) {
               throw new Error(`Iframe action blocked by domain policy: ${frameBlocked.reason}`);
+            }
+            if (step.kind !== 'scroll' && step.kind !== 'wait') {
+              const frameRo = isUrlReadOnly(frameUrl, settings.policy.readOnlyDomains);
+              if (frameRo.readOnly) {
+                throw new Error(`Iframe action blocked by read-only rule: ${frameRo.reason}`);
+              }
             }
           }
 
@@ -1444,7 +1464,7 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
             }
 
             if (wantsCdpKey) {
-              if (step.key === 'Enter') {
+              if (step.key === 'Enter' || step.key === 'Space' || step.key === ' ') {
                 await callContentScript(
                   tab.id,
                   'cs.checkPress',
@@ -1720,16 +1740,18 @@ async function dispatchRpc(method: ExtensionRpcMethod, params: Record<string, un
 
     case 'devtools.eval': {
       const tab = await resolveAccessibleTab(params.tabId as number | undefined);
-      if (typeof params.expectedOrigin === 'string' && tab.url) {
+      if (typeof params.expectedOrigin === 'string') {
         let liveOrigin: string | null = null;
-        try {
-          liveOrigin = new URL(tab.url).origin;
-        } catch {
-          liveOrigin = null;
+        if (tab.url) {
+          try {
+            liveOrigin = new URL(tab.url).origin;
+          } catch {
+            liveOrigin = null;
+          }
         }
-        if (liveOrigin && liveOrigin !== params.expectedOrigin) {
+        if (!liveOrigin || liveOrigin !== params.expectedOrigin) {
           throw new Error(
-            `Origin changed before script evaluation: expected ${params.expectedOrigin}, got ${liveOrigin} — approval invalidated`,
+            `Origin changed before script evaluation: expected ${params.expectedOrigin}, got ${liveOrigin ?? 'unknown'} — approval invalidated`,
           );
         }
       }
@@ -1771,7 +1793,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       const extOrigin = chrome.runtime.getURL('');
-      const isExtensionPage = !sender.tab && Boolean(sender.url?.startsWith(extOrigin));
+      const isExtensionPage =
+        sender.id === chrome.runtime.id &&
+        Boolean(sender.url?.startsWith(extOrigin)) &&
+        (sender.frameId === undefined || sender.frameId === 0);
       if (typeof msg?.type === 'string' && msg.type.startsWith('sp.') && !isExtensionPage) {
         sendResponse({ ok: false, error: 'Forbidden: side panel API requires extension page origin' });
         return;

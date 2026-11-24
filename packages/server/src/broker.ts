@@ -120,6 +120,8 @@ export async function startBrokerDaemon(options?: {
 
   // Separate scoped CDP token so ?token= in /json/version never leaks the master brokerToken
   const cdpToken = randomBytes(24).toString('hex');
+  // Shared per-broker Deck capability secret for stateless Streamable HTTP /mcp sessions
+  const httpDeckSecret = randomBytes(24).toString('hex');
   const verifyCdpToken = (candidate: string) =>
     typeof candidate === 'string' && candidate.length > 0 && timingSafeStringEqual(candidate, cdpToken);
 
@@ -298,7 +300,7 @@ export async function startBrokerDaemon(options?: {
           });
           return;
         }
-        const mcpServer = createBrowserMcpServer(hub);
+        const mcpServer = createBrowserMcpServer(hub, { deckSecret: httpDeckSecret });
         const transport = new NodeStreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
         });

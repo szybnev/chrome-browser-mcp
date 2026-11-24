@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import {
-  ActionStepSchema,
   ApprovalRequestSchema,
   BrowserProfileInfoSchema,
   ConsoleEntrySchema,
+  ExtensionActionStepSchema,
   NetworkEntrySchema,
   PendingDialogSchema,
   RecordedWorkflowSchema,
@@ -138,7 +138,7 @@ export const ExtensionApprovalSyncPayloadSchema = z.object({
 
 export const ExtensionActParamsSchema = z.object({
   tabId: z.number().int().optional(),
-  steps: z.array(ActionStepSchema).min(1).max(30),
+  steps: z.array(ExtensionActionStepSchema).min(1).max(30),
   returnSnapshot: z.enum(['diff', 'full', 'none']).default('diff'),
   forceCdp: z.boolean().default(false),
   expectedOrigin: z.string().optional(),

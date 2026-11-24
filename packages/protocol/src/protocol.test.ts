@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ActionStepSchema,
   computeSnapshotDiff,
   DEFAULT_BLOCKED_DOMAINS,
   exportWorkflowToPlaywright,
@@ -376,5 +377,22 @@ describe('v2.0 Protocol Enhancements (Read-Only, Body Redaction, Workflows, i18n
     expect(dragSpec).not.toContain('\u2029');
     expect(dragSpec).not.toContain('\nprocess.exit(1)');
     expect(dragSpec).not.toContain('\nboom()');
+
+    // Public ActionStepSchema must strip internal preApproved/isSecret flags from caller input
+    const parsedClick = ActionStepSchema.parse({
+      kind: 'click',
+      selector: '#pay-now',
+      preApproved: true,
+    } as Record<string, unknown>);
+    expect('preApproved' in parsedClick).toBe(false);
+    const parsedFill = ActionStepSchema.parse({
+      kind: 'fill',
+      selector: 'input[type="password"]',
+      value: 'x',
+      preApproved: true,
+      isSecret: true,
+    } as Record<string, unknown>);
+    expect('preApproved' in parsedFill).toBe(false);
+    expect('isSecret' in parsedFill).toBe(false);
   });
 });

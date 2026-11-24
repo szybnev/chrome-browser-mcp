@@ -1,6 +1,6 @@
 import type {
-  ActionStep,
   AuditResult,
+  ExtensionActionStep,
   PageSnapshot,
   RecordedStep,
   SnapshotNode,
@@ -950,9 +950,9 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
         for (let r = 0; r < rows.length; r++) {
           const row = rows[r]!;
           if (isElementHiddenOrTrap(row)) continue;
-          const cells = [...row.querySelectorAll('th, td')].map((cell) =>
-            visibleInlineText(cell).trim().replace(/\|/g, '\\|').replace(/\n/g, ' '),
-          );
+          const cells = [...row.querySelectorAll('th, td')]
+            .filter((cell) => !isElementHiddenOrTrap(cell))
+            .map((cell) => visibleInlineText(cell).trim().replace(/\|/g, '\\|').replace(/\n/g, ' '));
           if (cells.length > 0) {
             lines.push(`| ${cells.join(' | ')} |`);
             if (r === 0) lines.push(`| ${cells.map(() => '---').join(' | ')} |`);
@@ -1242,7 +1242,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
   }
 
   async function executeContentStep(
-    step: ActionStep,
+    step: ExtensionActionStep,
     policyFlags?: StepPolicyFlags,
   ): Promise<{
     ok: boolean;
@@ -1422,7 +1422,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
 
     if (step.kind === 'press') {
       const el = (step.ref ? resolveTarget(step.ref) : document.activeElement) || document.body;
-      if (step.key === 'Enter') {
+      if (step.key === 'Enter' || step.key === 'Space' || step.key === ' ') {
         const submitChallenge = checkFormSubmitPaymentChallenge(el, policyFlags, step.preApproved);
         if (submitChallenge) return { ok: false, error: submitChallenge };
       }
@@ -1783,7 +1783,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
             const key = String(msg.params?.key ?? '');
             const el =
               (msg.params?.ref ? resolveTarget(msg.params.ref) : document.activeElement) || document.body;
-            if (key === 'Enter') {
+            if (key === 'Enter' || key === 'Space' || key === ' ') {
               const challenge = checkFormSubmitPaymentChallenge(el, policyFlags, preApproved);
               if (challenge) {
                 sendResponse({ ok: false, error: challenge });
@@ -1798,7 +1798,7 @@ if (!window.__CHROME_BROWSER_MCP_LOADED__) {
               visualHudEnabled = msg.params.hudEnabled;
             }
             const res = await executeContentStep(
-              msg.params.step as ActionStep,
+              msg.params.step as ExtensionActionStep,
               msg.params.policyFlags as StepPolicyFlags | undefined,
             );
             sendResponse({ ok: true, data: res });
