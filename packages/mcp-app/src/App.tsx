@@ -28,6 +28,8 @@ export function App() {
   const [tabQuery, setTabQuery] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dismissedErrorIds, setDismissedErrorIds] = useState<Set<string>>(() => new Set());
+  const [dismissedNetworkIds, setDismissedNetworkIds] = useState<Set<string>>(() => new Set());
   const [localePref, setLocalePref] = useState<LocalePreference>(() => {
     try {
       const saved = localStorage.getItem('cbmcp-deck-locale');
@@ -204,12 +206,43 @@ export function App() {
 
   const controlledCount = deckState.policy.scopeMode === 'all-tabs' ? profileTabs.length : agentTabs.length;
 
+  const visibleErrors = deckState.recentErrors.filter((e) => !dismissedErrorIds.has(e.id));
+  const visibleFailedNetwork = deckState.recentFailedNetwork.filter(
+    (n) => !dismissedNetworkIds.has(n.requestId),
+  );
+
+  const handleClearDiagnostics = (target: 'console' | 'network') => {
+    if (target === 'console') {
+      setDismissedErrorIds((prev) => {
+        const next = new Set(prev);
+        for (const err of deckState.recentErrors) next.add(err.id);
+        return next;
+      });
+    } else {
+      setDismissedNetworkIds((prev) => {
+        const next = new Set(prev);
+        for (const net of deckState.recentFailedNetwork) next.add(net.requestId);
+        return next;
+      });
+    }
+    if (!app) return;
+    void app
+      .callServerTool({ name: 'deck_clear_diagnostics', arguments: { target } })
+      .then((res) => {
+        const structured = res.structuredContent as ToolStructuredPayload | undefined;
+        if (structured?.state) setDeckState(structured.state);
+      })
+      .catch(() => {
+        // Fallback: local dismissal already cleared the block even on older MCP stdio sessions
+      });
+  };
+
   const tabItems: Array<{ id: DeckTab; label: string }> = [
     { id: 'overview', label: `${tr('tab.overview')} (${controlledCount})` },
     { id: 'timeline', label: `${tr('tab.timeline')} (${deckState.recentActivity.length})` },
     {
       id: 'devtools',
-      label: `${tr('tab.devtools')} (${deckState.recentErrors.length + deckState.recentFailedNetwork.length})`,
+      label: `${tr('tab.devtools')} (${visibleErrors.length + visibleFailedNetwork.length})`,
     },
     { id: 'workflows', label: `${tr('tab.workflows')} (${deckState.workflows.length})` },
     { id: 'security', label: tr('tab.security') },
@@ -515,27 +548,38 @@ export function App() {
             <div className="card">
               <div className="row-between">
                 <strong>{tr('section.consoleErrors')}</strong>
-                {canSendMessage && deckState.recentErrors.length > 0 && (
-                  <button
-                    type="button"
-                    className="btn primary small"
-                    onClick={() =>
-                      void handleSendDiagnosticsToAgent(
-                        `Please investigate these browser console errors:\n${deckState.recentErrors
-                          .slice(0, 8)
-                          .map((e) => `- [${e.level}] ${e.text} (${e.source ?? ''}:${e.line ?? ''})`)
-                          .join('\n')}`,
-                      )
-                    }
-                  >
-                    {tr('btn.askAgentFix')}
-                  </button>
+                {visibleErrors.length > 0 && (
+                  <div className="row" style={{ gap: 6 }}>
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={() => handleClearDiagnostics('console')}
+                    >
+                      {tr('btn.clear')}
+                    </button>
+                    {canSendMessage && (
+                      <button
+                        type="button"
+                        className="btn primary small"
+                        onClick={() =>
+                          void handleSendDiagnosticsToAgent(
+                            `Please investigate these browser console errors:\n${visibleErrors
+                              .slice(0, 8)
+                              .map((e) => `- [${e.level}] ${e.text} (${e.source ?? ''}:${e.line ?? ''})`)
+                              .join('\n')}`,
+                          )
+                        }
+                      >
+                        {tr('btn.askAgentFix')}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-              {deckState.recentErrors.length === 0 ? (
+              {visibleErrors.length === 0 ? (
                 <div className="muted">{tr('empty.console')}</div>
               ) : (
-                deckState.recentErrors.map((errEntry) => (
+                visibleErrors.map((errEntry) => (
                   <div key={errEntry.id} className="item-row">
                     <div className="item-meta">
                       <div className="item-title">
@@ -554,27 +598,38 @@ export function App() {
             <div className="card">
               <div className="row-between">
                 <strong>{tr('section.failedNetwork')}</strong>
-                {canSendMessage && deckState.recentFailedNetwork.length > 0 && (
-                  <button
-                    type="button"
-                    className="btn primary small"
-                    onClick={() =>
-                      void handleSendDiagnosticsToAgent(
-                        `Please investigate these failed browser network requests:\n${deckState.recentFailedNetwork
-                          .slice(0, 8)
-                          .map((n) => `- ${n.method} ${n.status ?? 'ERR'} ${n.url} ${n.errorText ?? ''}`)
-                          .join('\n')}`,
-                      )
-                    }
-                  >
-                    {tr('btn.askAgentDebug')}
-                  </button>
+                {visibleFailedNetwork.length > 0 && (
+                  <div className="row" style={{ gap: 6 }}>
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={() => handleClearDiagnostics('network')}
+                    >
+                      {tr('btn.clear')}
+                    </button>
+                    {canSendMessage && (
+                      <button
+                        type="button"
+                        className="btn primary small"
+                        onClick={() =>
+                          void handleSendDiagnosticsToAgent(
+                            `Please investigate these failed browser network requests:\n${visibleFailedNetwork
+                              .slice(0, 8)
+                              .map((n) => `- ${n.method} ${n.status ?? 'ERR'} ${n.url} ${n.errorText ?? ''}`)
+                              .join('\n')}`,
+                          )
+                        }
+                      >
+                        {tr('btn.askAgentDebug')}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-              {deckState.recentFailedNetwork.length === 0 ? (
+              {visibleFailedNetwork.length === 0 ? (
                 <div className="muted">{tr('empty.network')}</div>
               ) : (
-                deckState.recentFailedNetwork.map((net) => (
+                visibleFailedNetwork.map((net) => (
                   <div key={net.requestId} className="item-row">
                     <div className="item-meta">
                       <div className="item-title">

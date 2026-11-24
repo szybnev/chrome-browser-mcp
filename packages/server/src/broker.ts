@@ -408,6 +408,12 @@ export async function startBrokerDaemon(options?: {
             writeJson(res, 200, { ok: true, data: await hub.exportAudit(fmt) });
             return;
           }
+          case '/internal/clear-diagnostics': {
+            const target = body.target === 'console' || body.target === 'network' ? body.target : 'all';
+            await hub.clearDiagnostics(target);
+            writeJson(res, 200, { ok: true, data: { cleared: target } });
+            return;
+          }
           default:
             writeJson(res, 404, { ok: false, error: 'Unknown internal route' });
             return;

@@ -94,6 +94,7 @@ export interface BrowserHubInterface {
   recordScreenshot(record: ScreenshotRecord): void;
   getConsoleEntries(tabId?: number, level?: string, limit?: number): ConsoleEntry[];
   getNetworkEntries(tabId?: number, onlyFailed?: boolean, limit?: number): NetworkEntry[];
+  clearDiagnostics(target: 'console' | 'network' | 'all'): Promise<void>;
   listWorkflows(): Promise<RecordedWorkflow[]>;
   deleteWorkflow(workflowId: string): Promise<boolean>;
   getPolicy(): SecurityPolicy;
@@ -646,6 +647,15 @@ export class BrowserBrokerHub implements BrowserHubInterface {
       return true;
     }
     return false;
+  }
+
+  async clearDiagnostics(target: 'console' | 'network' | 'all'): Promise<void> {
+    if (target === 'console' || target === 'all') {
+      this.consoleBuffer = [];
+    }
+    if (target === 'network' || target === 'all') {
+      this.networkBuffer = [];
+    }
   }
 
   async getDeckState(): Promise<DeckState> {

@@ -1539,6 +1539,23 @@ export function createBrowserMcpServer(hub: BrowserHubInterface): McpServer {
   );
 
   server.registerTool(
+    'deck_clear_diagnostics',
+    {
+      title: 'Deck: Clear Console or Network Diagnostics',
+      inputSchema: z.object({ target: z.enum(['console', 'network', 'all']).default('all') }),
+      _meta: APP_ONLY_META,
+    },
+    async ({ target }) => {
+      await hub.clearDiagnostics(target);
+      const state = await hub.getDeckState();
+      return {
+        content: [{ type: 'text', text: `cleared ${target}` }],
+        structuredContent: { state },
+      };
+    },
+  );
+
+  server.registerTool(
     'deck_handle_dialog',
     {
       title: 'Deck: Handle Browser Dialog',
