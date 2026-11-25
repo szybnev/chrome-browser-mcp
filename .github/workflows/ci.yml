@@ -39,7 +39,7 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Build all packages (Protocol, MCP App, Server, MV3 Extension)
+      - name: Build all packages (Protocol, MCP App, Server, MV3 Extension, Desktop Plugins)
         run: pnpm build
 
       - name: Run automated tests
@@ -48,12 +48,16 @@ jobs:
       - name: Pack Chrome Web Store ZIP
         run: pnpm pack:cws
 
-      - name: Upload Chrome Web Store ZIP artifact
+      - name: Pack Claude Desktop MCP Bundle (.mcpb)
+        run: node scripts/pack-mcpb.mjs
+
+      - name: Upload verified release artifacts
         uses: actions/upload-artifact@v7
         with:
           name: chrome-browser-mcp-extension
           path: |
             release/chrome-browser-mcp-extension.zip
+            release/chrome-browser-mcp.mcpb
             packages/extension/dist/manifest.json
             packages/protocol/dist
             packages/server/dist
@@ -84,19 +88,38 @@ jobs:
           name: chrome-browser-mcp-extension
           path: .
 
-      - name: Create GitHub Release (when version tag does not exist yet)
+      - name: Create or update GitHub Release (extension ZIP + Claude .mcpb)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}"
+          MCPB_ASSET="chrome-browser-mcp-${TAG}.mcpb"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "[release] GitHub Release ${TAG} already exists — skipping."
+            if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "$MCPB_ASSET"; then
+              cp release/chrome-browser-mcp.mcpb "release/${MCPB_ASSET}"
+              gh release download "$TAG" --pattern "SHA256SUMS.txt" --dir release --clobber || true
+              grep -v "$MCPB_ASSET" release/SHA256SUMS.txt > release/SHA256SUMS.tmp 2>/dev/null || true
+              (cd release && sha256sum "$MCPB_ASSET") >> release/SHA256SUMS.tmp
+              mv release/SHA256SUMS.tmp release/SHA256SUMS.txt
+              gh release upload "$TAG" \
+                "release/${MCPB_ASSET}" \
+                "release/SHA256SUMS.txt" \
+                --clobber
+              echo "[release] Uploaded ${MCPB_ASSET} and updated SHA256SUMS.txt on ${TAG}."
+            else
+              echo "[release] GitHub Release ${TAG} already exists with all assets — skipping."
+            fi
           else
             cp release/chrome-browser-mcp-extension.zip "release/chrome-browser-mcp-extension-${TAG}.zip"
-            (cd release && sha256sum "chrome-browser-mcp-extension-${TAG}.zip" > SHA256SUMS.txt)
+            cp release/chrome-browser-mcp.mcpb "release/${MCPB_ASSET}"
+            (cd release && sha256sum \
+              "chrome-browser-mcp-extension-${TAG}.zip" \
+              "$MCPB_ASSET" \
+              > SHA256SUMS.txt)
             gh release create "$TAG" \
               "release/chrome-browser-mcp-extension-${TAG}.zip" \
+              "release/${MCPB_ASSET}" \
               "release/SHA256SUMS.txt" \
               --target "$GITHUB_SHA" \
               --title "Chrome Browser MCP ${TAG}" \
