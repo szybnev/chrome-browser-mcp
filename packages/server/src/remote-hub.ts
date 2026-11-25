@@ -134,7 +134,7 @@ export class RemoteBrokerHub implements BrowserHubInterface {
     return this.post('/internal/audit-export', { format });
   }
 
-  async clearDiagnostics(target: 'console' | 'network' | 'all'): Promise<void> {
+  async clearDiagnostics(target: 'console' | 'network' | 'screenshot' | 'all'): Promise<void> {
     await this.post('/internal/clear-diagnostics', { target });
   }
 

@@ -8,7 +8,7 @@ import {
   type TabInfo,
   translate,
 } from '@chrome-browser-mcp/protocol';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InfoTip } from './InfoTip.js';
 import { ThemeToggle } from './ThemeToggle.js';
 import type { DeckTab, DeckTransport, ToolStructuredPayload } from './transport.js';
@@ -58,6 +58,15 @@ export function BrowserDeckView({ transport }: BrowserDeckViewProps) {
   const [busy, setBusy] = useState(false);
   const [dismissedErrorIds, setDismissedErrorIds] = useState<Set<string>>(() => new Set());
   const [dismissedNetworkIds, setDismissedNetworkIds] = useState<Set<string>>(() => new Set());
+  const [dismissedScreenshotTs, setDismissedScreenshotTs] = useState<number | null>(null);
+  const [captureCollapsed, setCaptureCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cbmcp-deck-capture-collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const otherTabsHeadingRef = useRef<HTMLElement | null>(null);
   const [localePref, setLocalePref] = useState<LocalePreference>(() => {
     try {
       const saved = localStorage.getItem('cbmcp-deck-locale');
@@ -242,6 +251,39 @@ export function BrowserDeckView({ transport }: BrowserDeckViewProps) {
   const visibleFailedNetwork = deckState.recentFailedNetwork.filter(
     (n) => !dismissedNetworkIds.has(n.requestId),
   );
+  const visibleScreenshot =
+    deckState.latestScreenshot &&
+    deckState.latestScreenshot.timestamp !== dismissedScreenshotTs &&
+    SAFE_IMAGE_DATA_URL_RE.test(deckState.latestScreenshot.dataUrl)
+      ? deckState.latestScreenshot
+      : null;
+
+  const handleCaptureToggle = (open: boolean) => {
+    const collapsed = !open;
+    setCaptureCollapsed(collapsed);
+    try {
+      localStorage.setItem('cbmcp-deck-capture-collapsed', collapsed ? '1' : '0');
+    } catch {
+      // ignore sandboxed iframe storage errors
+    }
+  };
+
+  const handleClearScreenshot = () => {
+    const current = deckState.latestScreenshot;
+    if (current) {
+      setDismissedScreenshotTs(current.timestamp);
+    }
+    otherTabsHeadingRef.current?.focus();
+    if (!transport.isConnected) return;
+    void transport
+      .callTool('deck_clear_diagnostics', { target: 'screenshot' })
+      .then((structured: ToolStructuredPayload | undefined) => {
+        if (structured?.state) setDeckState(structured.state);
+      })
+      .catch(() => {
+        // Fallback: local dismissal already cleared the viewport capture even on older brokers
+      });
+  };
 
   const handleClearDiagnostics = (target: 'console' | 'network') => {
     if (target === 'console') {
@@ -540,29 +582,44 @@ export function BrowserDeckView({ transport }: BrowserDeckViewProps) {
               )}
             </div>
 
-            {deckState.latestScreenshot &&
-              SAFE_IMAGE_DATA_URL_RE.test(deckState.latestScreenshot.dataUrl) && (
-                <div className="card" style={{ flex: '0 0 auto' }}>
-                  <div className="row-between">
-                    <strong>{tr('section.latestCapture')}</strong>
+            {visibleScreenshot && (
+              <div className="card capture-card">
+                <details
+                  className="capture-details"
+                  open={!captureCollapsed}
+                  onToggle={(e) => handleCaptureToggle(e.currentTarget.open)}
+                >
+                  <summary className="capture-summary">
+                    <span className="capture-title">{tr('section.latestCapture')}</span>
                     <span className="pill accent">
-                      Tab {deckState.latestScreenshot.tabId}
-                      {deckState.latestScreenshot.setOfMark ? ' · SoM' : ''}
+                      Tab {visibleScreenshot.tabId}
+                      {visibleScreenshot.setOfMark ? ' · SoM' : ''}
                     </span>
-                  </div>
-                  <img
-                    className="screenshot-frame"
-                    src={deckState.latestScreenshot.dataUrl}
-                    alt={`Screenshot of ${deckState.latestScreenshot.url}`}
-                  />
-                  <div className="muted">{deckState.latestScreenshot.url}</div>
-                </div>
-              )}
+                  </summary>
+                  <figure className="capture-body">
+                    <img
+                      className="screenshot-frame"
+                      src={visibleScreenshot.dataUrl}
+                      alt={`Screenshot of ${visibleScreenshot.url}`}
+                    />
+                    <figcaption className="muted capture-url">{visibleScreenshot.url}</figcaption>
+                  </figure>
+                </details>
+                <button
+                  type="button"
+                  className="btn small capture-clear-btn"
+                  aria-label={tr('btn.clearCapture')}
+                  onClick={handleClearScreenshot}
+                >
+                  {tr('btn.clear')}
+                </button>
+              </div>
+            )}
 
             {/* ALL OTHER BROWSER TABS (ADAPTIVE HEIGHT + VIRTUALIZED) */}
             <div className={`card ${otherTabs.length > 0 ? 'fill-card' : ''}`}>
               <div className="row-between">
-                <strong>
+                <strong ref={otherTabsHeadingRef} tabIndex={-1} className="focus-anchor">
                   {tr('section.otherTabs')} ({otherTabs.length}
                   {tabQuery ? ` / ${profileTabs.length - agentTabs.length}` : ''})
                 </strong>

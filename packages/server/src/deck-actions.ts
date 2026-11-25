@@ -91,7 +91,7 @@ const DeckResolveApprovalInput = z.object({
 const DeckUpdatePolicyInput = SecurityPolicySchema.partial();
 const DeckDeleteWorkflowInput = z.object({ workflowId: z.string() });
 const DeckClearDiagnosticsInput = z.object({
-  target: z.enum(['console', 'network', 'all']).default('all'),
+  target: z.enum(['console', 'network', 'screenshot', 'all']).default('all'),
 });
 const DeckCreatePinInput = z.object({ copyActive: z.boolean().optional() });
 const DeckHandleDialogInput = z.object({

@@ -4,6 +4,12 @@ All notable changes to **Chrome Browser MCP** are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] - 2026-11-25
+
+### Added
+
+- **Collapsible & Clearable Latest Viewport Capture in Browser Control Deck**: fold the viewport screenshot card into a compact single-line header (`<details>` disclosure persisted in `localStorage`) or clear it immediately across all connected Decks (`deck_clear_diagnostics` with `target: "screenshot"`). Supported in Google Antigravity, Codex Desktop, OpenChamber Desktop, OpenCode Desktop, and Claude Desktop Mod.
+
 ## [2.2.0] - 2026-11-25
 
 ### Added

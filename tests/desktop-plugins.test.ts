@@ -72,6 +72,47 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
       const unknownRes = await call('deck_nonexistent');
       expect(unknownRes.status).toBe(400);
     });
+
+    it('clears latestScreenshot via deck_clear_diagnostics(target="screenshot")', async () => {
+      broker.hub.recordScreenshot({
+        tabId: 42,
+        url: 'https://example.com/demo',
+        mimeType: 'image/webp',
+        dataUrl: 'data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=',
+        setOfMark: false,
+        timestamp: Date.now(),
+      });
+
+      const call = async (name: string, args: Record<string, unknown> = {}) => {
+        const res = await fetch(`${broker.config.brokerUrl}/internal/deck-tool`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-broker-token': broker.config.token,
+          },
+          body: JSON.stringify({ name, arguments: args }),
+        });
+        return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+      };
+
+      const beforeRes = await call('deck_get_state');
+      expect(beforeRes.status).toBe(200);
+      expect(
+        (beforeRes.json.data as { state: { latestScreenshot: { tabId: number } | null } }).state
+          .latestScreenshot?.tabId,
+      ).toBe(42);
+
+      const clearRes = await call('deck_clear_diagnostics', { target: 'screenshot' });
+      expect(clearRes.status).toBe(200);
+      expect(
+        (clearRes.json.data as { state: { latestScreenshot: unknown } }).state.latestScreenshot,
+      ).toBeNull();
+
+      const afterRes = await call('deck_get_state');
+      expect(
+        (afterRes.json.data as { state: { latestScreenshot: unknown } }).state.latestScreenshot,
+      ).toBeNull();
+    });
   });
 
   // -------------------------------------------------------------------------

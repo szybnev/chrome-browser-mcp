@@ -412,7 +412,10 @@ export async function startBrokerDaemon(options?: {
             return;
           }
           case '/internal/clear-diagnostics': {
-            const target = body.target === 'console' || body.target === 'network' ? body.target : 'all';
+            const target =
+              body.target === 'console' || body.target === 'network' || body.target === 'screenshot'
+                ? body.target
+                : 'all';
             await hub.clearDiagnostics(target);
             writeJson(res, 200, { ok: true, data: { cleared: target } });
             return;

@@ -38,6 +38,9 @@ var EN = {
   "btn.accept": "Accept",
   "btn.dismiss": "Dismiss",
   "btn.clear": "Clear",
+  "btn.clearCapture": "Clear viewport capture",
+  "btn.collapse": "Collapse",
+  "btn.expand": "Expand",
   "btn.delete": "Delete",
   "btn.exportPlaywright": "Export .spec.ts",
   "btn.exportJson": "Export JSON",
@@ -215,6 +218,9 @@ var RU = {
   "btn.accept": "\u041F\u0440\u0438\u043D\u044F\u0442\u044C",
   "btn.dismiss": "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
   "btn.clear": "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C",
+  "btn.clearCapture": "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C \u0441\u043D\u0438\u043C\u043E\u043A \u044D\u043A\u0440\u0430\u043D\u0430",
+  "btn.collapse": "\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C",
+  "btn.expand": "\u0420\u0430\u0437\u0432\u0435\u0440\u043D\u0443\u0442\u044C",
   "btn.delete": "\u0423\u0434\u0430\u043B\u0438\u0442\u044C",
   "btn.exportPlaywright": "\u042D\u043A\u0441\u043F\u043E\u0440\u0442 .spec.ts",
   "btn.exportJson": "\u042D\u043A\u0441\u043F\u043E\u0440\u0442 JSON",
@@ -392,6 +398,9 @@ var ZH_CN = {
   "btn.accept": "\u786E\u5B9A",
   "btn.dismiss": "\u53D6\u6D88",
   "btn.clear": "\u6E05\u7A7A",
+  "btn.clearCapture": "\u6E05\u7A7A\u9875\u9762\u622A\u56FE",
+  "btn.collapse": "\u6298\u53E0",
+  "btn.expand": "\u5C55\u5F00",
   "btn.delete": "\u5220\u9664",
   "btn.exportPlaywright": "\u5BFC\u51FA .spec.ts",
   "btn.exportJson": "\u5BFC\u51FA JSON",
@@ -687,6 +696,7 @@ function createBrowserDeckMod(brokerOverride) {
   let activeTab = "overview";
   let tabQuery = "";
   let showBand = true;
+  let captureCollapsed = false;
   let locale = "en";
   let inFlight = false;
   const tr = (key, vars) => translate(locale, key, vars);
@@ -1156,15 +1166,40 @@ function createBrowserDeckMod(brokerOverride) {
               paddingX: 1,
               flexDirection: "column",
               children: [
-                Text({
-                  bold: true,
-                  children: [`${tr("section.latestCapture")} \xB7 Tab ${latestShot.tabId}`]
+                Box({
+                  flexDirection: "row",
+                  columnGap: 1,
+                  children: [
+                    Text({
+                      bold: true,
+                      children: [
+                        `${captureCollapsed ? "\u25B8" : "\u25BE"} ${tr("section.latestCapture")} \xB7 Tab ${latestShot.tabId}`
+                      ]
+                    }),
+                    Button({
+                      key: "capture-toggle",
+                      label: captureCollapsed ? tr("btn.expand") : tr("btn.collapse"),
+                      plain: true,
+                      onPress: () => {
+                        captureCollapsed = !captureCollapsed;
+                        redraw();
+                      }
+                    }),
+                    Button({
+                      key: "capture-clear",
+                      label: tr("btn.clear"),
+                      plain: true,
+                      onPress: () => void runTool($, "deck_clear_diagnostics", { target: "screenshot" })
+                    })
+                  ]
                 }),
-                Text({ dimColor: true, children: [truncateText(latestShot.url, 64)] }),
-                Text({
-                  dimColor: true,
-                  children: ["Tip: Ask Claude to call browser_deck for inline HTML viewport preview."]
-                })
+                ...captureCollapsed ? [] : [
+                  Text({ dimColor: true, children: [truncateText(latestShot.url, 64)] }),
+                  Text({
+                    dimColor: true,
+                    children: ["Tip: Ask Claude to call browser_deck for inline HTML viewport preview."]
+                  })
+                ]
               ]
             })
           );

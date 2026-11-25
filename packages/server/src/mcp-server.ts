@@ -1830,9 +1830,9 @@ export function createBrowserMcpServer(
   server.registerTool(
     'deck_clear_diagnostics',
     {
-      title: 'Deck: Clear Console or Network Diagnostics',
+      title: 'Deck: Clear Console, Network, or Viewport Capture',
       inputSchema: z.object({
-        target: z.enum(['console', 'network', 'all']).default('all'),
+        target: z.enum(['console', 'network', 'screenshot', 'all']).default('all'),
         deckSecret: z.string().optional(),
       }),
       _meta: APP_ONLY_META,

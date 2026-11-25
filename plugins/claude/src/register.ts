@@ -238,6 +238,7 @@ export function createBrowserDeckMod(brokerOverride?: ModBrokerClient) {
   let activeTab: DeckTab = 'overview';
   let tabQuery = '';
   let showBand = true;
+  let captureCollapsed = false;
   let locale: Locale = 'en';
   let inFlight = false;
 
@@ -779,15 +780,42 @@ export function createBrowserDeckMod(brokerOverride?: ModBrokerClient) {
               paddingX: 1,
               flexDirection: 'column',
               children: [
-                Text({
-                  bold: true,
-                  children: [`${tr('section.latestCapture')} · Tab ${latestShot.tabId}`],
+                Box({
+                  flexDirection: 'row',
+                  columnGap: 1,
+                  children: [
+                    Text({
+                      bold: true,
+                      children: [
+                        `${captureCollapsed ? '▸' : '▾'} ${tr('section.latestCapture')} · Tab ${latestShot.tabId}`,
+                      ],
+                    }),
+                    Button({
+                      key: 'capture-toggle',
+                      label: captureCollapsed ? tr('btn.expand') : tr('btn.collapse'),
+                      plain: true,
+                      onPress: () => {
+                        captureCollapsed = !captureCollapsed;
+                        redraw();
+                      },
+                    }),
+                    Button({
+                      key: 'capture-clear',
+                      label: tr('btn.clear'),
+                      plain: true,
+                      onPress: () => void runTool($, 'deck_clear_diagnostics', { target: 'screenshot' }),
+                    }),
+                  ],
                 }),
-                Text({ dimColor: true, children: [truncateText(latestShot.url, 64)] }),
-                Text({
-                  dimColor: true,
-                  children: ['Tip: Ask Claude to call browser_deck for inline HTML viewport preview.'],
-                }),
+                ...(captureCollapsed
+                  ? []
+                  : [
+                      Text({ dimColor: true, children: [truncateText(latestShot.url, 64)] }),
+                      Text({
+                        dimColor: true,
+                        children: ['Tip: Ask Claude to call browser_deck for inline HTML viewport preview.'],
+                      }),
+                    ]),
               ],
             }),
           );
