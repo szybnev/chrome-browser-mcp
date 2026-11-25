@@ -19,12 +19,15 @@ function readStoredOverride(): ThemeOverride {
   }
 }
 
-function applyColorSchemeMeta(override: ThemeOverride): void {
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
-  if (meta) {
-    meta.content = override ?? 'light dark';
+function applyColorScheme(override: ThemeOverride, targetEl?: HTMLElement | null): void {
+  const root = targetEl ?? (typeof document !== 'undefined' ? document.documentElement : null);
+  if (!targetEl && typeof document !== 'undefined') {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+    if (meta) {
+      meta.content = override ?? 'light dark';
+    }
   }
-  const root = document.documentElement;
+  if (!root) return;
   if (override) {
     root.dataset.theme = override;
     root.style.colorScheme = override;
@@ -42,28 +45,39 @@ function writeStoredOverride(override: ThemeOverride): void {
       localStorage.removeItem(STORAGE_KEY);
     }
   } catch {
-    // Theme still applies via <meta> even if localStorage is blocked in a sandbox
+    // Theme still applies via DOM attribute even if localStorage is blocked in a sandbox
   }
 }
 
-export function ThemeToggle() {
+export interface ThemeToggleProps {
+  themeRoot?: HTMLElement | null;
+  hostTheme?: 'light' | 'dark' | null;
+}
+
+export function ThemeToggle({ themeRoot, hostTheme }: ThemeToggleProps = {}) {
   useEffect(() => {
     const stored = readStoredOverride();
-    if (stored) applyColorSchemeMeta(stored);
+    if (stored) {
+      applyColorScheme(stored, themeRoot);
+    } else if (hostTheme) {
+      applyColorScheme(hostTheme, themeRoot);
+    }
 
     const onStorage = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY) return;
       const next: ThemeOverride = e.newValue === 'light' || e.newValue === 'dark' ? e.newValue : null;
-      applyColorSchemeMeta(next);
+      applyColorScheme(next ?? hostTheme ?? null, themeRoot);
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  }, [themeRoot, hostTheme]);
 
   const handleToggle = () => {
-    const root = document.documentElement;
+    const root = themeRoot ?? document.documentElement;
     const dataTheme = root.dataset.theme;
-    const metaVal = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]')?.content;
+    const metaVal = !themeRoot
+      ? document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]')?.content
+      : undefined;
     const currentOverride: ThemeOverride =
       dataTheme === 'light' || dataTheme === 'dark'
         ? dataTheme
@@ -73,10 +87,10 @@ export function ThemeToggle() {
     const inlineScheme = root.style.colorScheme;
     const effectiveCurrent: 'light' | 'dark' =
       currentOverride ??
-      (inlineScheme === 'light' || inlineScheme === 'dark' ? inlineScheme : getSystemScheme());
+      (inlineScheme === 'light' || inlineScheme === 'dark' ? inlineScheme : (hostTheme ?? getSystemScheme()));
     const target: 'light' | 'dark' = effectiveCurrent === 'dark' ? 'light' : 'dark';
 
-    applyColorSchemeMeta(target);
+    applyColorScheme(target, themeRoot);
     writeStoredOverride(target);
   };
 

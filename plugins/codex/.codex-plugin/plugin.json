@@ -1,0 +1,35 @@
+{
+  "name": "chrome-browser-mcp",
+  "version": "2.2.0",
+  "description": "Real-session AI browser control for Chrome, Arc, Brave & Edge — hybrid Content Script + on-demand CDP, WebMCP, Prompt-Injection Shield, Workflow Recorder, and Browser Control Deck UI.",
+  "author": {
+    "name": "Chrome Browser MCP",
+    "url": "https://github.com/szybnev/chrome-browser-mcp"
+  },
+  "homepage": "https://github.com/szybnev/chrome-browser-mcp",
+  "repository": "https://github.com/szybnev/chrome-browser-mcp",
+  "license": "MIT",
+  "keywords": ["browser", "chrome", "mcp", "mcp-apps", "webmcp", "devtools", "automation"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Chrome Browser MCP",
+    "shortDescription": "Control your real logged-in Chrome tabs with a live Control Deck",
+    "longDescription": "Drive your real Chrome, Arc, Brave, or Edge profile over MCP v2 without losing sessions or showing a permanent debugger banner. Includes the interactive Browser Control Deck in Codex's global sidebar and thread side panel, WebMCP discovery, Prompt-Injection Shield, and recorded workflow replay.",
+    "developerName": "Chrome Browser MCP",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/szybnev/chrome-browser-mcp",
+    "privacyPolicyURL": "https://github.com/szybnev/chrome-browser-mcp/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/szybnev/chrome-browser-mcp/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Open the Browser Control Deck and list my connected browser tabs",
+      "Check the active tab for console errors and failed network requests",
+      "Discover WebMCP tools available on the current page and run a quick a11y audit"
+    ],
+    "brandColor": "#2563EB",
+    "composerIcon": "./assets/logo.png",
+    "logo": "./assets/logo.png",
+    "screenshots": []
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "name": "openchamber-chrome-browser-mcp",
+  "version": "2.2.0",
+  "description": "Chrome Browser MCP Control Deck for OpenChamber — real-session AI browser control, right-rail Control Deck, full-screen page, live Work Status widget, and automatic OpenCode MCP registration.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "openchamber": {
+    "apiVersion": 1,
+    "engines": {
+      "openchamber": ">=2.5.0"
+    },
+    "contributes": {
+      "panel": {
+        "id": "chrome-browser-mcp",
+        "name": "Browser Deck",
+        "icon": "icon.svg",
+        "entry": "panel/index.html"
+      },
+      "page": {
+        "entry": "panel/index.html",
+        "title": "Browser Control Deck"
+      },
+      "statusSection": {
+        "entry": "status/index.html",
+        "source": {
+          "path": "/status",
+          "interval": 3000
+        },
+        "title": "Browser Deck",
+        "height": 76
+      },
+      "service": {
+        "entry": "service/main.js",
+        "runtime": "host",
+        "permissions": {
+          "exec": [
+            "node"
+          ]
+        }
+      },
+      "attach": false,
+      "skills": "skills",
+      "opencodePlugin": "opencode-plugin"
+    }
+  }
+}

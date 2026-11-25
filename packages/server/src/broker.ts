@@ -9,6 +9,7 @@ import {
 import { WebSocketServer } from 'ws';
 import { attachCdpProxySocket, handleCdpDiscoveryRequest } from './cdp-proxy.js';
 import { type BrokerConfig, loadBrokerConfig } from './config.js';
+import { createDeckPinCache, executeDeckTool, isDeckToolName } from './deck-actions.js';
 import { BrowserBrokerHub, SERVER_VERSION } from './hub.js';
 import { createBrowserMcpServer } from './mcp-server.js';
 
@@ -122,6 +123,7 @@ export async function startBrokerDaemon(options?: {
   const cdpToken = randomBytes(24).toString('hex');
   // Shared per-broker Deck capability secret for stateless Streamable HTTP /mcp sessions
   const httpDeckSecret = randomBytes(24).toString('hex');
+  const brokerPinCache = createDeckPinCache();
   const verifyCdpToken = (candidate: string) =>
     typeof candidate === 'string' && candidate.length > 0 && timingSafeStringEqual(candidate, cdpToken);
 
@@ -413,6 +415,20 @@ export async function startBrokerDaemon(options?: {
             const target = body.target === 'console' || body.target === 'network' ? body.target : 'all';
             await hub.clearDiagnostics(target);
             writeJson(res, 200, { ok: true, data: { cleared: target } });
+            return;
+          }
+          case '/internal/deck-tool': {
+            const toolName = typeof body.name === 'string' ? body.name : '';
+            if (!isDeckToolName(toolName)) {
+              writeJson(res, 400, { ok: false, error: `Unknown deck tool: ${toolName}` });
+              return;
+            }
+            const toolArgs =
+              body.arguments && typeof body.arguments === 'object' && !Array.isArray(body.arguments)
+                ? (body.arguments as Record<string, unknown>)
+                : {};
+            const result = await executeDeckTool(hub, toolName, toolArgs, brokerPinCache);
+            writeJson(res, 200, { ok: true, data: result.structuredContent, text: result.text });
             return;
           }
           default:

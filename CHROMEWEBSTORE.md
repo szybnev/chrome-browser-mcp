@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — Chrome Browser MCP
 
-> Last Updated: 2026-11-23
+> Last Updated: 2026-11-25
 
 ## Store Listing
 
@@ -24,7 +24,7 @@ Connect multiple browser profiles at the same time on your local machine
 
 How to use it:
 
-1. Install Chrome Browser MCP and start the local companion server with `npx chrome-browser-mcp`.
+1. Build the local companion from the [project repository](https://github.com/szybnev/chrome-browser-mcp) using `pnpm install --frozen-lockfile` and `pnpm build`, then start it with `pnpm daemon`.
 2. Open the extension side panel and confirm the local pairing token.
 3. Add tabs to the AI Agent group and connect Antigravity, Claude Code, Cursor, or any MCP-compatible client.
 
@@ -143,6 +143,7 @@ This repository includes an automated CI/CD release pipeline in [`.github/workfl
 
 | Version | Date       | Changes                                                                                                                                                                                                                                                                                                          | Status    |
 | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 2.1.1   | 2026-11-25 | Fixed a startup/update race condition that could log a duplicate context menu error in Chrome's Extensions Errors tab, and handled native messaging disconnect errors cleanly.                                                                                                                                   | Ready     |
 | 1.0.0   | 2026-11-24 | Production v1.0.0 release: unified Antigravity Dark/Light theme, Bridge Aperture icons, push-port side panel, native `checkVisibility()` + `MutationObserver` runtime speedups, `maxWidth` screenshot downscaling, Node 26 / TS 7 / Vite 8 toolchain, and automated CWS API v2 + GitHub Releases CI/CD.          | Ready     |
 | 0.2.0   | 2026-11-23 | Auto-discover manual "AI Agent" Chrome tab groups across reloads, dedicated AI Agent Tabs card, virtualized searchable list for 100+ tabs, top-level Timeline tab, paginated `browser_read` (offset up to 200k), Shadow DOM / same-origin iframe / rich Markdown tables, and PerformanceObserver LCP/CLS audits. | In Review |
 | 0.1.0   | 2026-11-23 | Initial MV3 release: Hybrid engine, Agent Tab Group, Workflow Recorder, Control HUD Side Panel, WebMCP bridge, and local MCP companion server.                                                                                                                                                                   | Draft     |
@@ -151,4 +152,4 @@ This repository includes an automated CI/CD release pipeline in [`.github/workfl
 
 ### Known Issues / Limitations
 
-- Uses `chrome.debugger` strictly on demand for user-shared tabs and detaches automatically when idle; requires a clear reviewer demo video or clear instructions showing the local companion server (`npx chrome-browser-mcp`) and side panel controls.
+- Uses `chrome.debugger` on demand for user-shared tabs and detaches automatically when idle. Reviewer instructions cover the local companion server (`pnpm daemon` from a built source checkout) and side panel controls.

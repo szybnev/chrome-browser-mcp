@@ -14,6 +14,15 @@
       "!release",
       "!assets",
       "!plugins/antigravity/assets",
+      "!plugins/codex/assets",
+      "!plugins/codex/server",
+      "!plugins/openchamber/panel/main.js",
+      "!plugins/openchamber/panel/styles.css",
+      "!plugins/openchamber/service/main.js",
+      "!plugins/openchamber/server",
+      "!plugins/opencode/bundle",
+      "!plugins/opencode/server",
+      "!plugins/claude/hooks/register.js",
       "!**/*.md",
       "!pnpm-lock.yaml"
     ]

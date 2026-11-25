@@ -1,0 +1,901 @@
+:root,
+:host,
+.deck-theme-host {
+  color-scheme: light dark;
+
+  /* Unified Google Antigravity Palette — WCAG 2.1 AA/AAA verified */
+  --fallback-bg-light: #f4f5f7;
+  --fallback-bg-dark: #0c0d10;
+  --fallback-surface-light: #ffffff;
+  --fallback-surface-dark: #141518;
+  --fallback-surface-2-light: #eef0f4;
+  --fallback-surface-2-dark: #1d1f23;
+  --fallback-surface-hover-light: #e4e7ee;
+  --fallback-surface-hover-dark: #26292f;
+  --fallback-border-light: #d6dae2;
+  --fallback-border-dark: #2c2f36;
+  --fallback-control-border-light: #747c8c;
+  --fallback-control-border-dark: #676f7f;
+  --fallback-agent-border-light: #93b4f5;
+  --fallback-agent-border-dark: #2f4569;
+  --fallback-text-light: #111318;
+  --fallback-text-dark: #f1f3f5;
+  --fallback-muted-light: #505766;
+  --fallback-muted-dark: #9ca3af;
+  --fallback-accent-fill-light: #1d4ed8;
+  --fallback-accent-fill-dark: #2563eb;
+  --fallback-accent-fill-hover-light: #1e40af;
+  --fallback-accent-fill-hover-dark: #1d4ed8;
+  --fallback-accent-text-light: #1d4ed8;
+  --fallback-accent-text-dark: #60a5fa;
+  --fallback-danger-fill-light: #c81e1e;
+  --fallback-danger-fill-dark: #dc2626;
+  --fallback-danger-fill-hover-light: #991b1b;
+  --fallback-danger-fill-hover-dark: #b91c1c;
+  --fallback-danger-text-light: #b91c1c;
+  --fallback-danger-text-dark: #f87171;
+  --fallback-warn-light: #92400e;
+  --fallback-warn-dark: #fbbf24;
+  --fallback-scroll-thumb-light: #b8bec9;
+  --fallback-scroll-thumb-dark: #3f444f;
+
+  --fb-bg: var(--fallback-bg-light);
+  --fb-surface: var(--fallback-surface-light);
+  --fb-surface-2: var(--fallback-surface-2-light);
+  --fb-surface-hover: var(--fallback-surface-hover-light);
+  --fb-border: var(--fallback-border-light);
+  --fb-control-border: var(--fallback-control-border-light);
+  --fb-agent-border: var(--fallback-agent-border-light);
+  --fb-text: var(--fallback-text-light);
+  --fb-muted: var(--fallback-muted-light);
+  --fb-accent-fill: var(--fallback-accent-fill-light);
+  --fb-accent-fill-hover: var(--fallback-accent-fill-hover-light);
+  --fb-accent-text: var(--fallback-accent-text-light);
+  --fb-danger-fill: var(--fallback-danger-fill-light);
+  --fb-danger-fill-hover: var(--fallback-danger-fill-hover-light);
+  --fb-danger-text: var(--fallback-danger-text-light);
+  --fb-warn: var(--fallback-warn-light);
+  --fb-scroll-thumb: var(--fallback-scroll-thumb-light);
+
+  /* Default mode follows host theme tokens with Antigravity palette fallbacks */
+  --bg: var(--color-background-primary, var(--fb-bg));
+  --surface: var(--color-background-secondary, var(--fb-surface));
+  --surface-2: var(--color-background-tertiary, var(--fb-surface-2));
+  --surface-hover: var(--fb-surface-hover);
+  --border: var(--color-border-primary, var(--fb-border));
+  --control-border: var(--fb-control-border);
+  --agent-border: var(--fb-agent-border);
+  --text: var(--color-text-primary, var(--fb-text));
+  --muted: var(--color-text-secondary, var(--fb-muted));
+  --accent-fill: var(--fb-accent-fill);
+  --accent-fill-hover: var(--fb-accent-fill-hover);
+  --accent-fg: #ffffff;
+  --accent-text: var(--color-ring-primary, var(--fb-accent-text));
+  --danger-fill: var(--fb-danger-fill);
+  --danger-fill-hover: var(--fb-danger-fill-hover);
+  --danger: var(--color-text-danger, var(--fb-danger-text));
+  --warn: var(--color-text-warning, var(--fb-warn));
+  --scrollbar-thumb: var(--fb-scroll-thumb);
+  --scrollbar-track: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(:has(> head > meta[name="color-scheme"][content="light"])),
+  .deck-theme-host:not([data-theme="light"]) {
+    --fb-bg: var(--fallback-bg-dark);
+    --fb-surface: var(--fallback-surface-dark);
+    --fb-surface-2: var(--fallback-surface-2-dark);
+    --fb-surface-hover: var(--fallback-surface-hover-dark);
+    --fb-border: var(--fallback-border-dark);
+    --fb-control-border: var(--fallback-control-border-dark);
+    --fb-agent-border: var(--fallback-agent-border-dark);
+    --fb-text: var(--fallback-text-dark);
+    --fb-muted: var(--fallback-muted-dark);
+    --fb-accent-fill: var(--fallback-accent-fill-dark);
+    --fb-accent-fill-hover: var(--fallback-accent-fill-hover-dark);
+    --fb-accent-text: var(--fallback-accent-text-dark);
+    --fb-danger-fill: var(--fallback-danger-fill-dark);
+    --fb-danger-fill-hover: var(--fallback-danger-fill-hover-dark);
+    --fb-danger-text: var(--fallback-danger-text-dark);
+    --fb-warn: var(--fallback-warn-dark);
+    --fb-scroll-thumb: var(--fallback-scroll-thumb-dark);
+  }
+}
+
+@supports (color: light-dark(white, black)) {
+  :root,
+  :host,
+  .deck-theme-host {
+    --fb-bg: light-dark(var(--fallback-bg-light), var(--fallback-bg-dark));
+    --fb-surface: light-dark(var(--fallback-surface-light), var(--fallback-surface-dark));
+    --fb-surface-2: light-dark(var(--fallback-surface-2-light), var(--fallback-surface-2-dark));
+    --fb-surface-hover: light-dark(var(--fallback-surface-hover-light), var(--fallback-surface-hover-dark));
+    --fb-border: light-dark(var(--fallback-border-light), var(--fallback-border-dark));
+    --fb-control-border: light-dark(
+      var(--fallback-control-border-light),
+      var(--fallback-control-border-dark)
+    );
+    --fb-agent-border: light-dark(var(--fallback-agent-border-light), var(--fallback-agent-border-dark));
+    --fb-text: light-dark(var(--fallback-text-light), var(--fallback-text-dark));
+    --fb-muted: light-dark(var(--fallback-muted-light), var(--fallback-muted-dark));
+    --fb-accent-fill: light-dark(var(--fallback-accent-fill-light), var(--fallback-accent-fill-dark));
+    --fb-accent-fill-hover: light-dark(
+      var(--fallback-accent-fill-hover-light),
+      var(--fallback-accent-fill-hover-dark)
+    );
+    --fb-accent-text: light-dark(var(--fallback-accent-text-light), var(--fallback-accent-text-dark));
+    --fb-danger-fill: light-dark(var(--fallback-danger-fill-light), var(--fallback-danger-fill-dark));
+    --fb-danger-fill-hover: light-dark(
+      var(--fallback-danger-fill-hover-light),
+      var(--fallback-danger-fill-hover-dark)
+    );
+    --fb-danger-text: light-dark(var(--fallback-danger-text-light), var(--fallback-danger-text-dark));
+    --fb-warn: light-dark(var(--fallback-warn-light), var(--fallback-warn-dark));
+    --fb-scroll-thumb: light-dark(var(--fallback-scroll-thumb-light), var(--fallback-scroll-thumb-dark));
+  }
+}
+
+/* Explicit user toggle overrides MUST come after @supports(light-dark) and beat host inline color-scheme */
+:root[data-theme="light"],
+:root:has(> head > meta[name="color-scheme"][content="light"]),
+.deck-theme-host[data-theme="light"] {
+  /* biome-ignore lint/complexity/noImportantStyles: overrides inline color-scheme injected by host useHostStyles */
+  color-scheme: light !important;
+  --fb-bg: var(--fallback-bg-light);
+  --fb-surface: var(--fallback-surface-light);
+  --fb-surface-2: var(--fallback-surface-2-light);
+  --fb-surface-hover: var(--fallback-surface-hover-light);
+  --fb-border: var(--fallback-border-light);
+  --fb-control-border: var(--fallback-control-border-light);
+  --fb-agent-border: var(--fallback-agent-border-light);
+  --fb-text: var(--fallback-text-light);
+  --fb-muted: var(--fallback-muted-light);
+  --fb-accent-fill: var(--fallback-accent-fill-light);
+  --fb-accent-fill-hover: var(--fallback-accent-fill-hover-light);
+  --fb-accent-text: var(--fallback-accent-text-light);
+  --fb-danger-fill: var(--fallback-danger-fill-light);
+  --fb-danger-fill-hover: var(--fallback-danger-fill-hover-light);
+  --fb-danger-text: var(--fallback-danger-text-light);
+  --fb-warn: var(--fallback-warn-light);
+  --fb-scroll-thumb: var(--fallback-scroll-thumb-light);
+  --bg: var(--fallback-bg-light);
+  --surface: var(--fallback-surface-light);
+  --surface-2: var(--fallback-surface-2-light);
+  --border: var(--fallback-border-light);
+  --text: var(--fallback-text-light);
+  --muted: var(--fallback-muted-light);
+  --accent-text: var(--fallback-accent-text-light);
+  --danger: var(--fallback-danger-text-light);
+  --warn: var(--fallback-warn-light);
+}
+
+:root[data-theme="dark"],
+:root:has(> head > meta[name="color-scheme"][content="dark"]),
+.deck-theme-host[data-theme="dark"] {
+  /* biome-ignore lint/complexity/noImportantStyles: overrides inline color-scheme injected by host useHostStyles */
+  color-scheme: dark !important;
+  --fb-bg: var(--fallback-bg-dark);
+  --fb-surface: var(--fallback-surface-dark);
+  --fb-surface-2: var(--fallback-surface-2-dark);
+  --fb-surface-hover: var(--fallback-surface-hover-dark);
+  --fb-border: var(--fallback-border-dark);
+  --fb-control-border: var(--fallback-control-border-dark);
+  --fb-agent-border: var(--fallback-agent-border-dark);
+  --fb-text: var(--fallback-text-dark);
+  --fb-muted: var(--fallback-muted-dark);
+  --fb-accent-fill: var(--fallback-accent-fill-dark);
+  --fb-accent-fill-hover: var(--fallback-accent-fill-hover-dark);
+  --fb-accent-text: var(--fallback-accent-text-dark);
+  --fb-danger-fill: var(--fallback-danger-fill-dark);
+  --fb-danger-fill-hover: var(--fallback-danger-fill-hover-dark);
+  --fb-danger-text: var(--fallback-danger-text-dark);
+  --fb-warn: var(--fallback-warn-dark);
+  --fb-scroll-thumb: var(--fallback-scroll-thumb-dark);
+  --bg: var(--fallback-bg-dark);
+  --surface: var(--fallback-surface-dark);
+  --surface-2: var(--fallback-surface-2-dark);
+  --border: var(--fallback-border-dark);
+  --text: var(--fallback-text-dark);
+  --muted: var(--fallback-muted-dark);
+  --accent-text: var(--fallback-accent-text-dark);
+  --danger: var(--fallback-danger-text-dark);
+  --warn: var(--fallback-warn-dark);
+}
+
+@media (forced-colors: active) {
+  :root {
+    --bg: Canvas;
+    --surface: Canvas;
+    --surface-2: Canvas;
+    --surface-hover: Canvas;
+    --border: ButtonBorder;
+    --control-border: ButtonBorder;
+    --agent-border: Highlight;
+    --text: CanvasText;
+    --muted: GrayText;
+    --accent-fill: Highlight;
+    --accent-fill-hover: Highlight;
+    --accent-fg: HighlightText;
+    --accent-text: LinkText;
+    --danger-fill: Highlight;
+    --danger: CanvasText;
+    --warn: CanvasText;
+  }
+}
+
+html {
+  accent-color: var(--accent-fill);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body,
+.deck-theme-host {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.deck-theme-host {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  accent-color: var(--accent-fill);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* CSS-driven theme toggle branching */
+.theme-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-opt-to-light {
+  display: none;
+}
+
+.theme-opt-to-dark {
+  display: inline-flex;
+}
+
+:root[data-theme="dark"] .theme-opt-to-light,
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-opt-to-light,
+.deck-theme-host[data-theme="dark"] .theme-opt-to-light {
+  display: inline-flex;
+}
+
+:root[data-theme="dark"] .theme-opt-to-dark,
+:root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-opt-to-dark,
+.deck-theme-host[data-theme="dark"] .theme-opt-to-dark {
+  display: none;
+}
+
+:root[data-theme="light"] .theme-opt-to-light,
+:root:has(> head > meta[name="color-scheme"][content="light"]) .theme-opt-to-light,
+.deck-theme-host[data-theme="light"] .theme-opt-to-light {
+  display: none;
+}
+
+:root[data-theme="light"] .theme-opt-to-dark,
+:root:has(> head > meta[name="color-scheme"][content="light"]) .theme-opt-to-dark,
+.deck-theme-host[data-theme="light"] .theme-opt-to-dark {
+  display: inline-flex;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(:has(> head > meta[name="color-scheme"][content="light"]))
+    .theme-opt-to-light,
+  .deck-theme-host:not([data-theme="light"]) .theme-opt-to-light {
+    display: inline-flex;
+  }
+
+  :root:not([data-theme="light"]):not(:has(> head > meta[name="color-scheme"][content="light"]))
+    .theme-opt-to-dark,
+  .deck-theme-host:not([data-theme="light"]) .theme-opt-to-dark {
+    display: none;
+  }
+}
+
+.deck {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.deck.deck-embedded {
+  height: 100%;
+  min-height: 100%;
+}
+
+.deck-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.deck-main > [role="tabpanel"]:not([hidden]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-inner {
+  padding: 12px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-inner.panel-fill {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.deck-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.deck-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.deck-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger-fill);
+  flex: none;
+}
+
+.status-dot.ok {
+  background: var(--accent-fill);
+}
+
+.deck-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.tablist {
+  display: flex;
+  overflow-x: auto;
+  gap: 4px;
+  padding: 0 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+
+.tab-btn {
+  position: relative;
+  flex: none;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font: 600 12px / 1.2 inherit;
+  padding: 10px 10px;
+  cursor: pointer;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.tab-btn[aria-selected="true"] {
+  color: var(--accent-text);
+}
+
+.tab-btn[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 4px 0;
+  border-block-end: 2px solid var(--accent-text);
+}
+
+.scroller {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+@supports not (scrollbar-color: auto) {
+  .scroller {
+    scrollbar-width: auto;
+  }
+  .scroller::-webkit-scrollbar {
+    width: 8px;
+  }
+  .scroller::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 4px;
+  }
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card.warn {
+  border-color: var(--warn);
+}
+
+.card.danger {
+  border-color: var(--danger);
+}
+
+.card.agent-box {
+  border-color: var(--agent-border);
+  flex: 0 0 auto;
+}
+
+.agent-tabs-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 34vh;
+  overflow-y: auto;
+}
+
+.card.fill-card {
+  flex: 1 1 auto;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.search-input {
+  width: 100%;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font: 400 12px / 1.3 inherit;
+  flex: 0 0 auto;
+}
+
+.search-input::placeholder {
+  color: var(--muted);
+}
+
+.search-input:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -1px;
+  border-color: var(--accent-text);
+}
+
+.virtual-list {
+  width: 100%;
+  padding-right: 2px;
+}
+
+.virtual-list-fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Accessible Security Toggletips (popover="hint" + interestfor + CSS Anchor Positioning) */
+.security-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.security-label-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.infotip-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.infotip-btn {
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid var(--control-border);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 700 11px / 1 inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+  --interest-delay-start: 0.2s;
+  /* biome-ignore lint/correctness/noUnknownProperty: CSS Interest Invokers spec (Chrome 135+) */
+  interest-delay-start: var(--interest-delay-start);
+  --interest-delay-end: 0.12s;
+  /* biome-ignore lint/correctness/noUnknownProperty: CSS Interest Invokers spec (Chrome 135+) */
+  interest-delay-end: var(--interest-delay-end);
+}
+
+.infotip-btn:hover,
+.infotip-btn:focus-visible,
+/* biome-ignore lint/correctness/noUnknownPseudoClass: CSS Interest Invokers spec (Chrome 135+) */
+.infotip-btn:is(:interest-source, .interest-source) {
+  border-color: var(--accent-text);
+  color: var(--accent-text);
+  outline: none;
+}
+
+/* biome-ignore lint/correctness/noUnknownPseudoClass: CSS Interest Invokers spec (Chrome 135+) */
+.security-card:has([interestfor]:is(:interest-source, .interest-source)) [interestfor] {
+  --interest-delay-start: 0s;
+}
+
+.infotip-popover {
+  max-width: 280px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: 400 12px / 1.45 inherit;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+@supports (position-area: block-end) {
+  .infotip-popover {
+    inset: auto;
+    margin: 6px 0 0;
+    position-area: block-end span-inline-end;
+    position-try-fallbacks:
+      flip-block,
+      flip-inline,
+      flip-block flip-inline;
+  }
+}
+
+@supports not (position-area: block-end) {
+  .infotip-popover {
+    position: fixed;
+    inset: auto 12px 12px 12px;
+    width: auto;
+    max-width: none;
+    margin: 0;
+  }
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--control-border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font: 600 12px / 1.2 inherit;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent-text);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+
+.btn.icon-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.btn.icon-btn:hover {
+  color: var(--text);
+}
+
+.btn.primary {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--accent-fg);
+}
+
+.btn.primary:hover {
+  background: var(--accent-fill-hover);
+  border-color: var(--accent-fill-hover);
+}
+
+.btn.danger {
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
+  color: #ffffff;
+}
+
+.btn.danger:hover {
+  background: var(--danger-fill-hover);
+  border-color: var(--danger-fill-hover);
+}
+
+.btn.small {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.select {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  padding: 4px 8px;
+  font: 500 12px / 1.2 inherit;
+}
+
+.select.lang-select {
+  width: auto;
+  min-width: 60px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  line-height: 24px;
+  box-sizing: border-box;
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.pill.accent {
+  border-color: var(--accent-text);
+  color: var(--accent-text);
+}
+
+.pill.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.pill.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.item-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.item-title {
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-sub {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.screenshot-frame {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  display: block;
+  max-height: 280px;
+  object-fit: contain;
+  background: var(--surface-2);
+}
+
+.code-box {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font:
+    400 11px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* v2.0 Progressive Disclosure & Presets */
+.advanced-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.advanced-box > summary {
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.advanced-box > summary::after {
+  content: "▸";
+  font-size: 11px;
+  transition: transform 140ms ease;
+}
+
+.advanced-box[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.advanced-box > summary:hover {
+  color: var(--text);
+}
+
+.advanced-body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preset-chip {
+  appearance: none;
+  border: 1px solid var(--control-border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font: 500 11px / 1.3 inherit;
+  cursor: pointer;
+}
+
+.preset-chip.active {
+  border-color: var(--accent-text);
+  color: var(--accent-text);
+}
+
+.toast-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--accent-border, var(--accent-text));
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.toast-text {
+  min-width: 0;
+  word-break: break-all;
+}
+
+.toast-close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 600 15px / 1 inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  flex: none;
+}
+
+.toast-close:hover {
+  color: var(--text);
+}

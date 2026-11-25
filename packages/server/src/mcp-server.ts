@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -32,10 +31,15 @@ import {
 } from '@chrome-browser-mcp/protocol';
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { createDeckPinCache, executeDeckTool } from './deck-actions.js';
 import { type BrowserHubInterface, SERVER_VERSION } from './hub.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const DECK_APP_URI = 'ui://chrome-browser/deck.html';
+
+const DECK_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none"><defs><linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#0f172a"/></linearGradient></defs><rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/><path d="M34 52 C34 35, 52 28, 68 34 L82 40" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/><path d="M94 76 C94 93, 76 100, 60 94 L46 88" stroke="#93c5fd" stroke-width="10" stroke-linecap="round"/><path d="M36 74 L92 54" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity="0.9"/><circle cx="64" cy="64" r="11" fill="#ffffff"/><circle cx="64" cy="64" r="5" fill="#1d4ed8"/></svg>';
+const DECK_ICON_DATA_URI = `data:image/svg+xml;base64,${Buffer.from(DECK_ICON_SVG, 'utf8').toString('base64')}`;
 
 const PAYMENT_KEYWORDS =
   /\b(pay\s*now|place\s*order|confirm\s*purchase|checkout|complete\s*payment|transfer\s*funds|delete\s*account)\b/i;
@@ -173,50 +177,13 @@ function safeOriginFromUrl(url: string): string {
   }
 }
 
-async function copySixDigitPinToClipboard(pin: string): Promise<boolean> {
-  if (!/^\d{6}$/.test(pin) || process.env.VITEST === 'true') return false;
-  const candidates: Array<{ cmd: string; args: string[] }> =
-    process.platform === 'darwin'
-      ? [{ cmd: 'pbcopy', args: [] }]
-      : process.platform === 'win32'
-        ? [{ cmd: 'clip', args: [] }]
-        : [
-            { cmd: 'wl-copy', args: [] },
-            { cmd: 'xclip', args: ['-selection', 'clipboard'] },
-            { cmd: 'xsel', args: ['--clipboard', '--input'] },
-          ];
-
-  for (const { cmd, args } of candidates) {
-    const ok = await new Promise<boolean>((resolvePromise) => {
-      let settled = false;
-      const done = (val: boolean) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolvePromise(val);
-      };
-      const timer = setTimeout(() => done(false), 1500);
-      try {
-        const child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
-        child.once('error', () => done(false));
-        child.once('close', (code) => done(code === 0));
-        child.stdin?.once('error', () => done(false));
-        child.stdin?.end(pin, 'utf8');
-      } catch {
-        done(false);
-      }
-    });
-    if (ok) return true;
-  }
-  return false;
-}
-
 export function createBrowserMcpServer(
   hub: BrowserHubInterface,
   options?: { deckSecret?: string },
 ): McpServer {
   // Per-server (or per-broker HTTP) capability secret embedded strictly in deck.html
   const deckSecret = options?.deckSecret || randomBytes(24).toString('hex');
+  const pinCache = createDeckPinCache();
   const assertDeckSecret = (candidate?: string): void => {
     if (typeof candidate !== 'string' || !candidate) {
       throw new Error(
@@ -236,6 +203,7 @@ export function createBrowserMcpServer(
     {
       name: 'chrome-browser-mcp',
       version: SERVER_VERSION,
+      icons: [{ src: DECK_ICON_DATA_URI, mimeType: 'image/svg+xml' }],
     },
     {
       capabilities: {
@@ -246,7 +214,7 @@ export function createBrowserMcpServer(
   );
 
   // -------------------------------------------------------------------------
-  // MCP App Resource (SEP-1865)
+  // MCP App Resource (SEP-1865 — Antigravity, Codex Desktop, Claude Desktop)
   // -------------------------------------------------------------------------
 
   server.registerResource(
@@ -255,11 +223,15 @@ export function createBrowserMcpServer(
     {
       title: 'Browser Control Deck',
       description:
-        'Live Antigravity MCP App for controlling connected Chrome tabs, approvals, DevTools errors, and recorded workflows.',
+        'Live MCP App for controlling connected Chrome tabs, approvals, DevTools errors, and recorded workflows.',
       mimeType: 'text/html;profile=mcp-app',
       _meta: {
         ui: {
           prefersBorder: false,
+          csp: {
+            connectDomains: [],
+            resourceDomains: [],
+          },
         },
       },
     },
@@ -269,6 +241,15 @@ export function createBrowserMcpServer(
           uri: uri.href,
           mimeType: 'text/html;profile=mcp-app',
           text: loadDeckHtml(deckSecret),
+          _meta: {
+            ui: {
+              prefersBorder: false,
+              csp: {
+                connectDomains: [],
+                resourceDomains: [],
+              },
+            },
+          },
         },
       ],
     }),
@@ -1642,15 +1623,16 @@ export function createBrowserMcpServer(
   );
 
   // -------------------------------------------------------------------------
-  // 15. browser_deck — Antigravity MCP App Entrypoint (aux_pane + global)
+  // 15. browser_deck — Multi-Host MCP App Entrypoint (Antigravity + Codex + Claude)
   // -------------------------------------------------------------------------
 
   server.registerTool(
     'browser_deck',
     {
-      title: 'Browser Control Deck',
+      title: 'Browser Deck',
       description:
         'Open or refresh the interactive Browser Control Deck UI showing connected browser profiles, AI Agent tab group, live action timeline, screenshots, DevTools errors, approvals, and recorded workflows.',
+      icons: [{ src: DECK_ICON_DATA_URI, mimeType: 'image/svg+xml' }],
       inputSchema: z.object({
         focusTab: z.enum(['overview', 'timeline', 'devtools', 'workflows', 'security']).optional(),
       }),
@@ -1663,6 +1645,9 @@ export function createBrowserMcpServer(
             { type: 'aux_pane', title: 'Browser Deck' },
             { type: 'global', title: 'Browser Deck' },
           ],
+        },
+        'openai/ui': {
+          entrypoints: [{ type: 'global' }, { type: 'thread' }],
         },
       },
     },
@@ -1693,6 +1678,11 @@ export function createBrowserMcpServer(
 
   const APP_ONLY_META = { ui: { visibility: ['app'] } };
 
+  const toDeckToolResponse = (result: { text: string; structuredContent: Record<string, unknown> }) => ({
+    content: [{ type: 'text' as const, text: result.text }],
+    structuredContent: result.structuredContent,
+  });
+
   server.registerTool(
     'deck_get_state',
     {
@@ -1700,13 +1690,13 @@ export function createBrowserMcpServer(
       inputSchema: z.object({}),
       _meta: APP_ONLY_META,
     },
-    async () => {
-      const state = await hub.getDeckState();
-      return {
-        content: [{ type: 'text', text: 'ok' }],
-        structuredContent: { state },
-      };
-    },
+    async () =>
+      toDeckToolResponse(
+        (await executeDeckTool(hub, 'deck_get_state', {}, pinCache)) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
+      ),
   );
 
   server.registerTool(
@@ -1718,12 +1708,12 @@ export function createBrowserMcpServer(
     },
     async ({ paused, deckSecret: supplied }) => {
       assertDeckSecret(supplied);
-      await hub.setPaused(paused);
-      const state = await hub.getDeckState();
-      return {
-        content: [{ type: 'text', text: paused ? 'paused' : 'resumed' }],
-        structuredContent: { state },
-      };
+      return toDeckToolResponse(
+        (await executeDeckTool(hub, 'deck_set_paused', { paused }, pinCache)) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
+      );
     },
   );
 
@@ -1736,12 +1726,12 @@ export function createBrowserMcpServer(
     },
     async ({ profileId, deckSecret: supplied }) => {
       assertDeckSecret(supplied);
-      await hub.selectDefaultProfile(profileId);
-      const state = await hub.getDeckState();
-      return {
-        content: [{ type: 'text', text: `selected ${profileId}` }],
-        structuredContent: { state },
-      };
+      return toDeckToolResponse(
+        (await executeDeckTool(hub, 'deck_select_profile', { profileId }, pinCache)) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
+      );
     },
   );
 
@@ -1760,22 +1750,17 @@ export function createBrowserMcpServer(
     },
     async ({ profileId, tabId, action, bringToFront, deckSecret: supplied }) => {
       assertDeckSecret(supplied);
-      const map = {
-        attach: 'tabs.attach',
-        detach: 'tabs.detach',
-        focus: 'tabs.focus',
-        close: 'tabs.close',
-      } as const;
-      await hub.callExtension(
-        map[action],
-        { tabId, userInitiated: true, bringToFront: Boolean(bringToFront) },
-        { profileId, skipPauseCheck: true },
+      return toDeckToolResponse(
+        (await executeDeckTool(
+          hub,
+          'deck_tab_action',
+          { profileId, tabId, action, bringToFront },
+          pinCache,
+        )) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
       );
-      const state = await hub.getDeckState();
-      return {
-        content: [{ type: 'text', text: `tab ${tabId} ${action}` }],
-        structuredContent: { state },
-      };
     },
   );
 
@@ -1792,12 +1777,17 @@ export function createBrowserMcpServer(
     },
     async ({ approvalId, decision, deckSecret: supplied }) => {
       assertDeckSecret(supplied);
-      await hub.resolveApproval(approvalId, decision);
-      const state = await hub.getDeckState();
-      return {
-        content: [{ type: 'text', text: `${approvalId}: ${decision}` }],
-        structuredContent: { state },
-      };
+      return toDeckToolResponse(
+        (await executeDeckTool(
+          hub,
+          'deck_resolve_approval',
+          { approvalId, decision },
+          pinCache,
+        )) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
+      );
     },
   );
 
@@ -1810,12 +1800,12 @@ export function createBrowserMcpServer(
     },
     async ({ deckSecret: supplied, ...patch }) => {
       assertDeckSecret(supplied);
-      await hub.updatePolicy(patch);
-      const state = await hub.getDeckState();
-      return {
-        content: [{ type: 'text', text: 'policy updated' }],
-        structuredContent: { state },
-      };
+      return toDeckToolResponse(
+        (await executeDeckTool(hub, 'deck_update_policy', patch, pinCache)) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
+      );
     },
   );
 
@@ -1828,12 +1818,12 @@ export function createBrowserMcpServer(
     },
     async ({ workflowId, deckSecret: supplied }) => {
       assertDeckSecret(supplied);
-      await hub.deleteWorkflow(workflowId);
-      const state = await hub.getDeckState();
-      return {
-        content: [{ type: 'text', text: 'workflow deleted' }],
-        structuredContent: { state },
-      };
+      return toDeckToolResponse(
+        (await executeDeckTool(hub, 'deck_delete_workflow', { workflowId }, pinCache)) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
+      );
     },
   );
 
@@ -1849,16 +1839,14 @@ export function createBrowserMcpServer(
     },
     async ({ target, deckSecret: supplied }) => {
       assertDeckSecret(supplied);
-      await hub.clearDiagnostics(target);
-      const state = await hub.getDeckState();
-      return {
-        content: [{ type: 'text', text: `cleared ${target}` }],
-        structuredContent: { state },
-      };
+      return toDeckToolResponse(
+        (await executeDeckTool(hub, 'deck_clear_diagnostics', { target }, pinCache)) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
+      );
     },
   );
-
-  let lastMintedPin: { pin: string; expiresAt: number } | null = null;
 
   server.registerTool(
     'deck_create_pin',
@@ -1872,31 +1860,12 @@ export function createBrowserMcpServer(
     },
     async ({ deckSecret: supplied, copyActive }) => {
       assertDeckSecret(supplied);
-      if (copyActive && lastMintedPin && Date.now() < lastMintedPin.expiresAt) {
-        const copied = await copySixDigitPinToClipboard(lastMintedPin.pin);
-        return {
-          content: [{ type: 'text', text: copied ? 'Pairing PIN copied' : 'Pairing PIN ready' }],
-          structuredContent: {
-            pin: lastMintedPin.pin,
-            expiresAt: lastMintedPin.expiresAt,
-            copied,
-          },
-        };
-      }
-      const { pin, expiresAt } = await hub.createPairingPin();
-      lastMintedPin = { pin, expiresAt };
-      const copied = await copySixDigitPinToClipboard(pin);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: copied
-              ? 'Pairing PIN generated and copied to clipboard (valid 2 min)'
-              : 'Pairing PIN generated (valid 2 min)',
-          },
-        ],
-        structuredContent: { pin, expiresAt, copied },
-      };
+      return toDeckToolResponse(
+        (await executeDeckTool(hub, 'deck_create_pin', { copyActive }, pinCache)) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
+      );
     },
   );
 
@@ -1915,16 +1884,17 @@ export function createBrowserMcpServer(
     },
     async ({ profileId, tabId, accept, promptText, deckSecret: supplied }) => {
       assertDeckSecret(supplied);
-      await hub.callExtension(
-        'page.dialog',
-        { action: accept ? 'accept' : 'dismiss', tabId, promptText },
-        { profileId, skipPauseCheck: true },
+      return toDeckToolResponse(
+        (await executeDeckTool(
+          hub,
+          'deck_handle_dialog',
+          { profileId, tabId, accept, promptText },
+          pinCache,
+        )) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
       );
-      const state = await hub.getDeckState();
-      return {
-        content: [{ type: 'text', text: accept ? 'dialog accepted' : 'dialog dismissed' }],
-        structuredContent: { state },
-      };
     },
   );
 

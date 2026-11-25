@@ -31,11 +31,13 @@ import {
   saveWorkflows,
 } from '../shared/storage.js';
 import { CdpManager } from './cdp-manager.js';
+import { CONTEXT_MENU_TOGGLE_TAB, createContextMenuRegistrar } from './context-menus.js';
 
 const EXTENSION_VERSION = APP_VERSION;
 const ALARM_WATCHDOG = 'chrome-browser-mcp-watchdog';
-const CONTEXT_MENU_TOGGLE_TAB = 'chrome-browser-mcp-toggle-tab';
 const AGENT_GROUP_TITLE = 'AI Agent';
+const ensureContextMenus = createContextMenuRegistrar();
+let initPromise: Promise<void> | null = null;
 
 let socket: WebSocket | null = null;
 let nativePort: chrome.runtime.Port | null = null;
@@ -97,23 +99,29 @@ cdp.initListeners();
 // Initialization, Side Panel Trigger, Context Menus, Commands, Alarms
 // ---------------------------------------------------------------------------
 
-async function initializeExtension(): Promise<void> {
-  try {
-    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  } catch {
-    // Fallback handled by chrome.action.onClicked
-  }
+function initializeExtension(): Promise<void> {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    try {
+      try {
+        await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+      } catch {
+        // Fallback handled by chrome.action.onClicked
+      }
 
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: CONTEXT_MENU_TOGGLE_TAB,
-      title: 'Toggle tab in AI Agent group',
-      contexts: ['page'],
-    });
-  });
+      await ensureContextMenus();
 
-  await chrome.alarms.create(ALARM_WATCHDOG, { periodInMinutes: 0.5 });
-  await connectBroker();
+      try {
+        await chrome.alarms.create(ALARM_WATCHDOG, { periodInMinutes: 0.5 });
+      } catch {
+        // Ignore transient alarm creation failures during startup
+      }
+      await connectBroker();
+    } finally {
+      initPromise = null;
+    }
+  })();
+  return initPromise;
 }
 
 chrome.runtime.onInstalled.addListener((details) => {
@@ -287,8 +295,12 @@ async function tryConnectNativeHost(): Promise<boolean> {
       }
     });
     port.onDisconnect.addListener(() => {
+      const disconnectError = chrome.runtime.lastError?.message;
       nativePort = null;
-      void saveRuntimeState({ connected: false, lastError: 'Native Messaging Host disconnected' });
+      void saveRuntimeState({
+        connected: false,
+        lastError: disconnectError || 'Native Messaging Host disconnected',
+      });
       void updateBadge();
       void notifySidePanel();
     });

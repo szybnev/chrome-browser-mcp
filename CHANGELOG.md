@@ -4,6 +4,23 @@ All notable changes to **Chrome Browser MCP** are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] - 2026-11-25
+
+### Added
+
+- **Browser Control Deck for Codex Desktop, OpenCode Desktop, and OpenChamber Desktop**: view connected Chrome profiles and AI Agent tabs in each application's side panel. Codex and OpenChamber also provide a standalone Deck view.
+
+### Fixed
+
+- Desktop plugins load their bundled server from installed copies. OpenCode and OpenChamber report an incompatible running broker when it lacks the Deck endpoint.
+
+## [2.1.1] - 2026-11-25
+
+### Fixed
+
+- **Prevent duplicate context menu ID error on startup/update**: serialized `initializeExtension()` and context menu registration (`createContextMenuRegistrar`) with single-flight deduplication, explicit `chrome.runtime.lastError` handling on `removeAll`/`create`/`update`, and a duplicate-ID fallback to `chrome.contextMenus.update`, eliminating `Unchecked runtime.lastError: Cannot create item with duplicate id chrome-browser-mcp-toggle-tab` when `onInstalled` and `onStartup` race.
+- **Consume `chrome.runtime.lastError` on Native Messaging disconnect**: read `chrome.runtime.lastError?.message` in `port.onDisconnect` so failed native host disconnects surface cleanly without logging an unchecked error.
+
 ## [2.1.0] - 2026-11-24
 
 ### Security

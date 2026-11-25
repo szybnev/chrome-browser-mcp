@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "chrome-browser": {
+      "command": "bash",
+      "args": ["./bin/start-server.sh"],
+      "cwd": ".",
+      "env_vars": [
+        "CHROME_BROWSER_MCP_CLI",
+        "CHROME_BROWSER_MCP_PORT",
+        "CHROME_BROWSER_MCP_DATA_DIR",
+        "CHROME_BROWSER_MCP_TOKEN",
+        "CODEX_MCP_NODE_PATH"
+      ],
+      "startup_timeout_sec": 30,
+      "tool_timeout_sec": 120
+    }
+  }
+}

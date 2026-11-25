@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "chrome-browser": {
+      "type": "stdio",
+      "command": "bash",
+      "args": ["./bin/start-server.sh"]
+    }
+  }
+}

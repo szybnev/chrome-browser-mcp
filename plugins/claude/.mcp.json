@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "chrome-browser": {
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/start-server.sh"]
+    }
+  }
+}

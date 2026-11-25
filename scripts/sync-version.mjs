@@ -25,6 +25,12 @@ const JSON_TARGETS = [
   'packages/extension/manifest.json',
   'packages/mcp-app/package.json',
   'plugins/antigravity/plugin.json',
+  'plugins/codex/plugin.json',
+  'plugins/codex/.codex-plugin/plugin.json',
+  'plugins/openchamber/package.json',
+  'plugins/opencode/package.json',
+  'plugins/claude/.claude-plugin/plugin.json',
+  'plugins/claude/mcpb/manifest.json',
 ];
 
 const VERSION_TS_REL = 'packages/protocol/src/version.ts';

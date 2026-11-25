@@ -1,0 +1,12 @@
+{
+  "name": "opencode-chrome-browser-mcp",
+  "version": "2.2.0",
+  "description": "Chrome Browser MCP plugin for OpenCode Desktop — auto-registers the Chrome Browser MCP server and adds the interactive Browser Control Deck side panel via @opencode/plugin/gui.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./bundle/server.js",
+    "./gui-experimental": "./bundle/gui-experimental.cjs"
+  }
+}

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { startBrokerDaemon } from './broker.js';
 import { loadBrokerConfig, loadOrCreateToken, resolveDataDir } from './config.js';
+import { SERVER_VERSION } from './hub.js';
 import { createBrowserMcpServer } from './mcp-server.js';
 import { installNativeMessagingHost, runNativeMessagingHost } from './native-host.js';
 import { RemoteBrokerHub } from './remote-hub.js';
@@ -48,17 +49,28 @@ function parseArgs(argv: string[]) {
   return { command, port, dataDir, idleExit, rotate, enableCdpProxy, extensionId };
 }
 
-async function isBrokerHealthy(brokerUrl: string): Promise<boolean> {
+async function getBrokerHealth(
+  brokerUrl: string,
+): Promise<{ ok: boolean; version?: string; activeLeases?: number } | null> {
   try {
     const res = await fetch(`${brokerUrl}/health`, { signal: AbortSignal.timeout(1000) });
-    return res.ok;
+    if (!res.ok) return null;
+    return (await res.json()) as { ok: boolean; version?: string; activeLeases?: number };
   } catch {
-    return false;
+    return null;
   }
 }
 
 async function ensureBrokerRunning(config: ReturnType<typeof loadBrokerConfig>): Promise<void> {
-  if (await isBrokerHealthy(config.brokerUrl)) return;
+  const existing = await getBrokerHealth(config.brokerUrl);
+  if (existing) {
+    if (existing.version && existing.version !== SERVER_VERSION) {
+      console.error(
+        `[chrome-browser-mcp] Warning: running broker at ${config.brokerUrl} is v${existing.version} (client is v${SERVER_VERSION}, activeLeases=${existing.activeLeases ?? 0}). Leaving active broker running; restart the broker daemon if newer routes (e.g. /internal/deck-tool) are needed.`,
+      );
+    }
+    return;
+  }
 
   const cliPath = fileURLToPath(import.meta.url);
   const child = spawn(
@@ -74,7 +86,7 @@ async function ensureBrokerRunning(config: ReturnType<typeof loadBrokerConfig>):
 
   const deadline = Date.now() + 8000;
   while (Date.now() < deadline) {
-    if (await isBrokerHealthy(config.brokerUrl)) return;
+    if (await getBrokerHealth(config.brokerUrl)) return;
     await new Promise((r) => setTimeout(r, 150));
   }
   throw new Error(`Failed to start local Chrome Browser MCP broker at ${config.brokerUrl}`);
