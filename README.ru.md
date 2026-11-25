@@ -6,7 +6,7 @@
 
 **Расширение Chrome (MV3) и MCP v2 сервер нового поколения для AI browser use в реальных сессиях**
 
-Гибридный Content Script + On-Demand CDP · Нативный WebMCP · Prompt-Injection Shield · Запись воркфлоу · Мультипрофильный брокер · MCP App Control Deck для Antigravity
+Гибридный Content Script + On-Demand CDP · Нативный WebMCP · Prompt-Injection Shield · Запись воркфлоу · Мультипрофильный брокер · Единый UI Browser Control Deck (Antigravity · Codex · OpenChamber · OpenCode · Claude)
 
 [English](./README.md) · **Русский** · [简体中文](./README.zh-CN.md)
 
@@ -37,7 +37,7 @@
 | **Несколько агентов и профилей**    | Общий локальный Broker Daemon (Streamable HTTP + авто-запускаемый `stdio`-шим с lease-моделью) для параллельной работы агентов и браузеров                                   | Конфликт портов (`EADDRINUSE`) при 2+ клиентах                          |
 | **Безопасность и контроль**         | Выделенная цветная группа вкладок **AI Agent**, редактируемый blocklist доменов, подтверждение опасных действий, **Prompt-Injection Shield**, мгновенная пауза `Alt+Shift+P` | Неограниченный доступ ко всем вкладкам или подтверждение на каждый клик |
 | **WebMCP и запись воркфлоу**        | Автообнаружение `navigator.modelContext` + режим «покажи руками» (Workflow Recorder с маскированием паролей)                                                                 | Только ручные клики по DOM                                              |
-| **UI внутри Antigravity (MCP App)** | Встроенный **Browser Control Deck** (`ui://chrome-browser/deck.html`) в боковой панели (`aux_pane`) и глобальном виде (`global`)                                             | Только текстовые ответы инструментов                                    |
+| **Нативный UI в десктопных харнесах** | Встроенный **Browser Control Deck** для **Google Antigravity**, **Codex Desktop**, **OpenChamber Desktop**, **OpenCode Desktop** и **Claude Desktop** (Code Mod + `.mcpb` MCP App) | Только текстовые ответы инструментов                                    |
 
 ---
 
@@ -77,13 +77,13 @@
 
 ```mermaid
 flowchart LR
-    subgraph Clients["AI-агенты / MCP-хосты"]
-        AGY["Antigravity (MCP + Control Deck UI)"]
-        CLI["Claude Code / Codex / Cursor"]
+    subgraph Clients["Десктопные AI-харнесы и MCP-хосты"]
+        DECK["Antigravity · Codex · OpenChamber · OpenCode · Claude (MCP + Control Deck UI)"]
+        CLI["Обычные MCP-клиенты (Cursor · Claude Code · HTTP/stdio)"]
     end
 
     subgraph Broker["Local Broker Daemon (127.0.0.1:43179)"]
-        MCP["Streamable HTTP /mcp + stdio-шим"]
+        MCP["Streamable HTTP /mcp + stdio-шим + /internal/deck-tool"]
         HUB["Роутер профилей и Approval Engine"]
         WS["Защищённый WebSocket Hub (/ws)"]
     end
@@ -95,7 +95,7 @@ flowchart LR
         CS["Content Script (Snapshot, WebMCP, Shield, Visual HUD)"]
     end
 
-    AGY --> MCP
+    DECK --> MCP
     CLI --> MCP
     MCP --> HUB
     HUB --> WS
@@ -133,11 +133,33 @@ node packages/server/dist/cli.js pair
 ```
 Введите 6-значный PIN в **Welcome Tour** или вкладке **Связь (Pair)** боковой панели Chrome (либо раскройте **Расширенное подключение**, чтобы вставить статический токен из `cli.js token`).
 
-### 4. Подключение AI-агента
+### 4. Подключение десктопного AI-харнеса
 
-#### Antigravity (Плагин + MCP App Control Deck + Skill)
+Chrome Browser MCP поставляется с нативными GUI-интеграциями и единым **Browser Control Deck** для всех популярных десктопных AI-харнесов. Все клиенты подключаются к **одному общему локальному Broker Daemon** (`127.0.0.1:43179`), поэтому достаточно один раз привязать Chrome — и управлять живыми вкладками можно параллельно из всех установленных харнесов.
 
-Подключите `plugins/antigravity` в `~/.gemini/config/plugins/chrome-browser-mcp`:
+| Десктопный харнес | Пакет интеграции | Поверхность Browser Control Deck | Авторегистрация MCP |
+| :--- | :--- | :--- | :--- |
+| **Google Antigravity** | `plugins/antigravity/` | Боковая панель (`aux_pane`) + левый сайдбар (`global`) MCP App | `mcp_config.json` |
+| **Codex Desktop** | `plugins/codex/` + `.agents/plugins/marketplace.json` | Боковая панель треда (`thread`) + глобальный сайдбар (`global`) MCP App | `mcp.json` / `.mcp.json` |
+| **OpenChamber Desktop** (`>=2.5.0`) | `plugins/openchamber/` | Правая панель (rail) + полноэкранная страница + полоса Work Status + бейдж на иконке | Встроенный `opencodePlugin` |
+| **OpenCode Desktop** (`>=2.2.0`) | `plugins/opencode/` | Нативная боковая `Panel` (Shadow DOM) + пункт в меню `+` (`session.panel`) + Command Palette (`./gui-experimental`) | Серверный плагин (`ctx.mcp.transform`) |
+| **Claude Desktop** | `plugins/claude/` + `release/chrome-browser-mcp.mcpb` | **Вкладка Code**: нативная 5-вкладочная `Pane` Claude Mod (`/browser-deck`) + строка статуса `AbovePrompt`<br>**Вкладка Chat**: пакет `.mcpb` с встроенным MCP App | `.mcp.json` / `.mcpb` |
+
+> **Автономные бандлы плагинов:** `pnpm build` упаковывает самодостаточные артефакты сервера (`server/cli.js` + `server/app/deck.html`) внутрь `plugins/codex`, `plugins/openchamber` и `plugins/opencode` **без стороннего `npx`-fallback**, поэтому плагины стабильно работают даже после копирования в кэш или каталог расширений харнеса за пределами репозитория.
+
+#### Быстрый локальный установщик
+
+Посмотреть план или установить интеграцию для нужных харнесов локально:
+
+```bash
+pnpm install:local --all --dry-run
+# Или выбрать конкретные харнесы:
+pnpm install:local --antigravity --codex --opencode --openchamber --claude
+```
+
+#### Google Antigravity (Плагин + MCP App Control Deck + Skill)
+
+Подключите `plugins/antigravity` в `~/.gemini/config/plugins/chrome-browser-mcp` (или выполните `pnpm install:local --antigravity`):
 
 ```bash
 ln -s "$(pwd)/plugins/antigravity" ~/.gemini/config/plugins/chrome-browser-mcp
@@ -148,7 +170,47 @@ Antigravity автоматически подхватит:
 - Интерактивную панель **Browser Control Deck** в меню `+` боковой панели (`aux_pane`) и в левом сайдбаре (`global`)
 - Скилл `chrome-browser-mcp` с оптимальной стратегией работы агента
 
-#### Claude Code / Cursor / Codex (`stdio` с общим брокером)
+#### Codex Desktop (Плагин Codex + Global & Thread MCP App)
+
+Зарегистрируйте репозиторий как локальный маркетплейс в `~/.codex/config.toml` (или выполните `pnpm install:local --codex` — команда также обновит локальный кэш плагина Codex):
+
+```toml
+[marketplaces.chrome-browser-mcp]
+source_type = "local"
+source = "/абсолютный/путь/к/chrome-browser-mcp"
+
+[plugins."chrome-browser-mcp@chrome-browser-mcp"]
+enabled = true
+```
+
+Codex Desktop загружает `plugins/codex/` с интерактивным **Browser Control Deck** в глобальном сайдбаре (`openai/ui: global`) и в боковой панели каждого треда (`openai/ui: thread`), а также все инструменты `browser_*` и скилл `chrome-browser-mcp`.
+
+#### OpenChamber Desktop (Правая панель + Work Status + Auto-MCP)
+
+1. Откройте **OpenChamber → Settings → Extensions**.
+2. Нажмите **Add** и укажите локальный путь `/абсолютный/путь/к/chrome-browser-mcp/plugins/openchamber` (или установите по Git URL).
+3. Подтвердите локальный loopback-сервис и встроенный плагин OpenCode.
+
+OpenChamber монтирует полноценный **Browser Control Deck** в правую панель и раздел Pages, добавляет живую полосу **Work Status** с кнопками Pause/Resume/PIN, показывает бейдж ожидающих подтверждений на иконке панели и автоматически регистрирует MCP-инструменты `chrome-browser` на встроенном сервере OpenCode.
+
+#### OpenCode Desktop (Боковая панель `@opencode/plugin/gui` + Auto-MCP)
+
+Добавьте `plugins/opencode` в глобальный `~/.config/opencode/opencode.json` (или выполните `pnpm install:local --opencode`):
+
+```json
+{
+  "plugins": ["/абсолютный/путь/к/chrome-browser-mcp/plugins/opencode"]
+}
+```
+
+OpenCode Desktop загружает серверный плагин (регистрирует `chrome-browser` через `ctx.mcp.transform`) и десктопный бандл `./gui-experimental`, добавляя боковую панель **Browser Control Deck**, пункт в меню `+` панели, команду в Command Palette (`⌘⇧P` → `Open Browser Control Deck`) и кнопку быстрого переключения на полосе вкладок.
+
+#### Claude Desktop (Claude Mod для вкладки Code + `.mcpb` для вкладки Chat)
+
+- **Вкладка Code (Claude Mod):** загрузите `plugins/claude/` как каталог плагина. Выполните `/browser-deck` в любой момент (даже во время хода агента), чтобы открыть нативную 5-вкладочную боковую панель **Browser Control Deck** вместе с живой строкой статуса `AbovePrompt` (подтверждение/отклонение действий и пауза в 1 клик).
+- **Вкладка Chat (`.mcpb` MCP Bundle):** выполните `pnpm pack:mcpb`, чтобы собрать `release/chrome-browser-mcp.mcpb`, и перетащите файл в **Claude Desktop → Settings → Extensions** для доступа ко всем инструментам `browser_*` и встроенному рендеру MCP App `browser_deck`.
+
+#### Другие MCP-клиенты (`stdio` с общим брокером)
 
 Добавьте в конфигурацию MCP (`mcp_config.json`, `.mcp.json` и т.д.):
 
@@ -209,14 +271,42 @@ node packages/server/dist/cli.js daemon
 
 ---
 
+## Структура монорепозитория
+
+```text
+chrome-browser-mcp/
+├── packages/
+│   ├── protocol/      # Общие схемы Zod v4, RPC-конверт, Prompt-Injection Shield, diff-движок
+│   ├── server/        # Локальный Broker Daemon (Streamable HTTP + stdio-шим + WS Hub + CLI)
+│   ├── extension/     # Расширение Chrome MV3 (Service Worker, On-Demand CDP, Content Script, HUD, Side Panel)
+│   └── mcp-app/       # Browser Control Deck (React + @modelcontextprotocol/ext-apps + vite-plugin-singlefile)
+├── plugins/
+│   ├── antigravity/   # Плагин Antigravity (plugin.json, mcp_config.json, SKILL.md, логотип)
+│   ├── codex/         # Плагин Codex Desktop (Agent Plugins 1.0 + .codex-plugin + mcp.json + скилл)
+│   ├── openchamber/   # Расширение OpenChamber Desktop (правая панель, страница, Work Status, loopback-сервис, opencodePlugin)
+│   ├── opencode/      # Плагин OpenCode Desktop (авторегистрация MCP + ./gui-experimental боковая панель)
+│   └── claude/        # Claude Desktop Mod (5-вкладочная Pane + AbovePrompt + .mcp.json) и манифест .mcpb
+├── .agents/plugins/   # Корневой дескриптор локального маркетплейса Codex (marketplace.json)
+├── scripts/           # Скан безопасности, сборщик плагинов харнесов, локальный установщик, упаковщики .mcpb и Chrome Web Store
+├── .githooks/         # Автоматические хуки pre-commit и pre-push
+├── CHROMEWEBSTORE.md  # Карточка Chrome Web Store, обоснования прав и раскрытие данных
+└── PRIVACY.md         # Политика приватности (100% локально, без телеметрии)
+```
+
+---
+
 ## Разработка и тестирование
 
 ```bash
-pnpm security:check  # Скан секретов + статические правила + supply-chain проверка + pnpm audit
-pnpm typecheck       # Строгая проверка TypeScript во всех 4 пакетах
-pnpm build           # Сборка protocol -> mcp-app -> server (встраивает deck.html) -> extension
-pnpm test            # Unit- и live integration-тесты (Vitest)
-pnpm pack:cws        # Сборка чистого ZIP-архива для Chrome Web Store в release/
+pnpm security:check                 # Скан секретов + статические правила + supply-chain проверка + pnpm audit
+pnpm check                          # Проверка линтера и форматирования Biome (0 предупреждений)
+pnpm typecheck                      # Строгая проверка TypeScript во всех 4 пакетах
+pnpm build                          # Сборка protocol -> mcp-app -> server (deck.html) -> extension -> плагины харнесов
+pnpm build:plugins                  # Пересборка бандлов десктопных харнесов (Codex, OpenChamber, OpenCode, Claude)
+pnpm test                           # Unit-, live Broker/MCP и тесты плагинов харнесов (Vitest)
+pnpm install:local --all --dry-run  # Предпросмотр локальной установки для Antigravity, Codex, OpenCode, OpenChamber и Claude
+pnpm pack:mcpb                      # Сборка пакета .mcpb для вкладки Chat в Claude Desktop (в release/)
+pnpm pack:cws                       # Сборка чистого ZIP-архива для Chrome Web Store (в release/)
 ```
 
 ## Лицензия

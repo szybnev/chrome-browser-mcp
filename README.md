@@ -6,7 +6,7 @@
 
 **Next-gen Chrome Extension (MV3) & MCP v2 Server for real-session AI browser use**
 
-Hybrid Content Script + On-Demand CDP · Native WebMCP · Prompt-Injection Shield · Workflow Recorder · Multi-Profile Broker · Antigravity Control Deck MCP App
+Hybrid Content Script + On-Demand CDP · Native WebMCP · Prompt-Injection Shield · Workflow Recorder · Multi-Profile Broker · Unified Browser Control Deck UI (Antigravity · Codex · OpenChamber · OpenCode · Claude)
 
 **English** · [Русский](./README.ru.md) · [简体中文](./README.zh-CN.md)
 
@@ -37,7 +37,7 @@ Most browser-use extensions force painful trade-offs: they either spin up logged
 | **Multi-Agent & Multi-Profile** | Shared local Broker Daemon (Streamable HTTP + auto-spawn `stdio` shim with lease lifecycle) multiplexing multiple agents & browsers                        | Single-client port conflicts (`EADDRINUSE`)                       |
 | **Security & Control**          | Dedicated colored **AI Agent Tab Group**, editable domain blocklist, risky-action approval gates, **Prompt-Injection Shield**, instant `Alt+Shift+P` Pause | Full unguarded browser access or constant friction                |
 | **WebMCP & Workflow Recorder**  | Native `navigator.modelContext` tool discovery + “Show by hand” workflow recorder with password masking                                                    | Manual clicking only                                              |
-| **Antigravity MCP App UI**      | Built-in **Browser Control Deck** (`ui://chrome-browser/deck.html`) in `aux_pane` & `global` views                                                         | Text-only tool output                                             |
+| **Native Desktop Harness UIs**  | Built-in **Browser Control Deck** across **Google Antigravity**, **Codex Desktop**, **OpenChamber Desktop**, **OpenCode Desktop**, and **Claude Desktop** (Code Mod + `.mcpb` MCP App) | Text-only tool output                                             |
 
 ---
 
@@ -77,13 +77,13 @@ There are several strong browser-automation extensions and MCP bridges in the ec
 
 ```mermaid
 flowchart LR
-    subgraph Clients["AI Agents / MCP Hosts"]
-        AGY["Antigravity (MCP + Control Deck UI)"]
-        CLI["Claude Code / Codex / Cursor"]
+    subgraph Clients["Desktop AI Harnesses & MCP Hosts"]
+        DECK["Antigravity · Codex · OpenChamber · OpenCode · Claude (MCP + Control Deck UI)"]
+        CLI["Generic MCP Clients (Cursor · Claude Code · HTTP/stdio)"]
     end
 
     subgraph Broker["Local Broker Daemon (127.0.0.1:43179)"]
-        MCP["Streamable HTTP /mcp + stdio shim"]
+        MCP["Streamable HTTP /mcp + stdio shim + /internal/deck-tool"]
         HUB["Multi-Profile Router & Approval Engine"]
         WS["Authenticated WebSocket Hub (/ws)"]
     end
@@ -95,7 +95,7 @@ flowchart LR
         CS["Content Script (Snapshot, WebMCP, Shield, Visual HUD)"]
     end
 
-    AGY --> MCP
+    DECK --> MCP
     CLI --> MCP
     MCP --> HUB
     HUB --> WS
@@ -135,15 +135,17 @@ Enter the 6-digit PIN in the **Welcome Tour** or **Pair** tab of the Chrome Side
 
 ### 4. Connect your Desktop AI Harness
 
-Chrome Browser MCP provides native GUI integrations with unified **Browser Control Deck** UX across all major desktop AI harnesses:
+Chrome Browser MCP provides native GUI integrations with unified **Browser Control Deck** UX across all major desktop AI harnesses. All harnesses connect to the **same shared local Broker Daemon** (`127.0.0.1:43179`), so you pair Chrome once and control live tabs seamlessly across every desktop client at the same time.
 
 | Desktop Harness | Integration Package | Control Deck UI Surface | MCP Auto-Registration |
 | :--- | :--- | :--- | :--- |
 | **Google Antigravity** | `plugins/antigravity/` | Side pane (`aux_pane`) + Left sidebar (`global`) MCP App | `mcp_config.json` |
 | **Codex Desktop** | `plugins/codex/` + `.agents/plugins/marketplace.json` | Thread side panel (`thread`) + Global sidebar (`global`) MCP App | `mcp.json` / `.mcp.json` |
 | **OpenChamber Desktop** (`>=2.5.0`) | `plugins/openchamber/` | Right-hand rail panel + Fullscreen page + Live Work Status strip + Rail badge | Bundled `opencodePlugin` |
-| **OpenCode Desktop** (`>=2.2.0`) | `plugins/opencode/` | Native side `Panel` (Shadow DOM) + Command Palette + Tab-strip toggle (`./gui-experimental`) | Server plugin (`ctx.mcp.transform`) |
+| **OpenCode Desktop** (`>=2.2.0`) | `plugins/opencode/` | Native side `Panel` (Shadow DOM) + Side-panel `+` menu (`session.panel`) + Command Palette (`./gui-experimental`) | Server plugin (`ctx.mcp.transform`) |
 | **Claude Desktop** | `plugins/claude/` + `release/chrome-browser-mcp.mcpb` | **Code tab**: Native 5-tab Claude Mod `Pane` (`/browser-deck`) + `AbovePrompt` status bar<br>**Chat tab**: `.mcpb` bundle with inline MCP App | `.mcp.json` / `.mcpb` |
+
+> **Self-contained plugin bundles:** `pnpm build` bundles standalone server artifacts (`server/cli.js` + `server/app/deck.html`) inside `plugins/codex`, `plugins/openchamber`, and `plugins/opencode` with **no external `npx` fallback**, so plugins keep working reliably even after a harness copies them into its own cache or extensions directory outside this repository.
 
 #### Quick Local Install Helper
 
@@ -157,7 +159,7 @@ pnpm install:local --antigravity --codex --opencode --openchamber --claude
 
 #### Antigravity (Plugin + Browser Control Deck MCP App + Skill)
 
-Link `plugins/antigravity` into `~/.gemini/config/plugins/chrome-browser-mcp`:
+Link `plugins/antigravity` into `~/.gemini/config/plugins/chrome-browser-mcp` (or run `pnpm install:local --antigravity`):
 
 ```bash
 ln -s "$(pwd)/plugins/antigravity" ~/.gemini/config/plugins/chrome-browser-mcp
@@ -170,7 +172,7 @@ Antigravity automatically discovers:
 
 #### Codex Desktop (Codex Plugin + Global & Thread MCP App)
 
-Register this repository as a local marketplace in `~/.codex/config.toml` (or run `pnpm install:local --codex`):
+Register this repository as a local marketplace in `~/.codex/config.toml` (or run `pnpm install:local --codex`, which also refreshes Codex's local plugin cache):
 
 ```toml
 [marketplaces.chrome-browser-mcp]
@@ -181,7 +183,7 @@ source = "/absolute/path/to/chrome-browser-mcp"
 enabled = true
 ```
 
-Codex Desktop loads `plugins/codex/` with the **Browser Control Deck** in both the global sidebar (`openai/ui: global`) and every thread's side panel (`openai/ui: thread`), plus all 18 `browser_*` tools and the `chrome-browser-mcp` skill.
+Codex Desktop loads `plugins/codex/` with the **Browser Control Deck** in both the global sidebar (`openai/ui: global`) and every thread's side panel (`openai/ui: thread`), plus all `browser_*` tools and the `chrome-browser-mcp` skill.
 
 #### OpenChamber Desktop (Right-Rail Extension + Work Status + Auto-MCP)
 
@@ -201,12 +203,12 @@ Add `plugins/opencode` to your global `~/.config/opencode/opencode.json` (or run
 }
 ```
 
-OpenCode Desktop loads the server plugin (registering `chrome-browser` MCP tools via `ctx.mcp.transform`) and the `./gui-experimental` desktop bundle, adding the **Browser Control Deck** side panel, Command Palette action (`Open Browser Control Deck`), and a quick-toggle button on the side panel strip.
+OpenCode Desktop loads the server plugin (registering `chrome-browser` MCP tools via `ctx.mcp.transform`) and the `./gui-experimental` desktop bundle, adding the **Browser Control Deck** side panel, the `+` panel menu entry, Command Palette action (`⌘⇧P` → `Open Browser Control Deck`), and a quick-toggle button on the side panel strip.
 
 #### Claude Desktop (Claude Mod for Code Tab + `.mcpb` for Chat Tab)
 
 - **Code Tab (Claude Mod):** Load `plugins/claude/` as a plugin directory. Run `/browser-deck` at any time (even mid-turn) to open the native 5-tab **Browser Control Deck** side pane alongside the live `AbovePrompt` status strip with 1-click Approve/Deny and Pause controls.
-- **Chat Tab (`.mcpb` MCP Bundle):** Run `pnpm pack:mcpb` to generate `release/chrome-browser-mcp.mcpb`, then drag-drop it into **Claude Desktop → Settings → Extensions** for all 18 `browser_*` tools and inline `browser_deck` MCP App rendering.
+- **Chat Tab (`.mcpb` MCP Bundle):** Run `pnpm pack:mcpb` to generate `release/chrome-browser-mcp.mcpb`, then drag-drop it into **Claude Desktop → Settings → Extensions** for all `browser_*` tools and inline `browser_deck` MCP App rendering.
 
 #### Generic MCP Clients (`stdio` with automatic shared broker)
 
@@ -285,7 +287,7 @@ chrome-browser-mcp/
 │   ├── opencode/      # OpenCode Desktop plugin (server MCP auto-register + ./gui-experimental side panel)
 │   └── claude/        # Claude Desktop Mod (5-tab Pane + AbovePrompt + .mcp.json) & .mcpb manifest
 ├── .agents/plugins/   # Root Codex marketplace descriptor (marketplace.json)
-├── scripts/           # Security/supply-chain checker, icon generator & Chrome Web Store ZIP packager
+├── scripts/           # Security checker, desktop plugin bundler, local harness installer, .mcpb & Chrome Web Store packagers
 ├── .githooks/         # Automatic pre-commit & pre-push security, audit, and test hooks
 ├── CHROMEWEBSTORE.md  # Chrome Web Store listing, permission justifications & privacy disclosures
 └── PRIVACY.md         # Local-first privacy policy (zero telemetry)
@@ -296,11 +298,15 @@ chrome-browser-mcp/
 ## Development & Testing
 
 ```bash
-pnpm security:check  # Secret scan + static guardrails + lockfile integrity + pnpm audit
-pnpm typecheck       # Strict TypeScript check across all 4 packages
-pnpm build           # Build protocol -> mcp-app -> server (bundles deck.html) -> extension
-pnpm test            # Run Vitest unit + live Broker/MCP integration tests
-pnpm pack:cws        # Package clean Chrome Web Store ZIP in release/
+pnpm security:check             # Secret scan + static guardrails + lockfile integrity + pnpm audit
+pnpm check                      # Biome lint & formatting check (zero warnings)
+pnpm typecheck                  # Strict TypeScript check across all 4 packages
+pnpm build                      # Build protocol -> mcp-app -> server (deck.html) -> extension -> desktop plugins
+pnpm build:plugins              # Rebuild desktop harness bundles (Codex, OpenChamber, OpenCode, Claude)
+pnpm test                       # Run Vitest unit + live Broker/MCP + desktop plugin tests
+pnpm install:local --all --dry-run  # Preview local setup for Antigravity, Codex, OpenCode, OpenChamber & Claude
+pnpm pack:mcpb                  # Package Claude Desktop Chat-tab .mcpb bundle in release/
+pnpm pack:cws                   # Package clean Chrome Web Store ZIP in release/
 ```
 
 ---

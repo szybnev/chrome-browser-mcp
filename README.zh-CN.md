@@ -6,7 +6,7 @@
 
 **面向真实浏览器会话的新一代 Chrome 扩展 (MV3) 与 MCP v2 服务器**
 
-混合 Content Script + 按需 CDP · 原生 WebMCP · 提示词注入防护 · 工作流录制 · 多浏览器/多配置文件路由 · Antigravity Control Deck MCP App
+混合 Content Script + 按需 CDP · 原生 WebMCP · 提示词注入防护 · 工作流录制 · 多浏览器/多配置文件路由 · 统一 Browser Control Deck 界面（Antigravity · Codex · OpenChamber · OpenCode · Claude）
 
 [English](./README.md) · [Русский](./README.ru.md) · **简体中文**
 
@@ -37,7 +37,7 @@
 | **多 Agent 与多配置**        | 共享本地 Broker 守护进程（Streamable HTTP + 自动拉起的租约式 `stdio` 垫片），支持多 Agent 与多浏览器并发复用                | 多客户端冲突（`EADDRINUSE`）                      |
 | **安全与人工可控**           | 独立彩色 **AI Agent 标签组**、可编辑域名黑名单、敏感操作审批门控、**Prompt-Injection Shield**、`Alt+Shift+P` 一键紧急暂停   | 无隔离的全浏览器访问或过度弹窗干扰                |
 | **WebMCP 与工作流录制**      | 原生发现并调用 `navigator.modelContext` 网页工具 + 侧边栏“手把手演示”工作流录制（自动掩码密码）                             | 只能逐元素手动点击                                |
-| **Antigravity MCP App 面板** | 内置 **Browser Control Deck**（`ui://chrome-browser/deck.html`），支持 `aux_pane` 侧边栏与 `global` 全局视图                | 仅返回纯文本结果                                  |
+| **主流桌面端原生界面**       | 为 **Google Antigravity**、**Codex Desktop**、**OpenChamber Desktop**、**OpenCode Desktop** 和 **Claude Desktop**（Code Mod + `.mcpb` MCP App）提供统一的 **Browser Control Deck** | 仅返回纯文本结果                                  |
 
 ---
 
@@ -77,13 +77,13 @@
 
 ```mermaid
 flowchart LR
-    subgraph Clients["AI Agent / MCP 宿主"]
-        AGY["Antigravity (MCP + Control Deck UI)"]
-        CLI["Claude Code / Codex / Cursor"]
+    subgraph Clients["桌面端 AI 客户端与 MCP 宿主"]
+        DECK["Antigravity · Codex · OpenChamber · OpenCode · Claude (MCP + Control Deck UI)"]
+        CLI["通用 MCP 客户端 (Cursor · Claude Code · HTTP/stdio)"]
     end
 
     subgraph Broker["本地 Broker 守护进程 (127.0.0.1:43179)"]
-        MCP["Streamable HTTP /mcp + stdio 垫片"]
+        MCP["Streamable HTTP /mcp + stdio 垫片 + /internal/deck-tool"]
         HUB["多配置路由与审批引擎"]
         WS["鉴权 WebSocket Hub (/ws)"]
     end
@@ -95,7 +95,7 @@ flowchart LR
         CS["Content Script (快照、WebMCP、防护盾、视觉 HUD)"]
     end
 
-    AGY --> MCP
+    DECK --> MCP
     CLI --> MCP
     MCP --> HUB
     HUB --> WS
@@ -133,11 +133,33 @@ node packages/server/dist/cli.js pair
 ```
 在 **Welcome Tour** 或 Chrome 侧边栏 **配对 (Pair)** 标签页中输入 6 位 PIN 码（也可展开 **高级连接选项** 手动粘贴 `cli.js token` 的静态令牌）。
 
-### 4. 连接你的 AI Agent
+### 4. 连接你的桌面端 AI 客户端（Harness）
 
-#### Antigravity（插件 + Browser Control Deck MCP App + Skill）
+Chrome Browser MCP 为主流桌面端 AI 客户端提供原生 GUI 集成与统一的 **Browser Control Deck** 体验。所有客户端均连接至**同一个共享本地 Broker 守护进程**（`127.0.0.1:43179`），只需与 Chrome 配对一次，即可在各个桌面客户端间同时无缝控制实时标签页。
 
-将 `plugins/antigravity` 链接到 `~/.gemini/config/plugins/chrome-browser-mcp`：
+| 桌面端客户端 | 集成包路径 | Browser Control Deck 界面入口 | MCP 自动注册方式 |
+| :--- | :--- | :--- | :--- |
+| **Google Antigravity** | `plugins/antigravity/` | 侧边面板（`aux_pane`）+ 左侧导航栏（`global`）MCP App | `mcp_config.json` |
+| **Codex Desktop** | `plugins/codex/` + `.agents/plugins/marketplace.json` | 会话侧边面板（`thread`）+ 全局侧边栏（`global`）MCP App | `mcp.json` / `.mcp.json` |
+| **OpenChamber Desktop** (`>=2.5.0`) | `plugins/openchamber/` | 右侧边栏面板 + 全屏页面 + 实时 Work Status 状态条 + 侧栏待审批角标 | 内置 `opencodePlugin` |
+| **OpenCode Desktop** (`>=2.2.0`) | `plugins/opencode/` | 原生侧边 `Panel`（Shadow DOM）+ 面板 `+` 菜单项（`session.panel`）+ 命令面板（`./gui-experimental`） | 服务端插件（`ctx.mcp.transform`） |
+| **Claude Desktop** | `plugins/claude/` + `release/chrome-browser-mcp.mcpb` | **Code 标签页**：原生 5 标签页 Claude Mod `Pane`（`/browser-deck`）+ `AbovePrompt` 状态条<br>**Chat 标签页**：`.mcpb` 扩展包与内联 MCP App | `.mcp.json` / `.mcpb` |
+
+> **自包含插件打包：** `pnpm build` 会在 `plugins/codex`、`plugins/openchamber` 和 `plugins/opencode` 内打包独立的服务端产物（`server/cli.js` + `server/app/deck.html`），**不依赖外部 `npx` 回退**；即使客户端将插件复制到仓库外的本地缓存或扩展目录中也能稳定运行。
+
+#### 本地快速安装工具
+
+预览或一键安装各桌面客户端的本地配置：
+
+```bash
+pnpm install:local --all --dry-run
+# 或按需安装指定客户端：
+pnpm install:local --antigravity --codex --opencode --openchamber --claude
+```
+
+#### Google Antigravity（插件 + Browser Control Deck MCP App + Skill）
+
+将 `plugins/antigravity` 链接到 `~/.gemini/config/plugins/chrome-browser-mcp`（或运行 `pnpm install:local --antigravity`）：
 
 ```bash
 ln -s "$(pwd)/plugins/antigravity" ~/.gemini/config/plugins/chrome-browser-mcp
@@ -148,7 +170,47 @@ Antigravity 将自动发现：
 - 侧边栏 `+` 菜单（`aux_pane`）和左侧导航栏（`global`）中的 **Browser Control Deck** 交互界面
 - `chrome-browser-mcp` 最佳实践 Skill 指南
 
-#### Claude Code / Cursor / Codex（`stdio` 自动共享 Broker）
+#### Codex Desktop（Codex 插件 + Global 与 Thread MCP App）
+
+在 `~/.codex/config.toml` 中将本仓库注册为本地市场（或运行 `pnpm install:local --codex`，同时自动刷新 Codex 本地插件缓存）：
+
+```toml
+[marketplaces.chrome-browser-mcp]
+source_type = "local"
+source = "/绝对路径/chrome-browser-mcp"
+
+[plugins."chrome-browser-mcp@chrome-browser-mcp"]
+enabled = true
+```
+
+Codex Desktop 会加载 `plugins/codex/`，在全局侧边栏（`openai/ui: global`）和每个会话的侧边面板（`openai/ui: thread`）中提供 **Browser Control Deck**，同时注册全部 `browser_*` 工具与 `chrome-browser-mcp` Skill。
+
+#### OpenChamber Desktop（右侧边栏扩展 + Work Status + 自动注册 MCP）
+
+1. 打开 **OpenChamber → Settings → Extensions**。
+2. 点击 **Add** 并填写本地目录路径 `/绝对路径/chrome-browser-mcp/plugins/openchamber`（或通过 Git URL 安装）。
+3. 批准本地回环服务代理与内置的 OpenCode 插件。
+
+OpenChamber 会在右侧边栏与 Pages 中挂载完整的 **Browser Control Deck**，提供带 Pause/Resume/PIN 控制按钮的实时 **Work Status** 状态条与待审批角标，并在 OpenChamber 的 OpenCode 服务中自动注册 `chrome-browser` MCP 工具。
+
+#### OpenCode Desktop（`@opencode/plugin/gui` 侧边面板 + 自动注册 MCP）
+
+在全局 `~/.config/opencode/opencode.json` 中添加 `plugins/opencode`（或运行 `pnpm install:local --opencode`）：
+
+```json
+{
+  "plugins": ["/绝对路径/chrome-browser-mcp/plugins/opencode"]
+}
+```
+
+OpenCode Desktop 会加载服务端插件（通过 `ctx.mcp.transform` 自动注册 `chrome-browser` MCP 工具）和 `./gui-experimental` 桌面端包，添加 **Browser Control Deck** 侧边面板、面板 `+` 菜单项、命令面板快捷操作（`⌘⇧P` → `Open Browser Control Deck`）以及侧边栏切换按钮。
+
+#### Claude Desktop（Code 标签页 Claude Mod + Chat 标签页 `.mcpb`）
+
+- **Code 标签页（Claude Mod）：** 将 `plugins/claude/` 作为插件目录加载。随时运行 `/browser-deck`（甚至在对话执行中途）即可打开原生 5 标签页 **Browser Control Deck** 侧边面板，并配合 `AbovePrompt` 状态条一键批准/拒绝敏感操作或暂停。
+- **Chat 标签页（`.mcpb` MCP Bundle）：** 运行 `pnpm pack:mcpb` 生成 `release/chrome-browser-mcp.mcpb`，将其拖入 **Claude Desktop → Settings → Extensions** 即可使用全部 `browser_*` 工具与内联 `browser_deck` MCP App。
+
+#### 通用 MCP 客户端（`stdio` 自动共享 Broker）
 
 在你的 MCP 配置文件（`mcp_config.json`、`.mcp.json` 等）中加入：
 
@@ -209,14 +271,42 @@ node packages/server/dist/cli.js daemon
 
 ---
 
+## 仓库目录结构
+
+```text
+chrome-browser-mcp/
+├── packages/
+│   ├── protocol/      # 共享 Zod v4 Schema、RPC 协议封装、提示词注入防护盾、Diff 引擎
+│   ├── server/        # 本地 Broker 守护进程（Streamable HTTP + stdio 垫片 + WS Hub + CLI）
+│   ├── extension/     # Chrome MV3 扩展（Service Worker、按需 CDP、Content Script、HUD、侧边栏）
+│   └── mcp-app/       # Browser Control Deck（React + @modelcontextprotocol/ext-apps + vite-plugin-singlefile）
+├── plugins/
+│   ├── antigravity/   # Antigravity 插件（plugin.json、mcp_config.json、SKILL.md、图标）
+│   ├── codex/         # Codex Desktop 插件（Agent Plugins 1.0 + .codex-plugin + mcp.json + Skill）
+│   ├── openchamber/   # OpenChamber Desktop 扩展（右侧面板、页面、Work Status、回环服务、内置 opencodePlugin）
+│   ├── opencode/      # OpenCode Desktop 插件（MCP 自动注册 + ./gui-experimental 侧边面板）
+│   └── claude/        # Claude Desktop Mod（5 标签页 Pane + AbovePrompt + .mcp.json）与 .mcpb 清单
+├── .agents/plugins/   # Codex 本地市场根目录描述文件（marketplace.json）
+├── scripts/           # 安全校验、桌面插件打包、本地安装脚本、.mcpb 与 Chrome Web Store 打包脚本
+├── .githooks/         # 自动 pre-commit 与 pre-push 安全检查和测试钩子
+├── CHROMEWEBSTORE.md  # Chrome Web Store 上架信息、权限说明与隐私披露
+└── PRIVACY.md         # 本地优先隐私政策（零遥测）
+```
+
+---
+
 ## 开发与测试命令
 
 ```bash
-pnpm security:check  # 密钥扫描 + 静态安全规则 + 供应链完整性校验 + pnpm audit
-pnpm typecheck       # 全部 4 个工作区包的严格 TypeScript 类型检查
-pnpm build           # 依次构建 protocol -> mcp-app -> server (打包 deck.html) -> extension
-pnpm test            # 运行 Vitest 单元测试与 Broker/MCP 集成测试
-pnpm pack:cws        # 在 release/ 目录打包干净的 Chrome Web Store ZIP 安装包
+pnpm security:check                 # 密钥扫描 + 静态安全规则 + 供应链完整性校验 + pnpm audit
+pnpm check                          # Biome 代码规范与格式检查（零警告）
+pnpm typecheck                      # 全部 4 个工作区包的严格 TypeScript 类型检查
+pnpm build                          # 依次构建 protocol -> mcp-app -> server (deck.html) -> extension -> 桌面插件
+pnpm build:plugins                  # 重新打包桌面端客户端插件（Codex、OpenChamber、OpenCode、Claude）
+pnpm test                           # 运行 Vitest 单元测试、Broker/MCP 集成测试与桌面插件测试
+pnpm install:local --all --dry-run  # 预览 Antigravity、Codex、OpenCode、OpenChamber 与 Claude 的本地安装配置
+pnpm pack:mcpb                      # 在 release/ 目录打包 Claude Desktop Chat 标签页 .mcpb 扩展包
+pnpm pack:cws                       # 在 release/ 目录打包干净的 Chrome Web Store ZIP 安装包
 ```
 
 ## 开源协议
