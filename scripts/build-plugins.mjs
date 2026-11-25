@@ -6,36 +6,15 @@
  *   3. OpenCode Desktop GUI Plugin   (`plugins/opencode/bundle/server.js`, `bundle/gui-experimental.cjs`)
  *   4. Claude Desktop Mod            (`plugins/claude/hooks/register.js`)
  *
- * Uses the workspace's existing esbuild binary (no extra dependencies).
+ * Uses the workspace's pinned esbuild dev dependency.
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import esbuild from 'esbuild';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, '..');
-
-function loadEsbuild() {
-  const req = createRequire(resolve(rootDir, 'package.json'));
-  for (const base of [resolve(rootDir, 'package.json'), resolve(rootDir, 'packages/mcp-app/package.json')]) {
-    try {
-      return createRequire(base)('esbuild');
-    } catch {
-      // try next
-    }
-  }
-  const pnpmDir = resolve(rootDir, 'node_modules/.pnpm');
-  if (existsSync(pnpmDir)) {
-    const match = readdirSync(pnpmDir).find((entry) => entry.startsWith('esbuild@'));
-    if (match) {
-      return req(resolve(pnpmDir, match, 'node_modules/esbuild'));
-    }
-  }
-  throw new Error('Could not resolve esbuild from workspace node_modules');
-}
-
-const esbuild = loadEsbuild();
 
 const protocolEntry = resolve(rootDir, 'packages/protocol/dist/index.js');
 const mcpAppNodeModules = resolve(rootDir, 'packages/mcp-app/node_modules');
