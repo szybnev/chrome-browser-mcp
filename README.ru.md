@@ -10,6 +10,7 @@
 
 [English](./README.md) · **Русский** · [简体中文](./README.zh-CN.md)
 
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/oahcjchkplfbfhhceojfndnpapgoeche?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white&color=4285F4)](https://chromewebstore.google.com/detail/oahcjchkplfbfhhceojfndnpapgoeche)
 [![CI & Security](https://img.shields.io/github/actions/workflow/status/szybnev/chrome-browser-mcp/ci.yml?branch=main&label=CI%20%26%20Security&logo=githubactions&logoColor=white)](https://github.com/szybnev/chrome-browser-mcp/actions/workflows/ci.yml)
 [![MCP v2](https://img.shields.io/badge/MCP-v2%20Streamable%20HTTP%20%2B%20stdio%20%2B%20Apps-0d9488?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](./packages/extension)
@@ -120,9 +121,12 @@ pnpm build
 
 ### 2. Установка расширения Chrome (MV3)
 
-1. Откройте `chrome://extensions` и включите **Режим разработчика (Developer mode)**.
-2. Нажмите **Загрузить распакованное расширение (Load unpacked)** и выберите `packages/extension/dist`.
-3. Кликните по иконке **Chrome Browser MCP** на панели браузера, чтобы открыть **Control HUD** в боковой панели.
+- **Рекомендуемый способ (в 1 клик):** установите из **[Chrome Web Store](https://chromewebstore.google.com/detail/oahcjchkplfbfhhceojfndnpapgoeche)** (работает в Chrome, Arc, Brave и Edge).
+- **Или распакованная сборка из исходников:**
+  1. Откройте `chrome://extensions` и включите **Режим разработчика (Developer mode)**.
+  2. Нажмите **Загрузить распакованное расширение (Load unpacked)** и выберите `packages/extension/dist`.
+
+После установки кликните по иконке **Chrome Browser MCP** на панели браузера, чтобы открыть **Control HUD** в боковой панели.
 
 ### 3. Подключение к локальному брокеру (PIN в 1 клик или токен)
 

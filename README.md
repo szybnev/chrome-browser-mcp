@@ -10,6 +10,7 @@ Hybrid Content Script + On-Demand CDP · Native WebMCP · Prompt-Injection Shiel
 
 **English** · [Русский](./README.ru.md) · [简体中文](./README.zh-CN.md)
 
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/oahcjchkplfbfhhceojfndnpapgoeche?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white&color=4285F4)](https://chromewebstore.google.com/detail/oahcjchkplfbfhhceojfndnpapgoeche)
 [![CI & Security](https://img.shields.io/github/actions/workflow/status/szybnev/chrome-browser-mcp/ci.yml?branch=main&label=CI%20%26%20Security&logo=githubactions&logoColor=white)](https://github.com/szybnev/chrome-browser-mcp/actions/workflows/ci.yml)
 [![MCP v2](https://img.shields.io/badge/MCP-v2%20Streamable%20HTTP%20%2B%20stdio%20%2B%20Apps-0d9488?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](./packages/extension)
@@ -118,11 +119,14 @@ pnpm install
 pnpm build
 ```
 
-### 2. Load the Chrome Extension (MV3)
+### 2. Install the Chrome Extension (MV3)
 
-1. Open `chrome://extensions` and enable **Developer mode**.
-2. Click **Load unpacked** and select `packages/extension/dist`.
-3. Click the **Chrome Browser MCP** icon in Chrome's toolbar to open the **Control HUD** Side Panel.
+- **Recommended (1-click):** Install from the **[Chrome Web Store](https://chromewebstore.google.com/detail/oahcjchkplfbfhhceojfndnpapgoeche)** (Chrome, Arc, Brave, Edge).
+- **Or load unpacked from source:**
+  1. Open `chrome://extensions` and enable **Developer mode**.
+  2. Click **Load unpacked** and select `packages/extension/dist`.
+
+Then click the **Chrome Browser MCP** icon in Chrome's toolbar to open the **Control HUD** Side Panel.
 
 ### 3. Pair with your local Broker (1-Click PIN or Token)
 

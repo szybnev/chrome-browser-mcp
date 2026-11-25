@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "chrome-browser-mcp",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Real-session AI browser control for Chrome, Arc, Brave & Edge — hybrid Content Script + on-demand CDP, WebMCP, Prompt-Injection Shield, Workflow Recorder, and Browser Control Deck UI.",
   "author": {
     "name": "Chrome Browser MCP",

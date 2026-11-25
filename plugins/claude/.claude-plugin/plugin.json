@@ -1,6 +1,6 @@
 {
   "name": "chrome-browser-mcp",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Chrome Browser MCP Control Deck Mod & MCP Server for Claude Desktop — native 5-tab Browser Control Deck side pane, AbovePrompt live status bar, MCP Apps UI, and real-session Chrome control.",
   "author": {
     "name": "Chrome Browser MCP",

@@ -10,6 +10,7 @@
 
 [English](./README.md) · [Русский](./README.ru.md) · **简体中文**
 
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/oahcjchkplfbfhhceojfndnpapgoeche?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white&color=4285F4)](https://chromewebstore.google.com/detail/oahcjchkplfbfhhceojfndnpapgoeche)
 [![CI & Security](https://img.shields.io/github/actions/workflow/status/szybnev/chrome-browser-mcp/ci.yml?branch=main&label=CI%20%26%20Security&logo=githubactions&logoColor=white)](https://github.com/szybnev/chrome-browser-mcp/actions/workflows/ci.yml)
 [![MCP v2](https://img.shields.io/badge/MCP-v2%20Streamable%20HTTP%20%2B%20stdio%20%2B%20Apps-0d9488?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](./packages/extension)
@@ -118,11 +119,14 @@ pnpm install
 pnpm build
 ```
 
-### 2. 加载 Chrome 扩展 (MV3)
+### 2. 安装 Chrome 扩展 (MV3)
 
-1. 打开 `chrome://extensions` 并开启 **开发者模式 (Developer mode)**。
-2. 点击 **加载已解压的扩展程序 (Load unpacked)**，选择 `packages/extension/dist`。
-3. 点击浏览器工具栏中的 **Chrome Browser MCP** 图标打开 **Control HUD** 侧边栏。
+- **推荐方式（一键安装）：** 直接从 **[Chrome Web Store](https://chromewebstore.google.com/detail/oahcjchkplfbfhhceojfndnpapgoeche)** 安装（支持 Chrome、Arc、Brave 与 Edge）。
+- **或从源码加载已解压扩展：**
+  1. 打开 `chrome://extensions` 并开启 **开发者模式 (Developer mode)**。
+  2. 点击 **加载已解压的扩展程序 (Load unpacked)**，选择 `packages/extension/dist`。
+
+安装完成后，点击浏览器工具栏中的 **Chrome Browser MCP** 图标打开 **Control HUD** 侧边栏。
 
 ### 3. 与本地 Broker 配对（6 位 PIN 码一键配对或手动令牌）
 
