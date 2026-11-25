@@ -30,6 +30,7 @@ import {
   saveSettings,
   saveWorkflows,
 } from '../shared/storage.js';
+import { probeBrokerHealth } from './broker-probe.js';
 import { CdpManager } from './cdp-manager.js';
 import { CONTEXT_MENU_TOGGLE_TAB, createContextMenuRegistrar } from './context-menus.js';
 
@@ -38,6 +39,7 @@ const ALARM_WATCHDOG = 'chrome-browser-mcp-watchdog';
 const AGENT_GROUP_TITLE = 'AI Agent';
 const ensureContextMenus = createContextMenuRegistrar();
 let initPromise: Promise<void> | null = null;
+let connectPromise: Promise<void> | null = null;
 
 let socket: WebSocket | null = null;
 let nativePort: chrome.runtime.Port | null = null;
@@ -334,7 +336,15 @@ async function tryConnectNativeHost(): Promise<boolean> {
   }
 }
 
-async function connectBroker(): Promise<void> {
+function connectBroker(): Promise<void> {
+  if (connectPromise) return connectPromise;
+  connectPromise = connectBrokerOnce().finally(() => {
+    connectPromise = null;
+  });
+  return connectPromise;
+}
+
+async function connectBrokerOnce(): Promise<void> {
   if (await tryConnectNativeHost()) return;
 
   const settings = await loadSettings();
@@ -362,6 +372,18 @@ async function connectBroker(): Promise<void> {
   }
 
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+
+  // Probe HTTP /health before opening WebSocket so an offline/restarting broker does not emit
+  // un-suppressible Blink `net::ERR_CONNECTION_REFUSED` WebSocket errors in chrome://extensions.
+  if (!(await probeBrokerHealth(wsCheck.normalized))) {
+    await saveRuntimeState({
+      connected: false,
+      lastError: `Local broker offline at ${settings.wsUrl}`,
+    });
+    await updateBadge();
+    await notifySidePanel();
     return;
   }
 
