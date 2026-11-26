@@ -56,6 +56,8 @@ export function BrowserDeckView({ transport }: BrowserDeckViewProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [pairingPin, setPairingPin] = useState<{ pin: string; expiresAt: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(null);
   const [dismissedErrorIds, setDismissedErrorIds] = useState<Set<string>>(() => new Set());
   const [dismissedNetworkIds, setDismissedNetworkIds] = useState<Set<string>>(() => new Set());
   const [dismissedScreenshotTs, setDismissedScreenshotTs] = useState<number | null>(null);
@@ -122,6 +124,34 @@ export function BrowserDeckView({ transport }: BrowserDeckViewProps) {
     },
     [transport, locale, showNotice],
   );
+
+  const handleCheckUpdates = useCallback(async () => {
+    if (!transport.isConnected || checkingUpdates) return;
+    setCheckingUpdates(true);
+    try {
+      const structured = await transport.callTool('deck_check_updates', {});
+      if (structured?.state) setDeckState(structured.state);
+      const upd = structured?.updateStatus ?? structured?.state?.updateStatus ?? null;
+      if (upd) {
+        if (upd.updateAvailable) {
+          setDismissedUpdateVersion(null);
+          showNotice(
+            translate(locale, 'status.updateAvailable', {
+              latest: upd.latestVersion,
+              current: upd.currentVersion,
+            }),
+            'info',
+          );
+        } else {
+          showNotice(translate(locale, 'status.upToDate', { version: upd.currentVersion }), 'success');
+        }
+      }
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : String(err), 'error');
+    } finally {
+      setCheckingUpdates(false);
+    }
+  }, [transport, checkingUpdates, locale, showNotice]);
 
   useEffect(() => {
     if (!localeDirty && deckState?.policy?.uiLocale) {
@@ -425,6 +455,15 @@ export function BrowserDeckView({ transport }: BrowserDeckViewProps) {
           </button>
           <button
             type="button"
+            className="btn small"
+            disabled={busy || checkingUpdates}
+            title={tr('hint.updatesOnDemand')}
+            onClick={() => void handleCheckUpdates()}
+          >
+            {checkingUpdates ? tr('status.checkingUpdates') : tr('btn.checkUpdates')}
+          </button>
+          <button
+            type="button"
             className={`btn small ${deckState.paused ? 'primary' : 'danger'}`}
             onClick={() => void callDeckTool('deck_set_paused', { paused: !deckState.paused })}
           >
@@ -453,6 +492,48 @@ export function BrowserDeckView({ transport }: BrowserDeckViewProps) {
           </button>
         ))}
       </div>
+
+      {deckState.updateStatus?.updateAvailable &&
+        dismissedUpdateVersion !== deckState.updateStatus.latestVersion && (
+          <div className="toast-banner" role="status" aria-live="polite">
+            <span
+              className="toast-text"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
+            >
+              <span>
+                {deckState.updateStatus.source === 'extension'
+                  ? tr('status.versionMismatchExtNewer', {
+                      ext: deckState.updateStatus.latestVersion,
+                      broker: deckState.updateStatus.currentVersion,
+                    })
+                  : tr('status.updateAvailable', {
+                      latest: deckState.updateStatus.latestVersion,
+                      current: deckState.updateStatus.currentVersion,
+                    })}
+              </span>
+              {deckState.updateStatus.releaseUrl.startsWith(
+                'https://github.com/szybnev/chrome-browser-mcp/',
+              ) && (
+                <a
+                  className="btn small primary"
+                  href={deckState.updateStatus.releaseUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {tr('btn.viewRelease')}
+                </a>
+              )}
+            </span>
+            <button
+              type="button"
+              className="toast-close"
+              aria-label={tr('btn.dismiss')}
+              onClick={() => setDismissedUpdateVersion(deckState.updateStatus?.latestVersion ?? null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
       {pairingPin && (
         <div className="toast-banner" role="status" aria-live="polite">

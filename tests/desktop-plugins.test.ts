@@ -25,7 +25,18 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
   beforeAll(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'cbmcp-desktop-test-'));
     brokerPort = 43900 + Math.floor(Math.random() * 900);
-    broker = await startBrokerDaemon({ port: brokerPort, dataDir: tempDir });
+    broker = await startBrokerDaemon({
+      port: brokerPort,
+      dataDir: tempDir,
+      checkUpdates: async () => ({
+        currentVersion: '2.4.0',
+        latestVersion: '9.9.0',
+        updateAvailable: true,
+        releaseUrl: 'https://github.com/szybnev/chrome-browser-mcp/releases/tag/v9.9.0',
+        checkedAt: Date.now(),
+        source: 'github',
+      }),
+    });
   });
 
   afterAll(async () => {
@@ -73,6 +84,13 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
       const pinRes = await call('deck_create_pin');
       expect(pinRes.status).toBe(200);
       expect((pinRes.json.data as { pin: string }).pin).toMatch(/^\d{6}$/);
+
+      const updRes = await call('deck_check_updates');
+      expect(updRes.status).toBe(200);
+      expect(
+        (updRes.json.data as { updateStatus: { latestVersion: string; updateAvailable: boolean } })
+          .updateStatus,
+      ).toMatchObject({ latestVersion: '9.9.0', updateAvailable: true });
 
       const unknownRes = await call('deck_nonexistent');
       expect(unknownRes.status).toBe(400);
@@ -730,6 +748,24 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
         (e) => e,
       )) as { text: string };
       expect(pinCmdRes.text).toMatch(/Pairing PIN: \d{6}/);
+
+      // 6. /browser-deck update command triggers on-demand update check and renders banner in Pane
+      const updCmdRes = (await findHook('command.run', 'command', 'browser-deck')?.handler(
+        mockApi,
+        { args: 'update' },
+        (e) => e,
+      )) as { text: string };
+      expect(updCmdRes.text).toContain('9.9.0');
+      expect(updCmdRes.text).toContain('https://github.com/szybnev/chrome-browser-mcp/releases/tag/v9.9.0');
+
+      const paneAfterUpd = (await findHook('ui.render', 'component', 'Pane')?.handler(
+        mockApi,
+        { requestId: PANE_ID, surface: 'desktop' },
+        (e) => e,
+      )) as { tag: string };
+      const serializedAfterUpd = JSON.stringify(paneAfterUpd);
+      expect(serializedAfterUpd).toContain('check-updates');
+      expect(serializedAfterUpd).toContain('update-dismiss');
     });
 
     it('ships Claude Code validator-compliant hooks/register.js, self-contained server, and patched LTS Node floor', () => {

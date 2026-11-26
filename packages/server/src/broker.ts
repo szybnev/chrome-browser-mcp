@@ -1,6 +1,10 @@
 import { randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { ExtensionToBrokerMessageSchema, isUrlBlocked } from '@chrome-browser-mcp/protocol';
+import {
+  ExtensionToBrokerMessageSchema,
+  isUrlBlocked,
+  type UpdateCheckStatus,
+} from '@chrome-browser-mcp/protocol';
 import {
   localhostHostValidation,
   localhostOriginValidation,
@@ -110,9 +114,13 @@ export async function startBrokerDaemon(options?: {
   dataDir?: string;
   idleExit?: boolean;
   enableCdpProxy?: boolean;
+  checkUpdates?: () => Promise<UpdateCheckStatus>;
 }): Promise<BrokerDaemonHandle> {
   const config = loadBrokerConfig({ port: options?.port, dataDir: options?.dataDir });
   const hub = new BrowserBrokerHub(config.dataDir, config.brokerUrl, config.token);
+  if (options?.checkUpdates) {
+    hub.setUpdateChecker(options.checkUpdates);
+  }
   if (options?.enableCdpProxy) {
     await hub.updatePolicy({ cdpProxyEnabled: true });
   }
@@ -395,6 +403,9 @@ export async function startBrokerDaemon(options?: {
             return;
           case '/internal/create-pin':
             writeJson(res, 200, { ok: true, data: createPairingPin() });
+            return;
+          case '/internal/check-updates':
+            writeJson(res, 200, { ok: true, data: await hub.checkForUpdates() });
             return;
           case '/internal/policy':
             writeJson(res, 200, { ok: true, data: await hub.getLivePolicy() });

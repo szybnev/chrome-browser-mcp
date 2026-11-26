@@ -478,7 +478,12 @@ async function handleBrokerMessage(
 
   if (msg.type === 'broker.welcome') {
     await saveSettings({ policy: msg.policy });
-    await saveRuntimeState({ paused: msg.paused, connected: true, lastError: null });
+    await saveRuntimeState({
+      paused: msg.paused,
+      connected: true,
+      brokerVersion: msg.brokerVersion,
+      lastError: null,
+    });
     await updateBadge();
     await notifySidePanel();
     return;
@@ -2052,6 +2057,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           await connectBroker();
           await notifySidePanel();
           sendResponse({ ok: true, data: next });
+          return;
+        }
+
+        case 'sp.checkUpdates': {
+          const settings = await loadSettings();
+          if (!settings.token) {
+            throw new Error('Pair with the local broker first to check for updates.');
+          }
+          const wsCheck = validateWsUrl(settings.wsUrl);
+          if (!wsCheck.ok || !wsCheck.normalized) {
+            throw new Error('Broker WebSocket URL must be a localhost / 127.0.0.1 / ::1 ws(s):// endpoint');
+          }
+          const baseHttp = wsCheck.normalized
+            .replace(/^ws:/i, 'http:')
+            .replace(/^wss:/i, 'https:')
+            .replace(/\/ws\/?$/, '');
+          const resp = await fetch(`${baseHttp}/internal/check-updates`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-broker-token': settings.token,
+            },
+            body: '{}',
+            signal: AbortSignal.timeout(10_000),
+          });
+          const payload = (await resp.json()) as {
+            ok: boolean;
+            data?: unknown;
+            error?: string;
+          };
+          if (!resp.ok || !payload.ok || !payload.data) {
+            throw new Error(payload.error || `Update check failed (HTTP ${resp.status})`);
+          }
+          sendResponse({ ok: true, data: payload.data });
           return;
         }
 

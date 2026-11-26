@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { type DeckState, SecurityPolicySchema } from '@chrome-browser-mcp/protocol';
+import { type DeckState, SecurityPolicySchema, type UpdateCheckStatus } from '@chrome-browser-mcp/protocol';
 import { z } from 'zod';
 import type { BrowserHubInterface } from './hub.js';
 
@@ -14,6 +14,7 @@ export const DECK_TOOL_NAMES = [
   'deck_clear_diagnostics',
   'deck_create_pin',
   'deck_handle_dialog',
+  'deck_check_updates',
 ] as const;
 
 export type DeckToolName = (typeof DECK_TOOL_NAMES)[number];
@@ -23,6 +24,7 @@ export interface DeckToolStructuredResult {
   pin?: string;
   expiresAt?: number;
   copied?: boolean;
+  updateStatus?: UpdateCheckStatus;
 }
 
 export interface DeckToolExecutionResult {
@@ -214,6 +216,15 @@ export async function executeDeckTool(
       );
       const state = await hub.getDeckState();
       return { text: accept ? 'dialog accepted' : 'dialog dismissed', structuredContent: { state } };
+    }
+
+    case 'deck_check_updates': {
+      const updateStatus = await hub.checkForUpdates();
+      const state = await hub.getDeckState();
+      const text = updateStatus.updateAvailable
+        ? `Update available: v${updateStatus.latestVersion} (current v${updateStatus.currentVersion})`
+        : `Up to date (v${updateStatus.currentVersion})`;
+      return { text, structuredContent: { state, updateStatus } };
     }
   }
 }

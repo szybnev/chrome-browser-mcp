@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "chrome-browser-mcp",
   "display_name": "Chrome Browser MCP",
-  "version": "2.3.2",
+  "version": "2.4.0",
   "description": "Real-session AI browser control for Chrome, Arc, Brave & Edge with hybrid Content Script + on-demand CDP, WebMCP, Prompt-Injection Shield, Workflow Recorder, and Browser Control Deck MCP App.",
   "author": {
     "name": "Chrome Browser MCP",

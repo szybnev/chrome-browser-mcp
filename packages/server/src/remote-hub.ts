@@ -10,6 +10,7 @@ import type {
   RiskLevel,
   ScreenshotRecord,
   SecurityPolicy,
+  UpdateCheckStatus,
 } from '@chrome-browser-mcp/protocol';
 import { isUrlBlocked, isUrlReadOnly, SecurityPolicySchema } from '@chrome-browser-mcp/protocol';
 import type { BrowserHubInterface } from './hub.js';
@@ -122,6 +123,10 @@ export class RemoteBrokerHub implements BrowserHubInterface {
 
   async createPairingPin(): Promise<{ pin: string; expiresAt: number }> {
     return this.post('/internal/create-pin');
+  }
+
+  async checkForUpdates(): Promise<UpdateCheckStatus> {
+    return this.post('/internal/check-updates');
   }
 
   async resolveSecret(_secretRef: string): Promise<{ value: string; maskedLabel: string }> {

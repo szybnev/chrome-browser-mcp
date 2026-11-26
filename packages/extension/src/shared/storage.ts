@@ -29,6 +29,7 @@ export interface ExtensionSettings {
 
 export interface ExtensionRuntimeState {
   connected: boolean;
+  brokerVersion: string | null;
   lastError: string | null;
   paused: boolean;
   agentGroupId: number | null;
@@ -131,6 +132,7 @@ export async function loadRuntimeState(): Promise<ExtensionRuntimeState> {
   const existing = stored.runtime as Partial<ExtensionRuntimeState> | undefined;
   cachedRuntime = {
     connected: existing?.connected ?? false,
+    brokerVersion: existing?.brokerVersion ?? null,
     lastError: existing?.lastError ?? null,
     paused: existing?.paused ?? false,
     agentGroupId: existing?.agentGroupId ?? null,

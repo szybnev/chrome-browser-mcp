@@ -13,6 +13,7 @@ Chrome Browser MCP is a **100% local-first** browser extension and companion MCP
 
 - The extension communicates exclusively with your own locally running companion daemon on `127.0.0.1` (loopback interface), protected by a locally generated pairing token.
 - Any page content, accessibility snapshots, console/network diagnostics, or screenshots requested by your local AI agent stay strictly on your machine and are governed by the privacy policy of the AI client you explicitly connect.
+- **Manual update checks only:** There are zero background or automatic update checks. Only if you explicitly click **Check Updates** (or run `chrome-browser-mcp check-update`), the local companion daemon sends a single anonymous, unauthenticated `GET` request to GitHub Releases (`api.github.com/repos/szybnev/chrome-browser-mcp/releases/latest`) to compare the latest release version. The Chrome extension itself never connects to external hosts.
 
 ## 3. Permissions & User Control
 

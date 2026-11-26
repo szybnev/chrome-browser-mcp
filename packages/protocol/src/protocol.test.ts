@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ActionStepSchema,
+  compareSemver,
   computeSnapshotDiff,
   DEFAULT_BLOCKED_DOMAINS,
   exportWorkflowToPlaywright,
@@ -394,5 +395,15 @@ describe('v2.0 Protocol Enhancements (Read-Only, Body Redaction, Workflows, i18n
     } as Record<string, unknown>);
     expect('preApproved' in parsedFill).toBe(false);
     expect('isSecret' in parsedFill).toBe(false);
+  });
+
+  it('compares SemVer versions accurately for on-demand update checks', () => {
+    expect(compareSemver('2.3.3', '2.3.2')).toBe(1);
+    expect(compareSemver('v2.10.0', '2.3.2')).toBe(1);
+    expect(compareSemver('2.3.2', 'v2.3.2')).toBe(0);
+    expect(compareSemver('2.3.1', '2.3.2')).toBe(-1);
+    expect(compareSemver('2.3.2', '2.3.2-rc.1')).toBe(1);
+    expect(compareSemver('2.3.2-rc.1', '2.3.2')).toBe(-1);
+    expect(compareSemver('invalid', '2.3.2')).toBe(0);
   });
 });

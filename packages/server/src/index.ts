@@ -4,3 +4,4 @@ export * from './deck-actions.js';
 export * from './hub.js';
 export * from './mcp-server.js';
 export * from './remote-hub.js';
+export * from './update-checker.js';

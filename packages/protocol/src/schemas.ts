@@ -482,6 +482,17 @@ export const ScreenshotRecordSchema = z.object({
 });
 export type ScreenshotRecord = z.infer<typeof ScreenshotRecordSchema>;
 
+export const UpdateCheckStatusSchema = z.object({
+  currentVersion: z.string(),
+  latestVersion: z.string(),
+  updateAvailable: z.boolean(),
+  releaseUrl: z.string(),
+  publishedAt: z.string().optional(),
+  checkedAt: z.number(),
+  source: z.enum(['github', 'extension']),
+});
+export type UpdateCheckStatus = z.infer<typeof UpdateCheckStatusSchema>;
+
 export const DeckStateSchema = z.object({
   brokerVersion: z.string(),
   brokerUrl: z.string(),
@@ -497,5 +508,6 @@ export const DeckStateSchema = z.object({
   recentFailedNetwork: z.array(NetworkEntrySchema),
   workflows: z.array(RecordedWorkflowSchema),
   latestScreenshot: ScreenshotRecordSchema.nullable(),
+  updateStatus: UpdateCheckStatusSchema.nullable().optional(),
 });
 export type DeckState = z.infer<typeof DeckStateSchema>;

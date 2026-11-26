@@ -5,6 +5,7 @@ import { APP_VERSION, type BrokerToExtensionMessage } from '@chrome-browser-mcp/
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { type BrokerDaemonHandle, startBrokerDaemon } from './broker.js';
+import { checkLatestRelease, GITHUB_RELEASES_PAGE_URL } from './update-checker.js';
 
 const cleanupDirs: string[] = [];
 let activeBroker: BrokerDaemonHandle | null = null;
@@ -351,5 +352,113 @@ describe('Broker Daemon, WebSocket Hub & Streamable HTTP MCP', () => {
       ws.on('error', () => resolve(true));
     });
     expect(wsRejected).toBe(true);
+  });
+
+  it('performs strictly on-demand update checks and detects offline extension version mismatch', async () => {
+    // 1. Unit-test checkLatestRelease with mocked fetch (zero real internet calls)
+    const newerRes = await checkLatestRelease({
+      currentVersion: '2.3.2',
+      fetchImpl: (async () =>
+        new Response(
+          JSON.stringify({
+            tag_name: 'v2.4.0',
+            html_url: 'https://github.com/szybnev/chrome-browser-mcp/releases/tag/v2.4.0',
+            published_at: '2026-12-01T00:00:00Z',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )) as typeof fetch,
+    });
+    expect(newerRes.updateAvailable).toBe(true);
+    expect(newerRes.latestVersion).toBe('2.4.0');
+    expect(newerRes.releaseUrl).toBe('https://github.com/szybnev/chrome-browser-mcp/releases/tag/v2.4.0');
+    expect(newerRes.source).toBe('github');
+
+    // Untrusted redirect/URL in payload must fall back to canonical GitHub Releases URL
+    const upToDateRes = await checkLatestRelease({
+      currentVersion: '2.3.2',
+      fetchImpl: (async () =>
+        new Response(
+          JSON.stringify({
+            tag_name: 'v2.3.2',
+            html_url: 'https://evil.example/phish',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )) as typeof fetch,
+    });
+    expect(upToDateRes.updateAvailable).toBe(false);
+    expect(upToDateRes.releaseUrl).toBe(GITHUB_RELEASES_PAGE_URL);
+
+    // 2. Broker must make zero background update checks, detect offline newer extension, and honor /internal/check-updates
+    let checkCalls = 0;
+    const dataDir = createTempDataDir();
+    activeBroker = await startBrokerDaemon({
+      port: 44199,
+      dataDir,
+      checkUpdates: async () => {
+        checkCalls += 1;
+        return {
+          currentVersion: APP_VERSION,
+          latestVersion: '9.9.9',
+          updateAvailable: true,
+          releaseUrl: 'https://github.com/szybnev/chrome-browser-mcp/releases/tag/v9.9.9',
+          checkedAt: Date.now(),
+          source: 'github',
+        };
+      },
+    });
+
+    // Initially null and zero calls made in the background
+    const initialState = await activeBroker.hub.getDeckState();
+    expect(initialState.updateStatus).toBeNull();
+    expect(checkCalls).toBe(0);
+
+    // Connect a mock extension reporting a newer version (offline CWS auto-update scenario)
+    const ws = new WebSocket(activeBroker.config.wsUrl);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => {
+        ws.send(
+          JSON.stringify({
+            type: 'hello',
+            token: activeBroker!.config.token,
+            profile: {
+              profileId: 'ext-newer',
+              browserName: 'Chrome',
+              label: 'Newer',
+              extensionVersion: '9.8.0',
+              connectedAt: Date.now(),
+              lastSeenAt: Date.now(),
+            },
+          }),
+        );
+      });
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString('utf8')) as BrokerToExtensionMessage;
+        if (msg.type === 'broker.welcome') resolve();
+      });
+      ws.on('error', reject);
+    });
+
+    const offlineMismatchState = await activeBroker.hub.getDeckState();
+    expect(offlineMismatchState.updateStatus?.source).toBe('extension');
+    expect(offlineMismatchState.updateStatus?.updateAvailable).toBe(true);
+    expect(offlineMismatchState.updateStatus?.latestVersion).toBe('9.8.0');
+    expect(checkCalls).toBe(0);
+
+    // Manual on-demand check via authenticated /internal/check-updates
+    const manualRes = await fetch(`${activeBroker.config.brokerUrl}/internal/check-updates`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-broker-token': activeBroker.config.token,
+      },
+      body: '{}',
+    });
+    expect(manualRes.status).toBe(200);
+    const manualJson = (await manualRes.json()) as { ok: boolean; data: { latestVersion: string } };
+    expect(manualJson.ok).toBe(true);
+    expect(manualJson.data.latestVersion).toBe('9.9.9');
+    expect(checkCalls).toBe(1);
+
+    ws.close();
   });
 });

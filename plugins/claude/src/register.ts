@@ -11,7 +11,7 @@
  *    using strictly the sandboxed Claude Code Mods API (`$.env`, `$.fs`, `$.http`,
  *    `$.store`, `$.clock`, `$.command`, `$.ui`) with zero Node.js built-in imports.
  */
-import type { DeckState, TabInfo } from '@chrome-browser-mcp/protocol';
+import type { DeckState, TabInfo, UpdateCheckStatus } from '@chrome-browser-mcp/protocol';
 import { type I18nKey, type Locale, resolveLocale, translate } from '../../../packages/protocol/dist/i18n.js';
 
 const READ_ONLY_DOMAIN_PRESETS = ['mail.google.com', 'github.com', 'linear.app'] as const;
@@ -28,6 +28,7 @@ export interface DeckToolCallResponse {
   pin?: string;
   expiresAt?: number;
   copied?: boolean;
+  updateStatus?: UpdateCheckStatus;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +121,7 @@ let activeTab: DeckTab = 'overview';
 let tabQuery = '';
 let showBand = true;
 let captureCollapsed = false;
+let dismissedUpdateVersion: string | null = null;
 let locale: Locale = 'en';
 let inFlight = false;
 
@@ -133,6 +135,7 @@ export function resetModStateForTest(): void {
   tabQuery = '';
   showBand = true;
   captureCollapsed = false;
+  dismissedUpdateVersion = null;
   locale = 'en';
   inFlight = false;
 }
@@ -269,6 +272,15 @@ async function executeDeckTool(
       pairingPin = { pin: data.pin, expiresAt: data.expiresAt };
       notice = data.copied ? `${tr('status.copied')} (${data.pin})` : `PIN: ${data.pin} (valid 2m)`;
     }
+    if (mode === 'action' && data.updateStatus) {
+      const upd = data.updateStatus;
+      if (upd.updateAvailable) {
+        dismissedUpdateVersion = null;
+        notice = `${tr('status.updateAvailable', { latest: upd.latestVersion, current: upd.currentVersion })} — ${upd.releaseUrl}`;
+      } else {
+        notice = tr('status.upToDate', { version: upd.currentVersion });
+      }
+    }
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err);
     if (mode === 'action') {
@@ -300,7 +312,7 @@ export function register(on: ModHookRegistrar): void {
     await $.command.register({
       name: 'browser-deck',
       description:
-        'Open the Browser Control Deck pane (/browser-deck [tab|pause|resume|pin|band on|off|close])',
+        'Open the Browser Control Deck pane (/browser-deck [tab|pause|resume|pin|update|band on|off|close])',
       immediate: true,
     });
 
@@ -340,6 +352,17 @@ export function register(on: ModHookRegistrar): void {
         text: pairingPin
           ? `Pairing PIN: ${pairingPin.pin} (valid 2 min — paste into Chrome Side Panel → Pair)`
           : lastError || 'Could not generate pairing PIN.',
+      };
+    }
+    if (arg === 'update' || arg === 'check-update') {
+      await executeDeckTool($, 'deck_check_updates', {}, 'action');
+      const upd = state?.updateStatus;
+      return {
+        text: upd
+          ? upd.updateAvailable
+            ? `${tr('status.updateAvailable', { latest: upd.latestVersion, current: upd.currentVersion })} — ${upd.releaseUrl}`
+            : tr('status.upToDate', { version: upd.currentVersion })
+          : lastError || 'Could not check for updates.',
       };
     }
     if (arg === 'band on' || arg === 'band off') {
@@ -613,6 +636,11 @@ export function register(on: ModHookRegistrar): void {
         onPress: () => void executeDeckTool($, 'deck_get_state', {}, 'refresh'),
       }),
       Button({
+        key: 'check-updates',
+        label: tr('btn.checkUpdates'),
+        onPress: () => void executeDeckTool($, 'deck_check_updates', {}, 'action'),
+      }),
+      Button({
         key: 'pause-toggle',
         label: state.paused ? tr('btn.resume') : tr('btn.pauseAll'),
         onPress: () => void executeDeckTool($, 'deck_set_paused', { paused: !state?.paused }, 'action'),
@@ -620,6 +648,45 @@ export function register(on: ModHookRegistrar): void {
     );
 
     headerChildren.push(Box({ flexDirection: 'row', columnGap: 1, children: controlBarChildren }));
+
+    if (state.updateStatus?.updateAvailable && dismissedUpdateVersion !== state.updateStatus.latestVersion) {
+      const upd = state.updateStatus;
+      headerChildren.push(
+        Box({
+          borderStyle: 'round',
+          paddingX: 1,
+          flexDirection: 'row',
+          columnGap: 2,
+          children: [
+            Text({
+              bold: true,
+              color: 'cyan',
+              children: [
+                upd.source === 'extension'
+                  ? tr('status.versionMismatchExtNewer', {
+                      ext: upd.latestVersion,
+                      broker: upd.currentVersion,
+                    })
+                  : tr('status.updateAvailable', {
+                      latest: upd.latestVersion,
+                      current: upd.currentVersion,
+                    }),
+              ],
+            }),
+            Text({ dimColor: true, children: [upd.releaseUrl] }),
+            Button({
+              key: 'update-dismiss',
+              label: '✕',
+              plain: true,
+              onPress: () => {
+                dismissedUpdateVersion = upd.latestVersion;
+                redraw();
+              },
+            }),
+          ],
+        }),
+      );
+    }
 
     if (pairingPin && Date.now() < pairingPin.expiresAt) {
       headerChildren.push(

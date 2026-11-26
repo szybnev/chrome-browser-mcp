@@ -1,4 +1,4 @@
-import type { DeckState } from '@chrome-browser-mcp/protocol';
+import type { DeckState, UpdateCheckStatus } from '@chrome-browser-mcp/protocol';
 
 export type DeckTab = 'overview' | 'timeline' | 'devtools' | 'workflows' | 'security';
 
@@ -8,6 +8,7 @@ export interface ToolStructuredPayload {
   pin?: string;
   expiresAt?: number;
   copied?: boolean;
+  updateStatus?: UpdateCheckStatus;
 }
 
 /**

@@ -2,6 +2,7 @@ export * from './diff.js';
 export * from './i18n.js';
 export * from './rpc.js';
 export * from './schemas.js';
+export * from './semver.js';
 export * from './shield.js';
 export * from './validation.js';
 export * from './version.js';

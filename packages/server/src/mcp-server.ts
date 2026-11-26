@@ -1898,5 +1898,25 @@ export function createBrowserMcpServer(
     },
   );
 
+  server.registerTool(
+    'deck_check_updates',
+    {
+      title: 'Deck: Check for Updates (On-Demand)',
+      inputSchema: z.object({
+        deckSecret: z.string().optional(),
+      }),
+      _meta: APP_ONLY_META,
+    },
+    async ({ deckSecret: supplied }) => {
+      assertDeckSecret(supplied);
+      return toDeckToolResponse(
+        (await executeDeckTool(hub, 'deck_check_updates', {}, pinCache)) as unknown as {
+          text: string;
+          structuredContent: Record<string, unknown>;
+        },
+      );
+    },
+  );
+
   return server;
 }

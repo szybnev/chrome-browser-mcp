@@ -1,4 +1,6 @@
 import {
+  APP_VERSION,
+  compareSemver,
   exportWorkflowToPlaywright,
   extractWorkflowParamNames,
   getPauseShortcut,
@@ -10,6 +12,7 @@ import {
   resolveLocale,
   type TabInfo,
   translate,
+  type UpdateCheckStatus,
   validateCdpIdleSeconds,
   validateDomainRules,
   validatePairingPin,
@@ -83,6 +86,9 @@ export function App() {
   const [hasDownloadsPerm, setHasDownloadsPerm] = useState(false);
   const [hasNativePerm, setHasNativePerm] = useState(false);
   const [brokerDetected, setBrokerDetected] = useState<boolean | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateCheckStatus | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const checkOptionalPerms = useCallback(async () => {
     try {
@@ -313,6 +319,20 @@ export function App() {
       setTimeout(() => setActiveTab('control'), 650);
     } catch (err) {
       setPinError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleCheckUpdates = async () => {
+    if (checkingUpdates) return;
+    setCheckingUpdates(true);
+    setUpdateError(null);
+    try {
+      const res = await sendSw<UpdateCheckStatus>({ type: 'sp.checkUpdates' });
+      setUpdateStatus(res);
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCheckingUpdates(false);
     }
   };
 
@@ -1276,6 +1296,65 @@ export function App() {
                 </button>
               </div>
             </details>
+
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">{t('section.updates')}</span>
+                <span className="pill">
+                  v{APP_VERSION}
+                  {runtime.brokerVersion && runtime.brokerVersion !== APP_VERSION
+                    ? ` · broker v${runtime.brokerVersion}`
+                    : ''}
+                </span>
+              </div>
+              <div className="muted">{t('hint.updatesOnDemand')}</div>
+              {runtime.connected &&
+                runtime.brokerVersion &&
+                compareSemver(APP_VERSION, runtime.brokerVersion) !== 0 && (
+                  <div className="field-error">
+                    {compareSemver(APP_VERSION, runtime.brokerVersion) > 0
+                      ? t('status.versionMismatchExtNewer', {
+                          ext: APP_VERSION,
+                          broker: runtime.brokerVersion,
+                        })
+                      : t('status.versionMismatchBrokerNewer', {
+                          ext: APP_VERSION,
+                          broker: runtime.brokerVersion,
+                        })}
+                  </div>
+                )}
+              <div className="pin-row" style={{ flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={!runtime.connected || checkingUpdates}
+                  onClick={() => void handleCheckUpdates()}
+                >
+                  {checkingUpdates ? t('status.checkingUpdates') : t('btn.checkUpdates')}
+                </button>
+                {updateStatus?.updateAvailable &&
+                  updateStatus.releaseUrl.startsWith('https://github.com/szybnev/chrome-browser-mcp/') && (
+                    <button
+                      type="button"
+                      className="btn primary small"
+                      onClick={() => void chrome.tabs.create({ url: updateStatus.releaseUrl, active: true })}
+                    >
+                      {t('btn.viewRelease')}
+                    </button>
+                  )}
+              </div>
+              {updateStatus && (
+                <div className="muted">
+                  {updateStatus.updateAvailable
+                    ? t('status.updateAvailable', {
+                        latest: updateStatus.latestVersion,
+                        current: updateStatus.currentVersion,
+                      })
+                    : t('status.upToDate', { version: updateStatus.currentVersion })}
+                </div>
+              )}
+              {updateError && <div className="field-error">{updateError}</div>}
+            </div>
 
             {statusMsg && <div className="muted">{statusMsg}</div>}
           </div>

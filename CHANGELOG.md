@@ -4,6 +4,16 @@ All notable changes to **Chrome Browser MCP** are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] - 2026-11-27
+
+### Added
+
+- **On-Demand Zero-Telemetry Update Check & Offline Version-Mismatch Detection**:
+  - **How it works (strictly zero background network traffic):** Chrome Browser MCP never polls external servers automatically or on a timer. Checking for updates works in two complementary ways:
+    1. **Offline version-mismatch detection (zero network requests):** When Chrome Web Store auto-updates the MV3 extension in your browser, the extension reports its `extensionVersion` over local WebSocket (`127.0.0.1:43179`), and the broker reports `brokerVersion` in `broker.welcome`. If the two versions diverge (`extensionVersion > brokerVersion` or vice versa), Browser Control Deck and the Chrome Side Panel immediately surface an offline mismatch banner with no external requests.
+    2. **Manual "Check Updates" button (user-initiated only):** Clicking **Check Updates** in **Browser Control Deck** (Google Antigravity, Codex Desktop, OpenChamber Desktop, OpenCode Desktop), in the **Claude Code Mod** (`Pane` button or `/browser-deck update`), in the **Chrome Side Panel** (*Pair/Connect → Updates & Version*), or running `node packages/server/dist/cli.js check-update` triggers a single anonymous, unauthenticated `GET` request from the local broker daemon to GitHub Releases (`api.github.com/repos/szybnev/chrome-browser-mcp/releases/latest`). The Chrome extension itself still communicates strictly with `127.0.0.1` loopback (`sp.checkUpdates` → `/internal/check-updates`), and the app-only `deck_check_updates` MCP tool is capability-gated with `deckSecret` so LLM agents cannot invoke it autonomously.
+  - Added full EN / RU / zh-CN localization for update status, release links, and version-mismatch notices, plus updated `PRIVACY.md` to document the manual-only check.
+
 ## [2.3.2] - 2026-11-27
 
 ### Fixed

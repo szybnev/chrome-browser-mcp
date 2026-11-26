@@ -6,6 +6,7 @@ import {
   type BrokerToExtensionMessage,
   type BrowserProfileInfo,
   type ConsoleEntry,
+  compareSemver,
   type DeckState,
   type ExtensionRpcMethod,
   type ExtensionToBrokerMessage,
@@ -20,6 +21,7 @@ import {
   type SecurityPolicy,
   SecurityPolicySchema,
   type TabInfo,
+  type UpdateCheckStatus,
 } from '@chrome-browser-mcp/protocol';
 import type { WebSocket } from 'ws';
 import { renderAuditHtml, renderAuditJson } from './audit-exporter.js';
@@ -30,6 +32,7 @@ import {
   savePersistedWorkflows,
 } from './config.js';
 import { resolveSecretRef } from './secrets.js';
+import { checkLatestRelease, GITHUB_RELEASES_PAGE_URL } from './update-checker.js';
 
 export const SERVER_VERSION = APP_VERSION;
 const MAX_ACTIVITY = 300;
@@ -92,6 +95,7 @@ export interface BrowserHubInterface {
   getLiveTabUrl(profileId?: string, tabId?: number): Promise<string | undefined>;
   getLivePolicy(): Promise<SecurityPolicy>;
   createPairingPin(): Promise<{ pin: string; expiresAt: number }>;
+  checkForUpdates(): Promise<UpdateCheckStatus>;
   getPreviousSnapshot(profileId: string, tabId: number): PageSnapshot | undefined;
   rememberSnapshot(profileId: string, snapshot: PageSnapshot): void;
   recordScreenshot(record: ScreenshotRecord): void;
@@ -119,6 +123,8 @@ export class BrowserBrokerHub implements BrowserHubInterface {
   private pendingDialogs = new Map<string, PendingDialog>();
   private approvedEvalOrigins = new Set<string>();
   private pinFactory: (() => { pin: string; expiresAt: number }) | null = null;
+  private lastUpdateStatus: UpdateCheckStatus | null = null;
+  private updateChecker: (() => Promise<UpdateCheckStatus>) | null = null;
 
   constructor(
     private readonly dataDir: string,
@@ -131,6 +137,17 @@ export class BrowserBrokerHub implements BrowserHubInterface {
 
   setPinFactory(fn: () => { pin: string; expiresAt: number }): void {
     this.pinFactory = fn;
+  }
+
+  setUpdateChecker(fn: () => Promise<UpdateCheckStatus>): void {
+    this.updateChecker = fn;
+  }
+
+  async checkForUpdates(): Promise<UpdateCheckStatus> {
+    const checker = this.updateChecker ?? (() => checkLatestRelease({ currentVersion: SERVER_VERSION }));
+    const status = await checker();
+    this.lastUpdateStatus = status;
+    return status;
   }
 
   async createPairingPin(): Promise<{ pin: string; expiresAt: number }> {
@@ -753,6 +770,31 @@ export class BrowserBrokerHub implements BrowserHubInterface {
       tabsByProfile[profileId] = entry.tabs;
     }
 
+    let effectiveUpdateStatus: UpdateCheckStatus | null = this.lastUpdateStatus;
+    let highestExtVersion: string | null = null;
+    for (const p of profiles) {
+      if (
+        p.extensionVersion &&
+        compareSemver(p.extensionVersion, SERVER_VERSION) > 0 &&
+        (!highestExtVersion || compareSemver(p.extensionVersion, highestExtVersion) > 0)
+      ) {
+        highestExtVersion = p.extensionVersion;
+      }
+    }
+    if (
+      highestExtVersion &&
+      (!effectiveUpdateStatus || compareSemver(highestExtVersion, effectiveUpdateStatus.latestVersion) > 0)
+    ) {
+      effectiveUpdateStatus = {
+        currentVersion: SERVER_VERSION,
+        latestVersion: highestExtVersion,
+        updateAvailable: true,
+        releaseUrl: GITHUB_RELEASES_PAGE_URL,
+        checkedAt: Date.now(),
+        source: 'extension',
+      };
+    }
+
     return {
       brokerVersion: SERVER_VERSION,
       brokerUrl: this.brokerUrl,
@@ -774,6 +816,7 @@ export class BrowserBrokerHub implements BrowserHubInterface {
         .reverse(),
       workflows: this.workflows,
       latestScreenshot: this.latestScreenshot,
+      updateStatus: effectiveUpdateStatus,
     };
   }
 

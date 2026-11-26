@@ -8,6 +8,7 @@ import { SERVER_VERSION } from './hub.js';
 import { createBrowserMcpServer } from './mcp-server.js';
 import { installNativeMessagingHost, runNativeMessagingHost } from './native-host.js';
 import { RemoteBrokerHub } from './remote-hub.js';
+import { checkLatestRelease } from './update-checker.js';
 
 function parseArgs(argv: string[]) {
   const args = argv.slice(2);
@@ -168,6 +169,7 @@ Usage:
   chrome-browser-mcp install-host --extension-id=<ID>                   Install Chrome Native Messaging Host manifest
   chrome-browser-mcp native-host                                        Run Chrome Native Messaging stdio bridge
   chrome-browser-mcp status [--port=43179]                              Show broker health & connected browser profiles
+  chrome-browser-mcp check-update                                       Check GitHub Releases for a newer version (on-demand)
   chrome-browser-mcp token [--rotate] [--data-dir=PATH]                 Print (or rotate) the local Chrome pairing token
 `);
     return;
@@ -223,6 +225,23 @@ Usage:
     const dir = resolveDataDir(dataDir);
     const token = loadOrCreateToken(dir, rotate);
     console.log(token);
+    return;
+  }
+
+  if (command === 'check-update') {
+    try {
+      const status = await checkLatestRelease({ currentVersion: SERVER_VERSION });
+      if (status.updateAvailable) {
+        console.log(
+          `Update available: v${status.currentVersion} -> v${status.latestVersion}\nRelease: ${status.releaseUrl}\nUpdate:  git pull && pnpm build && pnpm install:local --codex`,
+        );
+      } else {
+        console.log(`Up to date (v${status.currentVersion})`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
     return;
   }
 

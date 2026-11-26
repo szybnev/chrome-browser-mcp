@@ -42,6 +42,15 @@ var EN = {
   "btn.openWelcome": "Setup Wizard",
   "btn.openPairPage": "Get 6-Digit PIN",
   "btn.generatePin": "Generate PIN",
+  "btn.checkUpdates": "Check Updates",
+  "btn.viewRelease": "View Release",
+  "status.checkingUpdates": "Checking\u2026",
+  "status.upToDate": "Up to date (v{version})",
+  "status.updateAvailable": "Update available: v{latest} (current v{current})",
+  "status.versionMismatchExtNewer": "Chrome extension v{ext} is newer than local broker v{broker}",
+  "status.versionMismatchBrokerNewer": "Local broker v{broker} is newer than Chrome extension v{ext}",
+  "section.updates": "Updates & Version",
+  "hint.updatesOnDemand": "Zero background checks \u2014 queries GitHub Releases only when you click.",
   "btn.connect": "Connect",
   "btn.next": "Next",
   "btn.back": "Back",
@@ -222,6 +231,15 @@ var RU = {
   "btn.openWelcome": "\u041C\u0430\u0441\u0442\u0435\u0440 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438",
   "btn.openPairPage": "\u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C 6-\u0437\u043D\u0430\u0447\u043D\u044B\u0439 PIN",
   "btn.generatePin": "\u0421\u043E\u0437\u0434\u0430\u0442\u044C PIN",
+  "btn.checkUpdates": "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u044F",
+  "btn.viewRelease": "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0440\u0435\u043B\u0438\u0437",
+  "status.checkingUpdates": "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430\u2026",
+  "status.upToDate": "\u0410\u043A\u0442\u0443\u0430\u043B\u044C\u043D\u0430\u044F \u0432\u0435\u0440\u0441\u0438\u044F (v{version})",
+  "status.updateAvailable": "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435: v{latest} (\u0442\u0435\u043A\u0443\u0449\u0430\u044F v{current})",
+  "status.versionMismatchExtNewer": "\u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0435 Chrome v{ext} \u043D\u043E\u0432\u0435\u0435 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0431\u0440\u043E\u043A\u0435\u0440\u0430 v{broker}",
+  "status.versionMismatchBrokerNewer": "\u041B\u043E\u043A\u0430\u043B\u044C\u043D\u044B\u0439 \u0431\u0440\u043E\u043A\u0435\u0440 v{broker} \u043D\u043E\u0432\u0435\u0435 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F Chrome v{ext}",
+  "section.updates": "\u041E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u044F \u0438 \u0432\u0435\u0440\u0441\u0438\u044F",
+  "hint.updatesOnDemand": "\u0411\u0435\u0437 \u0444\u043E\u043D\u043E\u0432\u044B\u0445 \u043F\u0440\u043E\u0432\u0435\u0440\u043E\u043A \u2014 \u0437\u0430\u043F\u0440\u043E\u0441 \u043A GitHub Releases \u0438\u0434\u0451\u0442 \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u043E \u043A\u043D\u043E\u043F\u043A\u0435.",
   "btn.connect": "\u041F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u044C",
   "btn.next": "\u0414\u0430\u043B\u0435\u0435",
   "btn.back": "\u041D\u0430\u0437\u0430\u0434",
@@ -402,6 +420,15 @@ var ZH_CN = {
   "btn.openWelcome": "\u521D\u59CB\u914D\u7F6E\u5411\u5BFC",
   "btn.openPairPage": "\u83B7\u53D6 6 \u4F4D PIN \u7801",
   "btn.generatePin": "\u751F\u6210 PIN \u7801",
+  "btn.checkUpdates": "\u68C0\u67E5\u66F4\u65B0",
+  "btn.viewRelease": "\u67E5\u770B\u53D1\u5E03",
+  "status.checkingUpdates": "\u68C0\u67E5\u4E2D\u2026",
+  "status.upToDate": "\u5DF2\u662F\u6700\u65B0\u7248\u672C (v{version})",
+  "status.updateAvailable": "\u53D1\u73B0\u65B0\u7248\u672C\uFF1Av{latest}\uFF08\u5F53\u524D v{current}\uFF09",
+  "status.versionMismatchExtNewer": "Chrome \u6269\u5C55 v{ext} \u9AD8\u4E8E\u672C\u5730\u4EE3\u7406 v{broker}",
+  "status.versionMismatchBrokerNewer": "\u672C\u5730\u4EE3\u7406 v{broker} \u9AD8\u4E8E Chrome \u6269\u5C55 v{ext}",
+  "section.updates": "\u7248\u672C\u4E0E\u66F4\u65B0",
+  "hint.updatesOnDemand": "\u65E0\u540E\u53F0\u8F6E\u8BE2 \u2014 \u4EC5\u5728\u624B\u52A8\u70B9\u51FB\u65F6\u533F\u540D\u67E5\u8BE2 GitHub Releases\u3002",
   "btn.connect": "\u8FDE\u63A5",
   "btn.next": "\u4E0B\u4E00\u6B65",
   "btn.back": "\u4E0A\u4E00\u6B65",
@@ -576,6 +603,7 @@ var activeTab = "overview";
 var tabQuery = "";
 var showBand = true;
 var captureCollapsed = false;
+var dismissedUpdateVersion = null;
 var locale = "en";
 var inFlight = false;
 function resetModStateForTest() {
@@ -588,6 +616,7 @@ function resetModStateForTest() {
   tabQuery = "";
   showBand = true;
   captureCollapsed = false;
+  dismissedUpdateVersion = null;
   locale = "en";
   inFlight = false;
 }
@@ -682,6 +711,15 @@ async function executeDeckTool($, name, args, mode) {
       pairingPin = { pin: data.pin, expiresAt: data.expiresAt };
       notice = data.copied ? `${tr("status.copied")} (${data.pin})` : `PIN: ${data.pin} (valid 2m)`;
     }
+    if (mode === "action" && data.updateStatus) {
+      const upd = data.updateStatus;
+      if (upd.updateAvailable) {
+        dismissedUpdateVersion = null;
+        notice = `${tr("status.updateAvailable", { latest: upd.latestVersion, current: upd.currentVersion })} \u2014 ${upd.releaseUrl}`;
+      } else {
+        notice = tr("status.upToDate", { version: upd.currentVersion });
+      }
+    }
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err);
     if (mode === "action") {
@@ -706,7 +744,7 @@ function register(on) {
     }
     await $.command.register({
       name: "browser-deck",
-      description: "Open the Browser Control Deck pane (/browser-deck [tab|pause|resume|pin|band on|off|close])",
+      description: "Open the Browser Control Deck pane (/browser-deck [tab|pause|resume|pin|update|band on|off|close])",
       immediate: true
     });
     void executeDeckTool($, "deck_get_state", {}, "refresh");
@@ -738,6 +776,13 @@ function register(on) {
       await executeDeckTool($, "deck_create_pin", {}, "action");
       return {
         text: pairingPin ? `Pairing PIN: ${pairingPin.pin} (valid 2 min \u2014 paste into Chrome Side Panel \u2192 Pair)` : lastError || "Could not generate pairing PIN."
+      };
+    }
+    if (arg === "update" || arg === "check-update") {
+      await executeDeckTool($, "deck_check_updates", {}, "action");
+      const upd = state?.updateStatus;
+      return {
+        text: upd ? upd.updateAvailable ? `${tr("status.updateAvailable", { latest: upd.latestVersion, current: upd.currentVersion })} \u2014 ${upd.releaseUrl}` : tr("status.upToDate", { version: upd.currentVersion }) : lastError || "Could not check for updates."
       };
     }
     if (arg === "band on" || arg === "band off") {
@@ -975,12 +1020,53 @@ function register(on) {
         onPress: () => void executeDeckTool($, "deck_get_state", {}, "refresh")
       }),
       Button({
+        key: "check-updates",
+        label: tr("btn.checkUpdates"),
+        onPress: () => void executeDeckTool($, "deck_check_updates", {}, "action")
+      }),
+      Button({
         key: "pause-toggle",
         label: state.paused ? tr("btn.resume") : tr("btn.pauseAll"),
         onPress: () => void executeDeckTool($, "deck_set_paused", { paused: !state?.paused }, "action")
       })
     );
     headerChildren.push(Box({ flexDirection: "row", columnGap: 1, children: controlBarChildren }));
+    if (state.updateStatus?.updateAvailable && dismissedUpdateVersion !== state.updateStatus.latestVersion) {
+      const upd = state.updateStatus;
+      headerChildren.push(
+        Box({
+          borderStyle: "round",
+          paddingX: 1,
+          flexDirection: "row",
+          columnGap: 2,
+          children: [
+            Text({
+              bold: true,
+              color: "cyan",
+              children: [
+                upd.source === "extension" ? tr("status.versionMismatchExtNewer", {
+                  ext: upd.latestVersion,
+                  broker: upd.currentVersion
+                }) : tr("status.updateAvailable", {
+                  latest: upd.latestVersion,
+                  current: upd.currentVersion
+                })
+              ]
+            }),
+            Text({ dimColor: true, children: [upd.releaseUrl] }),
+            Button({
+              key: "update-dismiss",
+              label: "\u2715",
+              plain: true,
+              onPress: () => {
+                dismissedUpdateVersion = upd.latestVersion;
+                redraw();
+              }
+            })
+          ]
+        })
+      );
+    }
     if (pairingPin && Date.now() < pairingPin.expiresAt) {
       headerChildren.push(
         Box({
