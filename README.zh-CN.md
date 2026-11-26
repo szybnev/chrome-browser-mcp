@@ -15,7 +15,7 @@
 [![MCP v2](https://img.shields.io/badge/MCP-v2%20Streamable%20HTTP%20%2B%20stdio%20%2B%20Apps-0d9488?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](./packages/extension)
 [![WebMCP Ready](https://img.shields.io/badge/WebMCP-navigator.modelContext-7c3aed)](./packages/extension/src/background/service-worker.ts)
-[![Node >=24](https://img.shields.io/badge/Node-%3E%3D24-339933?logo=nodedotjs&logoColor=white)](./package.json)
+[![Node 26 LTS (>=22.23)](https://img.shields.io/badge/Node-26%20LTS%20(%3E%3D22.23)-339933?logo=nodedotjs&logoColor=white)](./package.json)
 [![TypeScript Strict](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white)](./tsconfig.base.json)
 [![100% Local-First](https://img.shields.io/badge/Privacy-100%25%20Local--First%20%7C%20Zero%20Telemetry-10b981)](./PRIVACY.md)
 [![Prompt-Injection Shield](https://img.shields.io/badge/Shield-Prompt--Injection%20Protected-f59e0b)](./packages/protocol/src/shield.ts)
@@ -149,7 +149,7 @@ Chrome Browser MCP 为主流桌面端 AI 客户端提供原生 GUI 集成与统�
 | **OpenCode Desktop** (`>=2.2.0`) | `plugins/opencode/` | 原生侧边 `Panel`（Shadow DOM）+ 面板 `+` 菜单项（`session.panel`）+ 命令面板（`./gui-experimental`） | 服务端插件（`ctx.mcp.transform`） |
 | **Claude Desktop** | `plugins/claude/` + `release/chrome-browser-mcp.mcpb` | **Code 标签页**：原生 5 标签页 Claude Mod `Pane`（`/browser-deck`）+ `AbovePrompt` 状态条<br>**Chat 标签页**：`.mcpb` 扩展包与内联 MCP App | `.mcp.json` / `.mcpb` |
 
-> **自包含插件打包：** `pnpm build` 会在 `plugins/codex`、`plugins/openchamber` 和 `plugins/opencode` 内打包独立的服务端产物（`server/cli.js` + `server/app/deck.html`），**不依赖外部 `npx` 回退**；即使客户端将插件复制到仓库外的本地缓存或扩展目录中也能稳定运行。
+> **自包含插件打包：** `pnpm build` 会在 `plugins/codex`、`plugins/openchamber`、`plugins/opencode` 和 `plugins/claude` 内打包独立的服务端产物（`server/cli.js` + `server/app/deck.html`），**不依赖外部 `npx` 回退**；即使客户端将插件复制到仓库外的本地缓存或扩展目录中也能稳定运行。
 
 #### 本地快速安装工具
 
@@ -176,15 +176,17 @@ Antigravity 将自动发现：
 
 #### Codex Desktop（Codex 插件 + Global 与 Thread MCP App）
 
-在 `~/.codex/config.toml` 中将本仓库注册为本地市场（或运行 `pnpm install:local --codex`，同时自动刷新 Codex 本地插件缓存）：
+使用以下命令注册本地市场并安装插件（会执行 `codex plugin marketplace add` 和 `codex plugin add chrome-browser-mcp@chrome-browser-mcp`；如果 `PATH` 中没有 `codex` CLI，则会直接写入 `~/.codex/config.toml` 并安装本地插件缓存）：
 
-```toml
-[marketplaces.chrome-browser-mcp]
-source_type = "local"
-source = "/绝对路径/chrome-browser-mcp"
+```bash
+pnpm install:local --codex
+```
 
-[plugins."chrome-browser-mcp@chrome-browser-mcp"]
-enabled = true
+或手动通过 Codex CLI 安装：
+
+```bash
+codex plugin marketplace add /绝对路径/chrome-browser-mcp
+codex plugin add chrome-browser-mcp@chrome-browser-mcp
 ```
 
 Codex Desktop 会加载 `plugins/codex/`，在全局侧边栏（`openai/ui: global`）和每个会话的侧边面板（`openai/ui: thread`）中提供 **Browser Control Deck**，同时注册全部 `browser_*` 工具与 `chrome-browser-mcp` Skill。

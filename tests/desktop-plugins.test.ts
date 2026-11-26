@@ -1,13 +1,18 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type BrokerDaemonHandle, startBrokerDaemon } from '../packages/server/src/broker.js';
 import { DECK_APP_URI } from '../packages/server/src/mcp-server.js';
-import { type ClaudeModApi, createBrowserDeckMod, PANE_ID } from '../plugins/claude/src/register.js';
+import {
+  type ClaudeModApi,
+  PANE_ID,
+  register as registerClaudeMod,
+  resetModStateForTest,
+} from '../plugins/claude/src/register.js';
 import { createOpenChamberServiceServer } from '../plugins/openchamber/src/service.js';
 
 const ROOT_DIR = resolve(import.meta.dirname, '..');
@@ -296,6 +301,86 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
         rmSync(brokenDir, { recursive: true, force: true });
       }
     });
+    it('install-local.mjs --codex registers marketplace, installs plugin cache, and cleans stale versions', () => {
+      const rootPkg = JSON.parse(readFileSync(resolve(ROOT_DIR, 'package.json'), 'utf8'));
+      const expectedVersion = String(rootPkg.version);
+
+      // 1. Direct fallback path (when `codex` CLI is not on PATH)
+      const fallbackCodexHome = mkdtempSync(join(tmpdir(), 'cbmcp-codex-home-fallback-'));
+      const staleDir = join(
+        fallbackCodexHome,
+        'plugins',
+        'cache',
+        'chrome-browser-mcp',
+        'chrome-browser-mcp',
+        '2.2.0',
+      );
+      mkdirSync(staleDir, { recursive: true });
+      try {
+        const res = spawnSync(process.execPath, [resolve(ROOT_DIR, 'scripts/install-local.mjs'), '--codex'], {
+          cwd: ROOT_DIR,
+          env: {
+            HOME: homedir(),
+            PATH: dirname(process.execPath),
+            CODEX_HOME: fallbackCodexHome,
+          },
+          encoding: 'utf8',
+          timeout: 10_000,
+        });
+        expect(res.status).toBe(0);
+        const toml = readFileSync(join(fallbackCodexHome, 'config.toml'), 'utf8');
+        expect(toml).toContain('[marketplaces.chrome-browser-mcp]');
+        expect(toml).toContain('[plugins."chrome-browser-mcp@chrome-browser-mcp"]');
+        expect(toml).toContain('enabled = true');
+        const installedDir = join(
+          fallbackCodexHome,
+          'plugins',
+          'cache',
+          'chrome-browser-mcp',
+          'chrome-browser-mcp',
+          expectedVersion,
+        );
+        expect(existsSync(join(installedDir, 'plugin.json'))).toBe(true);
+        expect(existsSync(join(installedDir, 'server/cli.js'))).toBe(true);
+        expect(existsSync(staleDir)).toBe(false);
+      } finally {
+        rmSync(fallbackCodexHome, { recursive: true, force: true });
+      }
+
+      // 2. Native `codex` CLI path (when `codex` binary is available on this machine)
+      const codexProbe = spawnSync('codex', ['--version'], { stdio: 'ignore' });
+      if (!codexProbe.error && codexProbe.status === 0) {
+        const cliCodexHome = mkdtempSync(join(tmpdir(), 'cbmcp-codex-home-cli-'));
+        try {
+          const res = spawnSync(
+            process.execPath,
+            [resolve(ROOT_DIR, 'scripts/install-local.mjs'), '--codex'],
+            {
+              cwd: ROOT_DIR,
+              env: {
+                ...process.env,
+                CODEX_HOME: cliCodexHome,
+              },
+              encoding: 'utf8',
+              timeout: 15_000,
+            },
+          );
+          expect(res.status).toBe(0);
+          const listRes = spawnSync('codex', ['plugin', 'list'], {
+            env: { ...process.env, CODEX_HOME: cliCodexHome },
+            encoding: 'utf8',
+            timeout: 15_000,
+          });
+          expect(listRes.stdout).toMatch(
+            new RegExp(
+              `chrome-browser-mcp@chrome-browser-mcp\\s+installed,\\s+enabled\\s+${expectedVersion.replaceAll('.', '\\.')}`,
+            ),
+          );
+        } finally {
+          rmSync(cliCodexHome, { recursive: true, force: true });
+        }
+      }
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -499,8 +584,13 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
   // 5. Claude Desktop Mod & MCPB Bundle
   // -------------------------------------------------------------------------
   describe('Claude Desktop Mod & MCPB manifest', () => {
-    it('registers /browser-deck, renders 5-tab Desktop Pane & AbovePrompt with live Broker state', async () => {
-      type Handler = (api: unknown, ev: unknown, next: (e: unknown) => unknown) => Promise<unknown>;
+    it('registers /browser-deck, renders 5-tab Desktop Pane & AbovePrompt via sandboxed $ APIs', async () => {
+      resetModStateForTest();
+      type Handler = (
+        api: ClaudeModApi,
+        ev: Record<string, unknown>,
+        next: (e: Record<string, unknown>) => unknown,
+      ) => Promise<unknown>;
       const hooks: Array<{ event: string; matcher?: Record<string, unknown>; handler: Handler }> = [];
       const registeredCommands: Array<{ name: string; immediate?: boolean }> = [];
       const openedPanes: Array<{ id: string; title?: string }> = [];
@@ -511,7 +601,39 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
         (tag: string) =>
         (props: Record<string, unknown> = {}) => ({ tag, ...props });
 
+      const envVars: Record<string, string | undefined> = {
+        CHROME_BROWSER_MCP_PORT: String(brokerPort),
+        CHROME_BROWSER_MCP_DATA_DIR: tempDir,
+      };
+
       const mockApi: ClaudeModApi = {
+        env: {
+          async get(name) {
+            return envVars[name];
+          },
+        },
+        fs: {
+          async exists(path) {
+            return existsSync(path);
+          },
+          async read(path) {
+            return readFileSync(path, 'utf8');
+          },
+        },
+        http: {
+          async fetch(url, init) {
+            const res = await fetch(url, {
+              method: init?.method,
+              headers: init?.headers,
+              body: init?.body,
+            });
+            return {
+              status: res.status,
+              ok: res.ok,
+              text: await res.text(),
+            };
+          },
+        },
         store: {
           async get(k) {
             return store.get(k);
@@ -533,6 +655,7 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
         ui: {
           async open(opts) {
             openedPanes.push(opts);
+            return { isPlaced: true };
           },
           async close() {},
           invalidate() {
@@ -552,22 +675,7 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
         },
       };
 
-      const register = createBrowserDeckMod({
-        async callDeckTool(name, args = {}) {
-          const res = await fetch(`${broker.config.brokerUrl}/internal/deck-tool`, {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              'x-broker-token': broker.config.token,
-            },
-            body: JSON.stringify({ name, arguments: args }),
-          });
-          const json = (await res.json()) as { data?: Record<string, unknown> };
-          return json.data ?? {};
-        },
-      });
-
-      register((event, matcherOrHandler, maybeHandler) => {
+      registerClaudeMod((event, matcherOrHandler, maybeHandler) => {
         if (typeof matcherOrHandler === 'function') {
           hooks.push({ event, handler: matcherOrHandler as Handler });
         } else if (maybeHandler) {
@@ -624,7 +732,8 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
       expect(pinCmdRes.text).toMatch(/Pairing PIN: \d{6}/);
     });
 
-    it('ships valid Claude Mod and .mcpb manifests + prebuilt hooks/register.js', () => {
+    it('ships Claude Code validator-compliant hooks/register.js, self-contained server, and patched LTS Node floor', () => {
+      const rootPkg = JSON.parse(readFileSync(resolve(ROOT_DIR, 'package.json'), 'utf8'));
       const claudePlugin = JSON.parse(
         readFileSync(resolve(ROOT_DIR, 'plugins/claude/.claude-plugin/plugin.json'), 'utf8'),
       );
@@ -633,8 +742,64 @@ describe('Multi-Harness Desktop GUI Integrations', () => {
       );
       expect(claudePlugin.name).toBe('chrome-browser-mcp');
       expect(mcpbManifest.manifest_version).toBe('0.3');
+      expect(rootPkg.engines.node).toBe('^22.23.0 || ^24.19.0 || >=26.0.0');
+      expect(mcpbManifest.compatibility.runtimes.node).toBe('>=22.23.0');
       expect(existsSync(resolve(ROOT_DIR, 'plugins/claude/hooks/register.js'))).toBe(true);
       expect(existsSync(resolve(ROOT_DIR, 'plugins/claude/.mcp.json'))).toBe(true);
+      expect(existsSync(resolve(ROOT_DIR, 'plugins/claude/server/cli.js'))).toBe(true);
+      expect(existsSync(resolve(ROOT_DIR, 'plugins/claude/server/app/deck.html'))).toBe(true);
+
+      // Static checks mirroring `claude plugin validate` rules on hooks/register.js
+      const bundle = readFileSync(resolve(ROOT_DIR, 'plugins/claude/hooks/register.js'), 'utf8');
+      // 1. No bare/Node imports (only relative paths or `claude-code` are allowed)
+      const importSpecifiers = [...bundle.matchAll(/^\s*import\s+[\s\S]*?from\s+["']([^"']+)["']/gm)].map(
+        (m) => m[1] ?? '',
+      );
+      for (const spec of importSpecifiers) {
+        expect(spec === 'claude-code' || spec.startsWith('./') || spec.startsWith('../')).toBe(true);
+      }
+      expect(bundle).not.toContain('node:child_process');
+      expect(bundle).not.toContain('node:fs');
+      expect(bundle).not.toContain('node:os');
+      expect(bundle).not.toContain('node:path');
+      expect(bundle).not.toContain('node:url');
+      // 2. No CommonJS require, dynamic import(), Node globals, timer globals, or npx fallback
+      expect(bundle).not.toMatch(/\brequire\s*\(/);
+      expect(bundle).not.toMatch(/\bimport\s*\(/);
+      expect(bundle).not.toMatch(/\bprocess\./);
+      expect(bundle).not.toMatch(/\bsetTimeout\s*\(/);
+      expect(bundle).not.toContain('chrome-browser-mcp@');
+      expect(bundle).not.toContain('npx');
+      // 3. No aliasing `$` or its namespaces, and all $.env.get() calls use string literals
+      expect(bundle).not.toMatch(/\bconst\s+\$\s*=/);
+      expect(bundle).not.toMatch(/\bconst\s+\w+\s*=\s*\$\.\w+\s*[;,]/);
+      const envGets = [...bundle.matchAll(/\$\.env\.get\(([^)]+)\)/g)];
+      expect(envGets.length).toBeGreaterThan(0);
+      for (const m of envGets) {
+        expect(m[1]?.trim()).toMatch(/^["'][A-Z0-9_]+["']$/);
+      }
+      // 4. Exports top-level register(on) function
+      expect(bundle).toMatch(/function register\(on\)/);
+      // 5. Claude launcher fails closed without npx when bundled server is removed
+      const claudeLauncher = readFileSync(resolve(ROOT_DIR, 'plugins/claude/bin/start-server.sh'), 'utf8');
+      expect(claudeLauncher).not.toContain('npx');
+      expect(claudeLauncher).not.toContain('chrome-browser-mcp@');
+
+      const brokenClaude = mkdtempSync(join(tmpdir(), 'cbmcp-claude-broken-'));
+      cpSync(resolve(ROOT_DIR, 'plugins/claude'), brokenClaude, { recursive: true });
+      rmSync(join(brokenClaude, 'server'), { recursive: true, force: true });
+      try {
+        const res = spawnSync('bash', ['./bin/start-server.sh'], {
+          cwd: brokenClaude,
+          env: { HOME: homedir(), PATH: process.env.PATH ?? '/usr/bin:/bin' },
+          encoding: 'utf8',
+          timeout: 5000,
+        });
+        expect(res.status).not.toBe(0);
+        expect(res.stderr).toContain('bundled server CLI not found');
+      } finally {
+        rmSync(brokenClaude, { recursive: true, force: true });
+      }
     });
   });
 });

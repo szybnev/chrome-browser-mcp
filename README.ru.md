@@ -15,7 +15,7 @@
 [![MCP v2](https://img.shields.io/badge/MCP-v2%20Streamable%20HTTP%20%2B%20stdio%20%2B%20Apps-0d9488?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](./packages/extension)
 [![WebMCP Ready](https://img.shields.io/badge/WebMCP-navigator.modelContext-7c3aed)](./packages/extension/src/background/service-worker.ts)
-[![Node >=24](https://img.shields.io/badge/Node-%3E%3D24-339933?logo=nodedotjs&logoColor=white)](./package.json)
+[![Node 26 LTS (>=22.23)](https://img.shields.io/badge/Node-26%20LTS%20(%3E%3D22.23)-339933?logo=nodedotjs&logoColor=white)](./package.json)
 [![TypeScript Strict](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white)](./tsconfig.base.json)
 [![100% Local-First](https://img.shields.io/badge/Privacy-100%25%20Local--First%20%7C%20Zero%20Telemetry-10b981)](./PRIVACY.md)
 [![Prompt-Injection Shield](https://img.shields.io/badge/Shield-Prompt--Injection%20Protected-f59e0b)](./packages/protocol/src/shield.ts)
@@ -149,7 +149,7 @@ Chrome Browser MCP поставляется с нативными GUI-интег
 | **OpenCode Desktop** (`>=2.2.0`) | `plugins/opencode/` | Нативная боковая `Panel` (Shadow DOM) + пункт в меню `+` (`session.panel`) + Command Palette (`./gui-experimental`) | Серверный плагин (`ctx.mcp.transform`) |
 | **Claude Desktop** | `plugins/claude/` + `release/chrome-browser-mcp.mcpb` | **Вкладка Code**: нативная 5-вкладочная `Pane` Claude Mod (`/browser-deck`) + строка статуса `AbovePrompt`<br>**Вкладка Chat**: пакет `.mcpb` с встроенным MCP App | `.mcp.json` / `.mcpb` |
 
-> **Автономные бандлы плагинов:** `pnpm build` упаковывает самодостаточные артефакты сервера (`server/cli.js` + `server/app/deck.html`) внутрь `plugins/codex`, `plugins/openchamber` и `plugins/opencode` **без стороннего `npx`-fallback**, поэтому плагины стабильно работают даже после копирования в кэш или каталог расширений харнеса за пределами репозитория.
+> **Автономные бандлы плагинов:** `pnpm build` упаковывает самодостаточные артефакты сервера (`server/cli.js` + `server/app/deck.html`) внутрь `plugins/codex`, `plugins/openchamber`, `plugins/opencode` и `plugins/claude` **без стороннего `npx`-fallback**, поэтому плагины стабильно работают даже после копирования в кэш или каталог расширений харнеса за пределами репозитория.
 
 #### Быстрый локальный установщик
 
@@ -176,15 +176,17 @@ Antigravity автоматически подхватит:
 
 #### Codex Desktop (Плагин Codex + Global & Thread MCP App)
 
-Зарегистрируйте репозиторий как локальный маркетплейс в `~/.codex/config.toml` (или выполните `pnpm install:local --codex` — команда также обновит локальный кэш плагина Codex):
+Установите локальный маркетплейс и сам плагин одной командой (скрипт вызовет `codex plugin marketplace add` и `codex plugin add chrome-browser-mcp@chrome-browser-mcp`, а если `codex` CLI нет в `PATH` — обновит `~/.codex/config.toml` и локальный кэш напрямую):
 
-```toml
-[marketplaces.chrome-browser-mcp]
-source_type = "local"
-source = "/абсолютный/путь/к/chrome-browser-mcp"
+```bash
+pnpm install:local --codex
+```
 
-[plugins."chrome-browser-mcp@chrome-browser-mcp"]
-enabled = true
+Или вручную через Codex CLI:
+
+```bash
+codex plugin marketplace add /абсолютный/путь/к/chrome-browser-mcp
+codex plugin add chrome-browser-mcp@chrome-browser-mcp
 ```
 
 Codex Desktop загружает `plugins/codex/` с интерактивным **Browser Control Deck** в глобальном сайдбаре (`openai/ui: global`) и в боковой панели каждого треда (`openai/ui: thread`), а также все инструменты `browser_*` и скилл `chrome-browser-mcp`.

@@ -42,7 +42,7 @@ resolve_node() {
 
 NODE_BIN="$(resolve_node || true)"
 if [[ -z "${NODE_BIN}" ]]; then
-  echo "[chrome-browser-mcp] Error: Node.js (>=24) not found on PATH, CODEX_MCP_NODE_PATH, Homebrew, or nvm." >&2
+  echo "[chrome-browser-mcp] Error: Node.js (>=22) not found on PATH, CODEX_MCP_NODE_PATH, Homebrew, or nvm." >&2
   exit 1
 fi
 

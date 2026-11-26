@@ -151,6 +151,7 @@ async function buildOpenCode() {
 }
 
 async function buildClaudeMod() {
+  await bundleStandaloneServer('plugins/claude');
   const hooksDir = resolve(rootDir, 'plugins/claude/hooks');
   mkdirSync(hooksDir, { recursive: true });
 
@@ -159,13 +160,14 @@ async function buildClaudeMod() {
     outfile: resolve(hooksDir, 'register.js'),
     bundle: true,
     format: 'esm',
-    platform: 'node',
-    target: ['node22'],
+    platform: 'neutral',
+    mainFields: ['module', 'main'],
+    target: ['es2022'],
     minify: false,
     plugins: [workspaceAliasPlugin],
   });
 
-  console.log('[build-plugins] Claude Desktop Mod built -> plugins/claude/hooks/register.js');
+  console.log('[build-plugins] Claude Desktop Mod built -> plugins/claude/{hooks/register.js,server/}');
 }
 
 await buildCodex();

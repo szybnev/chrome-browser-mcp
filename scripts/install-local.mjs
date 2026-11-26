@@ -7,6 +7,7 @@
  *   node scripts/install-local.mjs --codex --opencode --openchamber --claude --antigravity
  *   node scripts/install-local.mjs --codex --dry-run
  */
+import { spawnSync } from 'node:child_process';
 import {
   cpSync,
   existsSync,
@@ -44,7 +45,7 @@ Usage:
 
 Flags:
   --antigravity   Symlink plugins/antigravity into ~/.gemini/config/plugins/chrome-browser-mcp
-  --codex         Register local marketplace + enable plugin in ~/.codex/config.toml
+  --codex         Register local marketplace and install chrome-browser-mcp@chrome-browser-mcp in Codex
   --opencode      Register plugins/opencode in ~/.config/opencode/opencode.json
   --openchamber   Print the exact local folder path to add in OpenChamber Settings -> Extensions
   --claude        Print exact Claude Desktop Code tab (Mod) & Chat tab (.mcpb) install instructions
@@ -75,43 +76,88 @@ if (targets.antigravity) {
 }
 
 if (targets.codex) {
-  const codexConfig = join(home, '.codex', 'config.toml');
-  const marketplaceBlock = `\n[marketplaces.chrome-browser-mcp]\nsource_type = "local"\nsource = ${JSON.stringify(rootDir)}\n\n[plugins."chrome-browser-mcp@chrome-browser-mcp"]\nenabled = true\n`;
-  if (!existsSync(codexConfig)) {
-    console.log(
-      `[codex] ${codexConfig} not found. Add the following once Codex is initialized:${marketplaceBlock}`,
-    );
-  } else {
-    const content = readFileSync(codexConfig, 'utf8');
-    if (content.includes('[marketplaces.chrome-browser-mcp]')) {
-      console.log(`[codex] Already registered in ${codexConfig}`);
-    } else if (dryRun) {
-      console.log(`[dry-run][codex] Would append to ${codexConfig}:${marketplaceBlock}`);
-    } else {
-      writeFileSync(codexConfig, `${content.trimEnd()}\n${marketplaceBlock}`, 'utf8');
-      console.log(`[codex] Registered local marketplace and enabled chrome-browser-mcp in ${codexConfig}`);
-    }
-  }
-
-  // Refresh existing copied Codex plugin cache for the current version if present
+  const codexHome = process.env.CODEX_HOME ? resolve(process.env.CODEX_HOME) : join(home, '.codex');
+  const codexConfig = join(codexHome, 'config.toml');
   const codexSrc = resolve(rootDir, 'plugins/codex');
   const codexManifest = JSON.parse(readFileSync(resolve(codexSrc, 'plugin.json'), 'utf8'));
-  const cacheDir = join(
-    home,
-    '.codex',
-    'plugins',
-    'cache',
-    'chrome-browser-mcp',
-    'chrome-browser-mcp',
-    String(codexManifest.version),
-  );
-  if (existsSync(cacheDir)) {
-    if (dryRun) {
-      console.log(`[dry-run][codex] Would refresh plugin cache ${cacheDir} from ${codexSrc}`);
+  const pluginVersion = String(codexManifest.version);
+  const pluginCacheParent = join(codexHome, 'plugins', 'cache', 'chrome-browser-mcp', 'chrome-browser-mcp');
+  const cacheDir = join(pluginCacheParent, pluginVersion);
+
+  const codexProbe = spawnSync('codex', ['--version'], { stdio: 'ignore' });
+  const codexCliAvailable = !codexProbe.error && codexProbe.status === 0;
+
+  if (dryRun) {
+    if (codexCliAvailable) {
+      console.log(`[dry-run][codex] Would run: codex plugin marketplace add ${rootDir}`);
+      console.log('[dry-run][codex] Would run: codex plugin add chrome-browser-mcp@chrome-browser-mcp');
     } else {
-      rmSync(cacheDir, { recursive: true, force: true });
+      console.log(
+        `[dry-run][codex] codex CLI not found on PATH; would register marketplace & enable plugin in ${codexConfig}`,
+      );
+      console.log(`[dry-run][codex] Would install plugin cache ${cacheDir} from ${codexSrc}`);
+    }
+  } else {
+    let installedViaCli = false;
+
+    if (codexCliAvailable) {
+      const cliEnv = { ...process.env, CODEX_HOME: codexHome };
+      const addMarket = spawnSync('codex', ['plugin', 'marketplace', 'add', rootDir], {
+        encoding: 'utf8',
+        env: cliEnv,
+      });
+      if (addMarket.status === 0) {
+        const addPlugin = spawnSync('codex', ['plugin', 'add', 'chrome-browser-mcp@chrome-browser-mcp'], {
+          encoding: 'utf8',
+          env: cliEnv,
+        });
+        if (addPlugin.status === 0) {
+          installedViaCli = true;
+          console.log(
+            `[codex] Registered local marketplace and installed chrome-browser-mcp@chrome-browser-mcp (v${pluginVersion}) via codex CLI`,
+          );
+        } else {
+          const detail = (addPlugin.stderr || addPlugin.stdout || '').trim();
+          console.warn(
+            `[codex] Warning: 'codex plugin add chrome-browser-mcp@chrome-browser-mcp' failed (${detail || `exit ${addPlugin.status}`}); falling back to direct config/cache install.`,
+          );
+        }
+      } else {
+        const detail = (addMarket.stderr || addMarket.stdout || '').trim();
+        console.warn(
+          `[codex] Warning: 'codex plugin marketplace add' failed (${detail || `exit ${addMarket.status}`}); falling back to direct config/cache install.`,
+        );
+      }
+    }
+
+    if (!installedViaCli) {
+      mkdirSync(codexHome, { recursive: true });
+      let content = existsSync(codexConfig) ? readFileSync(codexConfig, 'utf8') : '';
+      let updatedConfig = false;
+
+      if (!content.includes('[marketplaces.chrome-browser-mcp]')) {
+        const marketBlock = `\n[marketplaces.chrome-browser-mcp]\nsource_type = "local"\nsource = ${JSON.stringify(rootDir)}\n`;
+        content = content ? `${content.trimEnd()}\n${marketBlock}` : marketBlock.trimStart();
+        updatedConfig = true;
+      }
+
+      if (!content.includes('[plugins."chrome-browser-mcp@chrome-browser-mcp"]')) {
+        const pluginBlock = `\n[plugins."chrome-browser-mcp@chrome-browser-mcp"]\nenabled = true\n`;
+        content = `${content.trimEnd()}\n${pluginBlock}`;
+        updatedConfig = true;
+      }
+
+      if (updatedConfig || !existsSync(codexConfig)) {
+        writeFileSync(codexConfig, `${content.trimEnd()}\n`, 'utf8');
+        console.log(`[codex] Registered local marketplace and enabled chrome-browser-mcp in ${codexConfig}`);
+      } else {
+        console.log(`[codex] Already registered in ${codexConfig}`);
+      }
+
+      rmSync(pluginCacheParent, { recursive: true, force: true });
+      mkdirSync(pluginCacheParent, { recursive: true });
       cpSync(codexSrc, cacheDir, { recursive: true });
-      console.log(`[codex] Refreshed copied plugin cache -> ${cacheDir}`);
+      console.log(`[codex] Installed plugin cache -> ${cacheDir}`);
     }
   }
 }
@@ -149,7 +195,8 @@ if (targets.claude) {
   const modDir = resolve(rootDir, 'plugins/claude');
   const mcpbPath = resolve(rootDir, 'release/chrome-browser-mcp.mcpb');
   console.log('[claude] Code tab (Claude Mod — native 5-tab Control Deck Pane + AbovePrompt):');
-  console.log(`  Install plugin directory: ${modDir}`);
+  console.log(`  Validate plugin:   claude plugin validate ${modDir}`);
+  console.log(`  Load in session:   claude --plugin-dir ${modDir}`);
   console.log('[claude] Chat tab (.mcpb MCP Bundle — HTML MCP App + 18 browser_* tools):');
   console.log(
     `  Run \`pnpm pack:mcpb\` and drag-drop ${mcpbPath} into Claude Desktop -> Settings -> Extensions`,

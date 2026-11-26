@@ -23,6 +23,7 @@
       "!plugins/opencode/bundle",
       "!plugins/opencode/server",
       "!plugins/claude/hooks/register.js",
+      "!plugins/claude/server",
       "!**/*.md",
       "!pnpm-lock.yaml"
     ]

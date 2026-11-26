@@ -1,10 +1,3 @@
-// plugins/claude/src/register.ts
-import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
 // packages/protocol/dist/i18n.js
 var EN = {
   "app.title": "Chrome Browser MCP",
@@ -558,8 +551,8 @@ function resolveLocale(pref) {
     return "zh-CN";
   return "en";
 }
-function translate(locale, key, vars) {
-  let text = I18N_CATALOG[locale]?.[key] ?? EN[key];
+function translate(locale2, key, vars) {
+  let text = I18N_CATALOG[locale2]?.[key] ?? EN[key];
   if (vars) {
     for (const [k, v] of Object.entries(vars)) {
       text = text.replaceAll(`{${k}}`, String(v));
@@ -574,108 +567,36 @@ var PANE_ID = "chrome-browser-deck";
 var DEFAULT_BROKER_PORT = 43179;
 var POLL_MS = 3e3;
 var VALID_TABS = ["overview", "timeline", "devtools", "workflows", "security"];
-function resolveBrokerConfig() {
-  const port = process.env.CHROME_BROWSER_MCP_PORT ? Number(process.env.CHROME_BROWSER_MCP_PORT) : DEFAULT_BROKER_PORT;
-  const dataDir = process.env.CHROME_BROWSER_MCP_DATA_DIR || join(homedir(), ".chrome-browser-mcp");
-  const brokerUrl = `http://127.0.0.1:${port}`;
-  return { port, dataDir, brokerUrl };
+var state = null;
+var lastError = null;
+var notice = null;
+var pairingPin = null;
+var paneOpen = false;
+var activeTab = "overview";
+var tabQuery = "";
+var showBand = true;
+var captureCollapsed = false;
+var locale = "en";
+var inFlight = false;
+function resetModStateForTest() {
+  state = null;
+  lastError = null;
+  notice = null;
+  pairingPin = null;
+  paneOpen = false;
+  activeTab = "overview";
+  tabQuery = "";
+  showBand = true;
+  captureCollapsed = false;
+  locale = "en";
+  inFlight = false;
 }
-function readBrokerToken(dataDir) {
-  const envToken = process.env.CHROME_BROWSER_MCP_TOKEN?.trim();
-  if (envToken) return envToken;
-  const tokenFile = join(dataDir, "token.txt");
-  if (existsSync(tokenFile)) {
-    return readFileSync(tokenFile, "utf8").trim();
-  }
-  return "";
+function tr(key, vars) {
+  return translate(locale, key, vars);
 }
-function resolveServerCliPath() {
-  if (process.env.CHROME_BROWSER_MCP_CLI && existsSync(process.env.CHROME_BROWSER_MCP_CLI)) {
-    return process.env.CHROME_BROWSER_MCP_CLI;
-  }
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const candidates = [
-      resolve(here, "../../../packages/server/dist/cli.js"),
-      resolve(here, "../../../../packages/server/dist/cli.js")
-    ];
-    for (const c of candidates) {
-      if (existsSync(c)) return c;
-    }
-  } catch {
-  }
-  return null;
-}
-async function isBrokerHealthy(brokerUrl) {
-  try {
-    const res = await fetch(`${brokerUrl}/health`, { signal: AbortSignal.timeout(1200) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-function createDefaultBrokerClient() {
-  let startup = null;
-  const ensureRunning = async () => {
-    const cfg = resolveBrokerConfig();
-    if (await isBrokerHealthy(cfg.brokerUrl)) {
-      const token2 = readBrokerToken(cfg.dataDir);
-      if (!token2) throw new Error("Broker token missing in ~/.chrome-browser-mcp/token.txt");
-      return { brokerUrl: cfg.brokerUrl, token: token2 };
-    }
-    if (!startup) {
-      startup = (async () => {
-        const cliPath = resolveServerCliPath();
-        if (cliPath) {
-          const child = spawn(
-            process.execPath,
-            [cliPath, "daemon", "--idle-exit", `--port=${cfg.port}`, `--data-dir=${cfg.dataDir}`],
-            { detached: true, stdio: "ignore", env: process.env }
-          );
-          child.unref();
-        } else {
-          const child = spawn(
-            "npx",
-            ["-y", "chrome-browser-mcp@latest", "daemon", "--idle-exit", `--port=${cfg.port}`],
-            { detached: true, stdio: "ignore", env: process.env }
-          );
-          child.unref();
-        }
-        const deadline = Date.now() + 8e3;
-        while (Date.now() < deadline) {
-          if (await isBrokerHealthy(cfg.brokerUrl)) return;
-          await new Promise((r) => setTimeout(r, 180));
-        }
-        throw new Error(`Local Chrome Browser MCP broker unreachable at ${cfg.brokerUrl}`);
-      })().finally(() => {
-        startup = null;
-      });
-    }
-    await startup;
-    const token = readBrokerToken(cfg.dataDir);
-    if (!token) throw new Error("Broker token missing after startup");
-    return { brokerUrl: cfg.brokerUrl, token };
-  };
-  return {
-    async callDeckTool(name, args = {}) {
-      const { brokerUrl, token } = await ensureRunning();
-      const res = await fetch(`${brokerUrl}/internal/deck-tool`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-broker-token": token
-        },
-        body: JSON.stringify({ name, arguments: args }),
-        signal: AbortSignal.timeout(12e3)
-      });
-      const raw = await res.text();
-      const parsed = JSON.parse(raw);
-      if (!res.ok || parsed.ok === false) {
-        throw new Error(parsed.error || `Broker HTTP error ${res.status}`);
-      }
-      return parsed.data ?? {};
-    }
-  };
+function joinPath(base, child) {
+  const sep = base.includes("\\") && !base.includes("/") ? "\\" : "/";
+  return `${base.replace(/[\\/]+$/, "")}${sep}${child}`;
 }
 function truncateText(text, maxLen) {
   if (text.length <= maxLen) return text;
@@ -686,747 +607,808 @@ function buildDesktopStatusSvg(connected, paused, agentTabs, totalTabs) {
   const statusLabel = paused ? "PAUSED" : connected ? "LIVE" : "OFFLINE";
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 44" width="320" height="44"><rect x="1" y="1" width="318" height="42" rx="10" fill="#141518" stroke="#2c2f36"/><circle cx="20" cy="22" r="5" fill="${accent}"/><text x="34" y="20" fill="#f1f3f5" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Browser Control Deck \xB7 ${statusLabel}</text><text x="34" y="34" fill="#9ca3af" font-family="system-ui,sans-serif" font-size="10">${agentTabs} AI Agent tabs \xB7 ${totalTabs} total tabs</text></svg>`;
 }
-function createBrowserDeckMod(brokerOverride) {
-  const broker = brokerOverride ?? createDefaultBrokerClient();
-  let state = null;
-  let lastError = null;
-  let notice = null;
-  let pairingPin = null;
-  let paneOpen = false;
-  let activeTab = "overview";
-  let tabQuery = "";
-  let showBand = true;
-  let captureCollapsed = false;
-  let locale = "en";
-  let inFlight = false;
-  const tr = (key, vars) => translate(locale, key, vars);
-  const runTool = async ($, name, args = {}) => {
-    try {
-      const res = await broker.callDeckTool(name, args);
-      if (res.state) {
-        state = res.state;
-        lastError = null;
-      }
-      if (res.pin && res.expiresAt) {
-        pairingPin = { pin: res.pin, expiresAt: res.expiresAt };
-        notice = res.copied ? `${tr("status.copied")} (${res.pin})` : `PIN: ${res.pin} (valid 2m)`;
-      }
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-      notice = lastError;
-    }
-    $.ui.invalidate("ui.render");
-  };
-  const refreshState = async ($) => {
+async function executeDeckTool($, name, args, mode) {
+  if (mode === "refresh") {
     if (inFlight) return;
     inFlight = true;
-    try {
-      const res = await broker.callDeckTool("deck_get_state");
-      if (res.state) {
-        state = res.state;
-        lastError = null;
-      }
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-    } finally {
-      inFlight = false;
-      $.ui.invalidate("ui.render");
+  }
+  try {
+    const rawPort = (await $.env.get("CHROME_BROWSER_MCP_PORT").catch(() => void 0))?.trim();
+    const parsedPort = rawPort ? Number(rawPort) : DEFAULT_BROKER_PORT;
+    const port = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : DEFAULT_BROKER_PORT;
+    const customDataDir = (await $.env.get("CHROME_BROWSER_MCP_DATA_DIR").catch(() => void 0))?.trim();
+    let dataDir = customDataDir || "";
+    if (!dataDir) {
+      const home = (await $.env.get("HOME").catch(() => void 0))?.trim() || (await $.env.get("USERPROFILE").catch(() => void 0))?.trim() || "";
+      dataDir = home ? joinPath(home, ".chrome-browser-mcp") : ".chrome-browser-mcp";
     }
-  };
-  return function register2(on) {
-    on("session.start", async ($raw, e, nextRaw) => {
-      const $ = $raw;
-      const next = nextRaw;
-      const savedLocale = await $.store.get("locale");
-      if (savedLocale === "en" || savedLocale === "ru" || savedLocale === "zh-CN") {
-        locale = savedLocale;
+    const brokerUrl = `http://127.0.0.1:${port}`;
+    let token = (await $.env.get("CHROME_BROWSER_MCP_TOKEN").catch(() => void 0))?.trim() || "";
+    if (!token) {
+      const tokenFile = joinPath(dataDir, "token.txt");
+      if (await $.fs.exists(tokenFile).catch(() => false)) {
+        token = (await $.fs.read(tokenFile).catch(() => "")).trim();
       }
-      const savedBand = await $.store.get("showBand");
-      if (typeof savedBand === "boolean") {
-        showBand = savedBand;
-      }
-      await $.command.register({
-        name: "browser-deck",
-        description: "Open the Browser Control Deck pane (/browser-deck [tab|pause|resume|pin|band on|off|close])",
-        immediate: true
+    }
+    if (!token) {
+      throw new Error(
+        `Broker token missing in ${joinPath(dataDir, "token.txt")}. Ensure the chrome-browser MCP server is connected.`
+      );
+    }
+    let res;
+    try {
+      res = await $.http.fetch(`${brokerUrl}/internal/deck-tool`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-broker-token": token
+        },
+        body: JSON.stringify({ name, arguments: args })
       });
-      void refreshState($);
-      $.clock.every(POLL_MS, () => {
-        if (paneOpen || showBand || (state?.pendingApprovals.length ?? 0) > 0) {
-          void refreshState($);
+    } catch {
+      throw new Error(
+        `Local Chrome Browser MCP broker unreachable at ${brokerUrl}. Ensure the chrome-browser MCP server is running.`
+      );
+    }
+    if (res.status === 404) {
+      let versionNote = "";
+      try {
+        const healthRes = await $.http.fetch(`${brokerUrl}/health`);
+        if (healthRes.ok) {
+          const health = JSON.parse(healthRes.text);
+          if (health.version) versionNote = ` (running v${health.version})`;
         }
-      });
-      return next(e);
+      } catch {
+      }
+      throw new Error(
+        `Local broker at ${brokerUrl}${versionNote} does not expose /internal/deck-tool. Restart the local broker daemon.`
+      );
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(res.text);
+    } catch {
+      throw new Error(`Broker returned invalid JSON (HTTP ${res.status})`);
+    }
+    if (!res.ok || parsed.ok === false) {
+      throw new Error(parsed.error || `Broker HTTP error ${res.status}`);
+    }
+    const data = parsed.data ?? {};
+    if (data.state) {
+      state = data.state;
+      lastError = null;
+    }
+    if (mode === "action" && data.pin && data.expiresAt) {
+      pairingPin = { pin: data.pin, expiresAt: data.expiresAt };
+      notice = data.copied ? `${tr("status.copied")} (${data.pin})` : `PIN: ${data.pin} (valid 2m)`;
+    }
+  } catch (err) {
+    lastError = err instanceof Error ? err.message : String(err);
+    if (mode === "action") {
+      notice = lastError;
+    }
+  } finally {
+    if (mode === "refresh") {
+      inFlight = false;
+    }
+    $.ui.invalidate("ui.render");
+  }
+}
+function register(on) {
+  on("session.start", async ($, e, next) => {
+    const savedLocale = await $.store.get("locale");
+    if (savedLocale === "en" || savedLocale === "ru" || savedLocale === "zh-CN") {
+      locale = savedLocale;
+    }
+    const savedBand = await $.store.get("showBand");
+    if (typeof savedBand === "boolean") {
+      showBand = savedBand;
+    }
+    await $.command.register({
+      name: "browser-deck",
+      description: "Open the Browser Control Deck pane (/browser-deck [tab|pause|resume|pin|band on|off|close])",
+      immediate: true
     });
-    on("ui.close", async (_$raw, eRaw, nextRaw) => {
-      const e = eRaw;
-      const next = nextRaw;
-      if (e.id === PANE_ID) {
-        paneOpen = false;
+    void executeDeckTool($, "deck_get_state", {}, "refresh");
+    $.clock.every(POLL_MS, () => {
+      if (paneOpen || showBand || (state?.pendingApprovals.length ?? 0) > 0) {
+        void executeDeckTool($, "deck_get_state", {}, "refresh");
       }
-      return next(e);
     });
-    on("command.run", { command: "browser-deck" }, async ($raw, eRaw) => {
-      const $ = $raw;
-      const e = eRaw;
-      const arg = (e.args ?? "").trim().toLowerCase();
-      if (arg === "close") {
-        paneOpen = false;
-        await $.ui.close({ id: PANE_ID });
-        return {};
-      }
-      if (arg === "pause" || arg === "resume") {
-        await runTool($, "deck_set_paused", { paused: arg === "pause" });
-        return { text: arg === "pause" ? "Browser automation paused." : "Browser automation resumed." };
-      }
-      if (arg === "pin") {
-        await runTool($, "deck_create_pin", {});
-        return {
-          text: pairingPin ? `Pairing PIN: ${pairingPin.pin} (valid 2 min \u2014 paste into Chrome Side Panel \u2192 Pair)` : lastError || "Could not generate pairing PIN."
-        };
-      }
-      if (arg === "band on" || arg === "band off") {
-        showBand = arg === "band on";
-        await $.store.set("showBand", showBand);
-        $.ui.invalidate("ui.render");
-        return { text: showBand ? "Browser Deck status bar shown." : "Browser Deck status bar hidden." };
-      }
-      if (VALID_TABS.includes(arg)) {
-        activeTab = arg;
-      }
-      paneOpen = true;
-      await $.ui.open({
-        id: PANE_ID,
-        title: "Browser Deck",
-        focus: true,
-        closeOnEscape: true
-      });
-      void refreshState($);
+    return next(e);
+  });
+  on("ui.close", async (_$, e, next) => {
+    if (e.id === PANE_ID) {
+      paneOpen = false;
+    }
+    return next(e);
+  });
+  on("command.run", { command: "browser-deck" }, async ($, e) => {
+    const arg = (typeof e.args === "string" ? e.args : "").trim().toLowerCase();
+    if (arg === "close") {
+      paneOpen = false;
+      await $.ui.close({ id: PANE_ID });
       return {};
+    }
+    if (arg === "pause" || arg === "resume") {
+      await executeDeckTool($, "deck_set_paused", { paused: arg === "pause" }, "action");
+      return { text: arg === "pause" ? "Browser automation paused." : "Browser automation resumed." };
+    }
+    if (arg === "pin") {
+      await executeDeckTool($, "deck_create_pin", {}, "action");
+      return {
+        text: pairingPin ? `Pairing PIN: ${pairingPin.pin} (valid 2 min \u2014 paste into Chrome Side Panel \u2192 Pair)` : lastError || "Could not generate pairing PIN."
+      };
+    }
+    if (arg === "band on" || arg === "band off") {
+      showBand = arg === "band on";
+      await $.store.set("showBand", showBand);
+      $.ui.invalidate("ui.render");
+      return { text: showBand ? "Browser Deck status bar shown." : "Browser Deck status bar hidden." };
+    }
+    if (VALID_TABS.includes(arg)) {
+      activeTab = arg;
+    }
+    paneOpen = true;
+    await $.ui.open({
+      id: PANE_ID,
+      title: "Browser Deck",
+      focus: true,
+      closeOnEscape: true
     });
-    on("ui.render", { component: "AbovePrompt" }, async ($raw, eRaw, nextRaw) => {
-      const $ = $raw;
-      const e = eRaw;
-      const next = nextRaw;
-      const hasPending = (state?.pendingApprovals.length ?? 0) > 0;
-      if (e.props?.hasSurvey || !showBand && !hasPending) {
-        return next(e);
-      }
-      const { Box, Text, Button } = $.ui.resolve(e);
-      const activeProfileId = state?.defaultProfileId ?? state?.profiles[0]?.profileId ?? "";
-      const tabs = activeProfileId && state ? state.tabs[activeProfileId] ?? [] : [];
-      const agentCount = tabs.filter((t) => t.inAgentGroup).length;
-      const firstApproval = state?.pendingApprovals[0];
-      const children = [
+    void executeDeckTool($, "deck_get_state", {}, "refresh");
+    return {};
+  });
+  on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
+    const props = e.props;
+    const hasPending = (state?.pendingApprovals.length ?? 0) > 0;
+    if (props?.hasSurvey || !showBand && !hasPending) {
+      return next(e);
+    }
+    const { Box, Text, Button } = $.ui.resolve(e);
+    const activeProfileId = state?.defaultProfileId ?? state?.profiles[0]?.profileId ?? "";
+    const tabs = activeProfileId && state ? state.tabs[activeProfileId] ?? [] : [];
+    const agentCount = tabs.filter((t) => t.inAgentGroup).length;
+    const firstApproval = state?.pendingApprovals[0];
+    const children = [
+      Text({
+        bold: true,
+        color: state?.paused ? "yellow" : state?.profiles.length ? "green" : "gray",
+        children: [state?.paused ? "\u23F8 Chrome" : state?.profiles.length ? "\u25CF Chrome" : "\u25CB Chrome"]
+      }),
+      Text({
+        dimColor: true,
+        children: [
+          state ? ` ${agentCount} AI tabs \xB7 ${tabs.length} total` : lastError ? " broker offline" : " connecting\u2026"
+        ]
+      })
+    ];
+    if (firstApproval) {
+      children.push(
         Text({
           bold: true,
-          color: state?.paused ? "yellow" : state?.profiles.length ? "green" : "gray",
-          children: [state?.paused ? "\u23F8 Chrome" : state?.profiles.length ? "\u25CF Chrome" : "\u25CB Chrome"]
+          color: "yellow",
+          children: [` \xB7 \u26A0 ${firstApproval.action} (${firstApproval.origin})`]
         }),
-        Text({
-          dimColor: true,
-          children: [
-            state ? ` ${agentCount} AI tabs \xB7 ${tabs.length} total` : lastError ? " broker offline" : " connecting\u2026"
-          ]
-        })
-      ];
-      if (firstApproval) {
-        children.push(
-          Text({
-            bold: true,
-            color: "yellow",
-            children: [` \xB7 \u26A0 ${firstApproval.action} (${firstApproval.origin})`]
-          }),
-          Button({
-            key: "band-approve",
-            label: tr("btn.approve"),
-            onPress: () => void runTool($, "deck_resolve_approval", {
+        Button({
+          key: "band-approve",
+          label: tr("btn.approve"),
+          onPress: () => void executeDeckTool(
+            $,
+            "deck_resolve_approval",
+            {
               approvalId: firstApproval.id,
               decision: "approved"
-            })
-          }),
-          Button({
-            key: "band-deny",
-            label: tr("btn.deny"),
-            onPress: () => void runTool($, "deck_resolve_approval", {
+            },
+            "action"
+          )
+        }),
+        Button({
+          key: "band-deny",
+          label: tr("btn.deny"),
+          onPress: () => void executeDeckTool(
+            $,
+            "deck_resolve_approval",
+            {
               approvalId: firstApproval.id,
               decision: "rejected"
-            })
-          })
-        );
-      }
-      children.push(
-        Button({
-          key: "band-deck",
-          label: paneOpen ? "Hide Deck" : "Browser Deck",
-          plain: true,
-          onPress: async () => {
-            if (paneOpen) {
-              paneOpen = false;
-              await $.ui.close({ id: PANE_ID });
-            } else {
-              paneOpen = true;
-              await $.ui.open({ id: PANE_ID, title: "Browser Deck", focus: true, closeOnEscape: true });
-              void refreshState($);
-            }
-          }
+            },
+            "action"
+          )
         })
       );
-      if (state) {
-        children.push(
-          Button({
-            key: "band-pause",
-            label: state.paused ? tr("btn.resume") : tr("btn.pauseAll"),
-            plain: true,
-            onPress: () => void runTool($, "deck_set_paused", { paused: !state?.paused })
-          })
-        );
-      }
-      return Box({
-        flexDirection: "row",
-        columnGap: 1,
-        children
-      });
+    }
+    children.push(
+      Button({
+        key: "band-deck",
+        label: paneOpen ? "Hide Deck" : "Browser Deck",
+        plain: true,
+        onPress: async () => {
+          if (paneOpen) {
+            paneOpen = false;
+            await $.ui.close({ id: PANE_ID });
+          } else {
+            paneOpen = true;
+            await $.ui.open({ id: PANE_ID, title: "Browser Deck", focus: true, closeOnEscape: true });
+            void executeDeckTool($, "deck_get_state", {}, "refresh");
+          }
+        }
+      })
+    );
+    if (state) {
+      children.push(
+        Button({
+          key: "band-pause",
+          label: state.paused ? tr("btn.resume") : tr("btn.pauseAll"),
+          plain: true,
+          onPress: () => void executeDeckTool($, "deck_set_paused", { paused: !state?.paused }, "action")
+        })
+      );
+    }
+    return Box({
+      flexDirection: "row",
+      columnGap: 1,
+      children
     });
-    on("ui.render", { component: "Pane" }, async ($raw, eRaw, nextRaw) => {
-      const $ = $raw;
-      const e = eRaw;
-      const next = nextRaw;
-      if (e.requestId !== PANE_ID) return next(e);
-      const { Box, Text, Button, Input, Select, Svg } = $.ui.resolve(e);
-      const redraw = () => $.ui.invalidate("ui.render");
-      if (!state) {
-        return Box({
-          flexDirection: "column",
-          gap: 1,
-          padding: 1,
+  });
+  on("ui.render", { component: "Pane" }, async ($, e, next) => {
+    if (e.requestId !== PANE_ID) return next(e);
+    const { Box, Text, Button, Input, Select, Svg } = $.ui.resolve(e);
+    const redraw = () => $.ui.invalidate("ui.render");
+    if (!state) {
+      return Box({
+        flexDirection: "column",
+        gap: 1,
+        padding: 1,
+        children: [
+          Text({ bold: true, children: [tr("app.deckTitle")] }),
+          Text({
+            color: lastError ? "red" : "gray",
+            children: [lastError ?? "Connecting to Chrome Browser MCP Broker Daemon\u2026"]
+          }),
+          Box({
+            flexDirection: "row",
+            columnGap: 2,
+            children: [
+              Button({
+                key: "retry",
+                label: tr("btn.refresh"),
+                onPress: () => void executeDeckTool($, "deck_get_state", {}, "refresh")
+              }),
+              Button({
+                key: "close-err",
+                label: "Close",
+                plain: true,
+                onPress: async () => {
+                  paneOpen = false;
+                  await $.ui.close({ id: PANE_ID });
+                }
+              })
+            ]
+          })
+        ]
+      });
+    }
+    const activeProfileId = state.defaultProfileId ?? state.profiles[0]?.profileId ?? "";
+    const profileTabs = activeProfileId ? state.tabs[activeProfileId] ?? [] : [];
+    const agentTabs = profileTabs.filter((t) => t.inAgentGroup);
+    const controlledCount = state.policy.scopeMode === "all-tabs" ? profileTabs.length : agentTabs.length;
+    const q = tabQuery.trim().toLowerCase();
+    const otherTabs = profileTabs.filter(
+      (t) => !t.inAgentGroup && (!q || t.title.toLowerCase().includes(q) || t.url.toLowerCase().includes(q) || String(t.tabId).includes(q))
+    );
+    const headerChildren = [
+      Box({
+        flexDirection: "row",
+        columnGap: 2,
+        children: [
+          Text({
+            bold: true,
+            color: state.profiles.length > 0 ? "blue" : "gray",
+            children: [`\u25CF ${tr("app.deckTitle")}`]
+          }),
+          Text({
+            dimColor: true,
+            children: [
+              `v${state.brokerVersion} \xB7 ${state.profiles.length} ${tr("label.profilesCount")} \xB7 ${profileTabs.length} ${tr("label.tabsCount")}`
+            ]
+          }),
+          ...Select ? [
+            Select({
+              key: "lang-select",
+              label: "Lang",
+              value: locale,
+              options: [
+                { value: "en", label: "EN" },
+                { value: "ru", label: "RU" },
+                { value: "zh-CN", label: "\u4E2D\u6587" }
+              ],
+              onSelect: async (val) => {
+                locale = resolveLocale(val);
+                await $.store.set("locale", locale);
+                await executeDeckTool($, "deck_update_policy", { uiLocale: locale }, "action");
+              }
+            })
+          ] : []
+        ]
+      })
+    ];
+    if (e.surface === "desktop" && Svg) {
+      headerChildren.push(
+        Svg({
+          alt: `Browser Control Deck (${agentTabs.length} AI tabs, ${profileTabs.length} total)`,
+          width: 320,
+          height: 44,
+          source: buildDesktopStatusSvg(
+            state.profiles.length > 0,
+            state.paused,
+            agentTabs.length,
+            profileTabs.length
+          )
+        })
+      );
+    }
+    const controlBarChildren = [];
+    if (state.profiles.length > 0 && Select) {
+      controlBarChildren.push(
+        Select({
+          key: "profile-select",
+          label: "Profile",
+          value: activeProfileId,
+          options: state.profiles.map((p) => ({
+            value: p.profileId,
+            label: `${p.browserName}: ${p.profileLabel || p.profileId} (${p.profileId})`
+          })),
+          onSelect: (val) => void executeDeckTool($, "deck_select_profile", { profileId: val }, "action")
+        })
+      );
+    }
+    controlBarChildren.push(
+      Button({
+        key: "gen-pin",
+        label: tr("btn.generatePin"),
+        onPress: () => void executeDeckTool($, "deck_create_pin", {}, "action")
+      }),
+      Button({
+        key: "refresh",
+        label: tr("btn.refresh"),
+        onPress: () => void executeDeckTool($, "deck_get_state", {}, "refresh")
+      }),
+      Button({
+        key: "pause-toggle",
+        label: state.paused ? tr("btn.resume") : tr("btn.pauseAll"),
+        onPress: () => void executeDeckTool($, "deck_set_paused", { paused: !state?.paused }, "action")
+      })
+    );
+    headerChildren.push(Box({ flexDirection: "row", columnGap: 1, children: controlBarChildren }));
+    if (pairingPin && Date.now() < pairingPin.expiresAt) {
+      headerChildren.push(
+        Box({
+          borderStyle: "round",
+          paddingX: 1,
+          flexDirection: "row",
+          columnGap: 2,
           children: [
-            Text({ bold: true, children: [tr("app.deckTitle")] }),
+            Text({ bold: true, color: "green", children: [`PIN: ${pairingPin.pin}`] }),
+            Text({ dimColor: true, children: ["Paste in Chrome Side Panel \u2192 Pair (valid 2m)"] }),
+            Button({
+              key: "pin-dismiss",
+              label: "\u2715",
+              plain: true,
+              onPress: () => {
+                pairingPin = null;
+                redraw();
+              }
+            })
+          ]
+        })
+      );
+    }
+    if (notice) {
+      headerChildren.push(Text({ color: "yellow", children: [notice] }));
+    }
+    for (const ap of state.pendingApprovals) {
+      headerChildren.push(
+        Box({
+          borderStyle: "round",
+          borderColor: "yellow",
+          paddingX: 1,
+          flexDirection: "column",
+          children: [
             Text({
-              color: lastError ? "red" : "gray",
-              children: [lastError ?? "Connecting to Chrome Browser MCP Broker Daemon\u2026"]
+              bold: true,
+              color: "yellow",
+              children: [`\u26A0 Approval required: ${ap.action} (${ap.origin})`]
             }),
+            Text({ dimColor: true, children: [truncateText(ap.reason || ap.preview, 90)] }),
             Box({
               flexDirection: "row",
               columnGap: 2,
               children: [
-                Button({ key: "retry", label: tr("btn.refresh"), onPress: () => void refreshState($) }),
                 Button({
-                  key: "close-err",
-                  label: "Close",
-                  plain: true,
-                  onPress: async () => {
-                    paneOpen = false;
-                    await $.ui.close({ id: PANE_ID });
-                  }
+                  key: `ap-ok-${ap.id}`,
+                  label: tr("btn.approve"),
+                  onPress: () => void executeDeckTool(
+                    $,
+                    "deck_resolve_approval",
+                    { approvalId: ap.id, decision: "approved" },
+                    "action"
+                  )
+                }),
+                Button({
+                  key: `ap-no-${ap.id}`,
+                  label: tr("btn.deny"),
+                  onPress: () => void executeDeckTool(
+                    $,
+                    "deck_resolve_approval",
+                    { approvalId: ap.id, decision: "rejected" },
+                    "action"
+                  )
                 })
               ]
             })
           ]
-        });
-      }
-      const activeProfileId = state.defaultProfileId ?? state.profiles[0]?.profileId ?? "";
-      const profileTabs = activeProfileId ? state.tabs[activeProfileId] ?? [] : [];
-      const agentTabs = profileTabs.filter((t) => t.inAgentGroup);
-      const controlledCount = state.policy.scopeMode === "all-tabs" ? profileTabs.length : agentTabs.length;
-      const q = tabQuery.trim().toLowerCase();
-      const otherTabs = profileTabs.filter(
-        (t) => !t.inAgentGroup && (!q || t.title.toLowerCase().includes(q) || t.url.toLowerCase().includes(q) || String(t.tabId).includes(q))
+        })
       );
-      const headerChildren = [
+    }
+    const tabDefs = [
+      { id: "overview", label: `${tr("tab.overview")} (${controlledCount})`, hotkey: "1" },
+      { id: "timeline", label: `${tr("tab.timeline")} (${state.recentActivity.length})`, hotkey: "2" },
+      {
+        id: "devtools",
+        label: `${tr("tab.devtools")} (${state.recentErrors.length + state.recentFailedNetwork.length})`,
+        hotkey: "3"
+      },
+      { id: "workflows", label: `${tr("tab.workflows")} (${state.workflows.length})`, hotkey: "4" },
+      { id: "security", label: tr("tab.security"), hotkey: "5" }
+    ];
+    const tabBar = Box({
+      flexDirection: "row",
+      columnGap: 2,
+      children: tabDefs.map(
+        (t) => Button({
+          key: `tab-${t.id}`,
+          label: activeTab === t.id ? `[${t.label}]` : t.label,
+          hotkey: t.hotkey,
+          plain: true,
+          dimColor: activeTab !== t.id,
+          onPress: () => {
+            activeTab = t.id;
+            redraw();
+          }
+        })
+      )
+    });
+    const renderTabRow = (t) => Box({
+      key: `tab-row-${t.tabId}`,
+      flexDirection: "row",
+      columnGap: 1,
+      children: [
         Box({
-          flexDirection: "row",
-          columnGap: 2,
+          flexDirection: "column",
           children: [
             Text({
-              bold: true,
-              color: state.profiles.length > 0 ? "blue" : "gray",
-              children: [`\u25CF ${tr("app.deckTitle")}`]
-            }),
-            Text({
-              dimColor: true,
+              bold: t.active,
               children: [
-                `v${state.brokerVersion} \xB7 ${state.profiles.length} ${tr("label.profilesCount")} \xB7 ${profileTabs.length} ${tr("label.tabsCount")}`
+                `[${t.tabId}] ${truncateText(t.title || "(untitled)", 48)}${t.cdpAttached ? " [CDP]" : ""}`
               ]
             }),
-            ...Select ? [
-              Select({
-                key: "lang-select",
-                label: "Lang",
-                value: locale,
-                options: [
-                  { value: "en", label: "EN" },
-                  { value: "ru", label: "RU" },
-                  { value: "zh-CN", label: "\u4E2D\u6587" }
-                ],
-                onSelect: async (val) => {
-                  locale = resolveLocale(val);
-                  await $.store.set("locale", locale);
-                  await runTool($, "deck_update_policy", { uiLocale: locale });
-                }
-              })
-            ] : []
+            Text({ dimColor: true, children: [truncateText(t.url, 56)] })
           ]
-        })
-      ];
-      if (e.surface === "desktop" && Svg) {
-        headerChildren.push(
-          Svg({
-            alt: `Browser Control Deck (${agentTabs.length} AI tabs, ${profileTabs.length} total)`,
-            width: 320,
-            height: 44,
-            source: buildDesktopStatusSvg(
-              state.profiles.length > 0,
-              state.paused,
-              agentTabs.length,
-              profileTabs.length
-            )
-          })
-        );
-      }
-      const controlBarChildren = [];
-      if (state.profiles.length > 0 && Select) {
-        controlBarChildren.push(
-          Select({
-            key: "profile-select",
-            label: "Profile",
-            value: activeProfileId,
-            options: state.profiles.map((p) => ({
-              value: p.profileId,
-              label: `${p.browserName}: ${p.profileLabel || p.profileId} (${p.profileId})`
-            })),
-            onSelect: (val) => void runTool($, "deck_select_profile", { profileId: val })
-          })
-        );
-      }
-      controlBarChildren.push(
-        Button({
-          key: "gen-pin",
-          label: tr("btn.generatePin"),
-          onPress: () => void runTool($, "deck_create_pin", {})
         }),
         Button({
-          key: "refresh",
-          label: tr("btn.refresh"),
-          onPress: () => void refreshState($)
-        }),
-        Button({
-          key: "pause-toggle",
-          label: state.paused ? tr("btn.resume") : tr("btn.pauseAll"),
-          onPress: () => void runTool($, "deck_set_paused", { paused: !state?.paused })
-        })
-      );
-      headerChildren.push(Box({ flexDirection: "row", columnGap: 1, children: controlBarChildren }));
-      if (pairingPin && Date.now() < pairingPin.expiresAt) {
-        headerChildren.push(
-          Box({
-            borderStyle: "round",
-            paddingX: 1,
-            flexDirection: "row",
-            columnGap: 2,
-            children: [
-              Text({ bold: true, color: "green", children: [`PIN: ${pairingPin.pin}`] }),
-              Text({ dimColor: true, children: ["Paste in Chrome Side Panel \u2192 Pair (valid 2m)"] }),
-              Button({
-                key: "pin-dismiss",
-                label: "\u2715",
-                plain: true,
-                onPress: () => {
-                  pairingPin = null;
-                  redraw();
-                }
-              })
-            ]
-          })
-        );
-      }
-      if (notice) {
-        headerChildren.push(Text({ color: "yellow", children: [notice] }));
-      }
-      for (const ap of state.pendingApprovals) {
-        headerChildren.push(
-          Box({
-            borderStyle: "round",
-            borderColor: "yellow",
-            paddingX: 1,
-            flexDirection: "column",
-            children: [
-              Text({
-                bold: true,
-                color: "yellow",
-                children: [`\u26A0 Approval required: ${ap.action} (${ap.origin})`]
-              }),
-              Text({ dimColor: true, children: [truncateText(ap.reason || ap.preview, 90)] }),
-              Box({
-                flexDirection: "row",
-                columnGap: 2,
-                children: [
-                  Button({
-                    key: `ap-ok-${ap.id}`,
-                    label: tr("btn.approve"),
-                    onPress: () => void runTool($, "deck_resolve_approval", { approvalId: ap.id, decision: "approved" })
-                  }),
-                  Button({
-                    key: `ap-no-${ap.id}`,
-                    label: tr("btn.deny"),
-                    onPress: () => void runTool($, "deck_resolve_approval", { approvalId: ap.id, decision: "rejected" })
-                  })
-                ]
-              })
-            ]
-          })
-        );
-      }
-      const tabDefs = [
-        { id: "overview", label: `${tr("tab.overview")} (${controlledCount})`, hotkey: "1" },
-        { id: "timeline", label: `${tr("tab.timeline")} (${state.recentActivity.length})`, hotkey: "2" },
-        {
-          id: "devtools",
-          label: `${tr("tab.devtools")} (${state.recentErrors.length + state.recentFailedNetwork.length})`,
-          hotkey: "3"
-        },
-        { id: "workflows", label: `${tr("tab.workflows")} (${state.workflows.length})`, hotkey: "4" },
-        { id: "security", label: tr("tab.security"), hotkey: "5" }
-      ];
-      const tabBar = Box({
-        flexDirection: "row",
-        columnGap: 2,
-        children: tabDefs.map(
-          (t) => Button({
-            key: `tab-${t.id}`,
-            label: activeTab === t.id ? `[${t.label}]` : t.label,
-            hotkey: t.hotkey,
-            plain: true,
-            dimColor: activeTab !== t.id,
-            onPress: () => {
-              activeTab = t.id;
-              redraw();
-            }
-          })
-        )
-      });
-      const renderTabRow = (t) => Box({
-        key: `tab-row-${t.tabId}`,
-        flexDirection: "row",
-        columnGap: 1,
-        children: [
-          Box({
-            flexDirection: "column",
-            children: [
-              Text({
-                bold: t.active,
-                children: [
-                  `[${t.tabId}] ${truncateText(t.title || "(untitled)", 48)}${t.cdpAttached ? " [CDP]" : ""}`
-                ]
-              }),
-              Text({ dimColor: true, children: [truncateText(t.url, 56)] })
-            ]
-          }),
-          Button({
-            key: `tab-grp-${t.tabId}`,
-            label: t.inAgentGroup ? tr("btn.detach") : tr("btn.attach"),
-            onPress: () => void runTool($, "deck_tab_action", {
+          key: `tab-grp-${t.tabId}`,
+          label: t.inAgentGroup ? tr("btn.detach") : tr("btn.attach"),
+          onPress: () => void executeDeckTool(
+            $,
+            "deck_tab_action",
+            {
               profileId: activeProfileId,
               tabId: t.tabId,
               action: t.inAgentGroup ? "detach" : "attach"
-            })
-          }),
-          Button({
-            key: `tab-foc-${t.tabId}`,
-            label: tr("btn.focus"),
-            plain: true,
-            onPress: () => void runTool($, "deck_tab_action", {
+            },
+            "action"
+          )
+        }),
+        Button({
+          key: `tab-foc-${t.tabId}`,
+          label: tr("btn.focus"),
+          plain: true,
+          onPress: () => void executeDeckTool(
+            $,
+            "deck_tab_action",
+            {
               profileId: activeProfileId,
               tabId: t.tabId,
               action: "focus",
               bringToFront: true
-            })
-          })
-        ]
-      });
-      const bodyChildren = [];
-      if (activeTab === "overview") {
-        bodyChildren.push(
-          Box({
-            borderStyle: "round",
-            paddingX: 1,
-            flexDirection: "column",
-            gap: 1,
-            children: [
-              Text({ bold: true, children: [`${tr("section.agentTabs")} (${agentTabs.length})`] }),
-              ...agentTabs.length === 0 ? [Text({ dimColor: true, children: ["No tabs attached yet. Attach any tab below."] })] : agentTabs.slice(0, 12).map(renderTabRow)
-            ]
-          })
-        );
-        const latestShot = state.latestScreenshot;
-        if (latestShot) {
-          bodyChildren.push(
-            Box({
-              borderStyle: "round",
-              paddingX: 1,
-              flexDirection: "column",
-              children: [
-                Box({
-                  flexDirection: "row",
-                  columnGap: 1,
-                  children: [
-                    Text({
-                      bold: true,
-                      children: [
-                        `${captureCollapsed ? "\u25B8" : "\u25BE"} ${tr("section.latestCapture")} \xB7 Tab ${latestShot.tabId}`
-                      ]
-                    }),
-                    Button({
-                      key: "capture-toggle",
-                      label: captureCollapsed ? tr("btn.expand") : tr("btn.collapse"),
-                      plain: true,
-                      onPress: () => {
-                        captureCollapsed = !captureCollapsed;
-                        redraw();
-                      }
-                    }),
-                    Button({
-                      key: "capture-clear",
-                      label: tr("btn.clear"),
-                      plain: true,
-                      onPress: () => void runTool($, "deck_clear_diagnostics", { target: "screenshot" })
-                    })
-                  ]
-                }),
-                ...captureCollapsed ? [] : [
-                  Text({ dimColor: true, children: [truncateText(latestShot.url, 64)] }),
-                  Text({
-                    dimColor: true,
-                    children: ["Tip: Ask Claude to call browser_deck for inline HTML viewport preview."]
-                  })
-                ]
-              ]
-            })
-          );
-        }
-        bodyChildren.push(
-          Box({
-            borderStyle: "round",
-            paddingX: 1,
-            flexDirection: "column",
-            gap: 1,
-            children: [
-              Text({ bold: true, children: [`${tr("section.allTabs")} (${otherTabs.length})`] }),
-              ...Input ? [
-                Input({
-                  key: "tab-filter",
-                  label: "Filter",
-                  placeholder: "Filter tabs by title, URL, or ID\u2026",
-                  value: tabQuery,
-                  onInput: (val) => {
-                    tabQuery = val;
-                    redraw();
-                  },
-                  onSubmit: (val) => {
-                    tabQuery = val;
-                    redraw();
-                  }
-                })
-              ] : [],
-              ...otherTabs.slice(0, 20).map(renderTabRow),
-              ...otherTabs.length > 20 ? [Text({ dimColor: true, children: [`+${otherTabs.length - 20} more tabs (use Filter)`] })] : []
-            ]
-          })
-        );
-      } else if (activeTab === "timeline") {
-        bodyChildren.push(
-          Box({
-            borderStyle: "round",
-            paddingX: 1,
-            flexDirection: "column",
-            gap: 1,
-            children: [
-              Text({ bold: true, children: [`${tr("tab.timeline")} (${state.recentActivity.length})`] }),
-              ...state.recentActivity.length === 0 ? [Text({ dimColor: true, children: ["No recent browser actions recorded."] })] : state.recentActivity.slice(0, 25).map(
-                (ev) => Box({
-                  key: `act-${ev.id}`,
-                  flexDirection: "row",
-                  columnGap: 1,
-                  children: [
-                    Text({
-                      color: ev.status === "error" ? "red" : "green",
-                      children: [ev.status === "error" ? "\u2717" : "\u2713"]
-                    }),
-                    Text({ bold: true, children: [ev.tool] }),
-                    Text({ dimColor: true, children: [truncateText(ev.summary, 48)] }),
-                    Text({ dimColor: true, children: [`${ev.durationMs}ms`] })
-                  ]
-                })
-              )
-            ]
-          })
-        );
-      } else if (activeTab === "devtools") {
-        bodyChildren.push(
-          Box({
-            borderStyle: "round",
-            paddingX: 1,
-            flexDirection: "column",
-            gap: 1,
-            children: [
-              Box({
-                flexDirection: "row",
-                columnGap: 2,
-                children: [
-                  Text({ bold: true, children: [`Console Errors (${state.recentErrors.length})`] }),
-                  Button({
-                    key: "clear-console",
-                    label: tr("btn.clear"),
-                    plain: true,
-                    onPress: () => void runTool($, "deck_clear_diagnostics", { target: "console" })
-                  })
-                ]
-              }),
-              ...state.recentErrors.length === 0 ? [Text({ dimColor: true, children: ["No console errors captured."] })] : state.recentErrors.slice(0, 15).map(
-                (err) => Text({
-                  key: `cerr-${err.id}`,
-                  color: "red",
-                  children: [`[${err.level}] ${truncateText(err.text, 72)}`]
-                })
-              )
-            ]
-          }),
-          Box({
-            borderStyle: "round",
-            paddingX: 1,
-            flexDirection: "column",
-            gap: 1,
-            children: [
-              Box({
-                flexDirection: "row",
-                columnGap: 2,
-                children: [
-                  Text({ bold: true, children: [`Failed Network (${state.recentFailedNetwork.length})`] }),
-                  Button({
-                    key: "clear-net",
-                    label: tr("btn.clear"),
-                    plain: true,
-                    onPress: () => void runTool($, "deck_clear_diagnostics", { target: "network" })
-                  })
-                ]
-              }),
-              ...state.recentFailedNetwork.length === 0 ? [Text({ dimColor: true, children: ["No failed network requests."] })] : state.recentFailedNetwork.slice(0, 15).map(
-                (n) => Text({
-                  key: `net-${n.requestId}`,
-                  color: "yellow",
-                  children: [`${n.method} ${n.status ?? "ERR"} ${truncateText(n.url, 56)}`]
-                })
-              )
-            ]
-          })
-        );
-      } else if (activeTab === "workflows") {
-        bodyChildren.push(
-          Box({
-            borderStyle: "round",
-            paddingX: 1,
-            flexDirection: "column",
-            gap: 1,
-            children: [
-              Text({ bold: true, children: [`${tr("tab.workflows")} (${state.workflows.length})`] }),
-              ...state.workflows.length === 0 ? [
-                Text({
-                  dimColor: true,
-                  children: ["Record workflows from the Chrome Extension Side Panel."]
-                })
-              ] : state.workflows.map(
-                (wf) => Box({
-                  key: `wf-${wf.id}`,
-                  flexDirection: "row",
-                  columnGap: 2,
-                  children: [
-                    Text({ bold: true, children: [`${wf.name} (${wf.steps.length} steps)`] }),
-                    Text({ dimColor: true, children: [truncateText(wf.startUrl, 40)] }),
-                    Button({
-                      key: `wf-del-${wf.id}`,
-                      label: "Delete",
-                      plain: true,
-                      onPress: () => void runTool($, "deck_delete_workflow", { workflowId: wf.id })
-                    })
-                  ]
-                })
-              )
-            ]
-          })
-        );
-      } else if (activeTab === "security") {
-        const p = state.policy;
-        const togglePolicy = (key, label, enabled, patch) => Box({
-          key: `pol-${key}`,
-          flexDirection: "row",
-          columnGap: 2,
+            },
+            "action"
+          )
+        })
+      ]
+    });
+    const bodyChildren = [];
+    if (activeTab === "overview") {
+      bodyChildren.push(
+        Box({
+          borderStyle: "round",
+          paddingX: 1,
+          flexDirection: "column",
+          gap: 1,
           children: [
-            Text({ children: [label] }),
-            Button({
-              key: `pol-btn-${key}`,
-              label: enabled ? "ON" : "OFF",
-              onPress: () => void runTool($, "deck_update_policy", patch)
-            })
+            Text({ bold: true, children: [`${tr("section.agentTabs")} (${agentTabs.length})`] }),
+            ...agentTabs.length === 0 ? [Text({ dimColor: true, children: ["No tabs attached yet. Attach any tab below."] })] : agentTabs.slice(0, 12).map(renderTabRow)
           ]
-        });
+        })
+      );
+      const latestShot = state.latestScreenshot;
+      if (latestShot) {
         bodyChildren.push(
           Box({
             borderStyle: "round",
             paddingX: 1,
             flexDirection: "column",
-            gap: 1,
             children: [
-              Text({ bold: true, children: [tr("tab.security")] }),
-              togglePolicy(
-                "scope",
-                `${tr("setting.scopeMode")}: ${p.scopeMode}`,
-                p.scopeMode === "agent-group",
-                { scopeMode: p.scopeMode === "agent-group" ? "all-tabs" : "agent-group" }
-              ),
-              togglePolicy("shield", tr("setting.shield"), p.promptInjectionShield, {
-                promptInjectionShield: !p.promptInjectionShield
-              }),
-              togglePolicy("cursor", tr("setting.visualCursor"), p.visualCursor, {
-                visualCursor: !p.visualCursor
-              }),
-              togglePolicy("eval", tr("setting.evalApproval"), p.requireApprovalForEval, {
-                requireApprovalForEval: !p.requireApprovalForEval
-              }),
-              togglePolicy("cdp", tr("setting.cdpProxy"), p.cdpProxyEnabled, {
-                cdpProxyEnabled: !p.cdpProxyEnabled
-              }),
-              Text({ bold: true, children: [tr("setting.readOnlyDomains")] }),
               Box({
                 flexDirection: "row",
                 columnGap: 1,
-                children: READ_ONLY_DOMAIN_PRESETS.map((domain) => {
-                  const active = p.readOnlyDomains.includes(domain);
-                  return Button({
-                    key: `ro-${domain}`,
-                    label: `${active ? "\u2713 " : "+ "}${domain}`,
-                    plain: !active,
+                children: [
+                  Text({
+                    bold: true,
+                    children: [
+                      `${captureCollapsed ? "\u25B8" : "\u25BE"} ${tr("section.latestCapture")} \xB7 Tab ${latestShot.tabId}`
+                    ]
+                  }),
+                  Button({
+                    key: "capture-toggle",
+                    label: captureCollapsed ? tr("btn.expand") : tr("btn.collapse"),
+                    plain: true,
                     onPress: () => {
-                      const nextDomains = active ? p.readOnlyDomains.filter((d) => d !== domain) : [...p.readOnlyDomains, domain];
-                      void runTool($, "deck_update_policy", { readOnlyDomains: nextDomains });
+                      captureCollapsed = !captureCollapsed;
+                      redraw();
                     }
-                  });
+                  }),
+                  Button({
+                    key: "capture-clear",
+                    label: tr("btn.clear"),
+                    plain: true,
+                    onPress: () => void executeDeckTool($, "deck_clear_diagnostics", { target: "screenshot" }, "action")
+                  })
+                ]
+              }),
+              ...captureCollapsed ? [] : [
+                Text({ dimColor: true, children: [truncateText(latestShot.url, 64)] }),
+                Text({
+                  dimColor: true,
+                  children: ["Tip: Ask Claude to call browser_deck for inline HTML viewport preview."]
                 })
-              })
+              ]
             ]
           })
         );
       }
-      return Box({
-        flexDirection: "column",
-        gap: 1,
-        children: [...headerChildren, tabBar, ...bodyChildren]
+      bodyChildren.push(
+        Box({
+          borderStyle: "round",
+          paddingX: 1,
+          flexDirection: "column",
+          gap: 1,
+          children: [
+            Text({ bold: true, children: [`${tr("section.allTabs")} (${otherTabs.length})`] }),
+            ...Input ? [
+              Input({
+                key: "tab-filter",
+                label: "Filter",
+                placeholder: "Filter tabs by title, URL, or ID\u2026",
+                value: tabQuery,
+                onInput: (val) => {
+                  tabQuery = val;
+                  redraw();
+                },
+                onSubmit: (val) => {
+                  tabQuery = val;
+                  redraw();
+                }
+              })
+            ] : [],
+            ...otherTabs.slice(0, 20).map(renderTabRow),
+            ...otherTabs.length > 20 ? [Text({ dimColor: true, children: [`+${otherTabs.length - 20} more tabs (use Filter)`] })] : []
+          ]
+        })
+      );
+    } else if (activeTab === "timeline") {
+      bodyChildren.push(
+        Box({
+          borderStyle: "round",
+          paddingX: 1,
+          flexDirection: "column",
+          gap: 1,
+          children: [
+            Text({ bold: true, children: [`${tr("tab.timeline")} (${state.recentActivity.length})`] }),
+            ...state.recentActivity.length === 0 ? [Text({ dimColor: true, children: ["No recent browser actions recorded."] })] : state.recentActivity.slice(0, 25).map(
+              (ev) => Box({
+                key: `act-${ev.id}`,
+                flexDirection: "row",
+                columnGap: 1,
+                children: [
+                  Text({
+                    color: ev.status === "error" ? "red" : "green",
+                    children: [ev.status === "error" ? "\u2717" : "\u2713"]
+                  }),
+                  Text({ bold: true, children: [ev.tool] }),
+                  Text({ dimColor: true, children: [truncateText(ev.summary, 48)] }),
+                  Text({ dimColor: true, children: [`${ev.durationMs}ms`] })
+                ]
+              })
+            )
+          ]
+        })
+      );
+    } else if (activeTab === "devtools") {
+      bodyChildren.push(
+        Box({
+          borderStyle: "round",
+          paddingX: 1,
+          flexDirection: "column",
+          gap: 1,
+          children: [
+            Box({
+              flexDirection: "row",
+              columnGap: 2,
+              children: [
+                Text({ bold: true, children: [`Console Errors (${state.recentErrors.length})`] }),
+                Button({
+                  key: "clear-console",
+                  label: tr("btn.clear"),
+                  plain: true,
+                  onPress: () => void executeDeckTool($, "deck_clear_diagnostics", { target: "console" }, "action")
+                })
+              ]
+            }),
+            ...state.recentErrors.length === 0 ? [Text({ dimColor: true, children: ["No console errors captured."] })] : state.recentErrors.slice(0, 15).map(
+              (err) => Text({
+                key: `cerr-${err.id}`,
+                color: "red",
+                children: [`[${err.level}] ${truncateText(err.text, 72)}`]
+              })
+            )
+          ]
+        }),
+        Box({
+          borderStyle: "round",
+          paddingX: 1,
+          flexDirection: "column",
+          gap: 1,
+          children: [
+            Box({
+              flexDirection: "row",
+              columnGap: 2,
+              children: [
+                Text({ bold: true, children: [`Failed Network (${state.recentFailedNetwork.length})`] }),
+                Button({
+                  key: "clear-net",
+                  label: tr("btn.clear"),
+                  plain: true,
+                  onPress: () => void executeDeckTool($, "deck_clear_diagnostics", { target: "network" }, "action")
+                })
+              ]
+            }),
+            ...state.recentFailedNetwork.length === 0 ? [Text({ dimColor: true, children: ["No failed network requests."] })] : state.recentFailedNetwork.slice(0, 15).map(
+              (n) => Text({
+                key: `net-${n.requestId}`,
+                color: "yellow",
+                children: [`${n.method} ${n.status ?? "ERR"} ${truncateText(n.url, 56)}`]
+              })
+            )
+          ]
+        })
+      );
+    } else if (activeTab === "workflows") {
+      bodyChildren.push(
+        Box({
+          borderStyle: "round",
+          paddingX: 1,
+          flexDirection: "column",
+          gap: 1,
+          children: [
+            Text({ bold: true, children: [`${tr("tab.workflows")} (${state.workflows.length})`] }),
+            ...state.workflows.length === 0 ? [
+              Text({
+                dimColor: true,
+                children: ["Record workflows from the Chrome Extension Side Panel."]
+              })
+            ] : state.workflows.map(
+              (wf) => Box({
+                key: `wf-${wf.id}`,
+                flexDirection: "row",
+                columnGap: 2,
+                children: [
+                  Text({ bold: true, children: [`${wf.name} (${wf.steps.length} steps)`] }),
+                  Text({ dimColor: true, children: [truncateText(wf.startUrl, 40)] }),
+                  Button({
+                    key: `wf-del-${wf.id}`,
+                    label: "Delete",
+                    plain: true,
+                    onPress: () => void executeDeckTool($, "deck_delete_workflow", { workflowId: wf.id }, "action")
+                  })
+                ]
+              })
+            )
+          ]
+        })
+      );
+    } else if (activeTab === "security") {
+      const p = state.policy;
+      const togglePolicy = (key, label, enabled, patch) => Box({
+        key: `pol-${key}`,
+        flexDirection: "row",
+        columnGap: 2,
+        children: [
+          Text({ children: [label] }),
+          Button({
+            key: `pol-btn-${key}`,
+            label: enabled ? "ON" : "OFF",
+            onPress: () => void executeDeckTool($, "deck_update_policy", patch, "action")
+          })
+        ]
       });
+      bodyChildren.push(
+        Box({
+          borderStyle: "round",
+          paddingX: 1,
+          flexDirection: "column",
+          gap: 1,
+          children: [
+            Text({ bold: true, children: [tr("tab.security")] }),
+            togglePolicy(
+              "scope",
+              `${tr("setting.scopeMode")}: ${p.scopeMode}`,
+              p.scopeMode === "agent-group",
+              { scopeMode: p.scopeMode === "agent-group" ? "all-tabs" : "agent-group" }
+            ),
+            togglePolicy("shield", tr("setting.shield"), p.promptInjectionShield, {
+              promptInjectionShield: !p.promptInjectionShield
+            }),
+            togglePolicy("cursor", tr("setting.visualCursor"), p.visualCursor, {
+              visualCursor: !p.visualCursor
+            }),
+            togglePolicy("eval", tr("setting.evalApproval"), p.requireApprovalForEval, {
+              requireApprovalForEval: !p.requireApprovalForEval
+            }),
+            togglePolicy("cdp", tr("setting.cdpProxy"), p.cdpProxyEnabled, {
+              cdpProxyEnabled: !p.cdpProxyEnabled
+            }),
+            Text({ bold: true, children: [tr("setting.readOnlyDomains")] }),
+            Box({
+              flexDirection: "row",
+              columnGap: 1,
+              children: READ_ONLY_DOMAIN_PRESETS.map((domain) => {
+                const active = p.readOnlyDomains.includes(domain);
+                return Button({
+                  key: `ro-${domain}`,
+                  label: `${active ? "\u2713 " : "+ "}${domain}`,
+                  plain: !active,
+                  onPress: () => {
+                    const nextDomains = active ? p.readOnlyDomains.filter((d) => d !== domain) : [...p.readOnlyDomains, domain];
+                    void executeDeckTool($, "deck_update_policy", { readOnlyDomains: nextDomains }, "action");
+                  }
+                });
+              })
+            })
+          ]
+        })
+      );
+    }
+    return Box({
+      flexDirection: "column",
+      gap: 1,
+      children: [...headerChildren, tabBar, ...bodyChildren]
     });
-  };
+  });
 }
-var register = createBrowserDeckMod();
 export {
   PANE_ID,
-  createBrowserDeckMod,
-  register
+  register,
+  resetModStateForTest
 };
