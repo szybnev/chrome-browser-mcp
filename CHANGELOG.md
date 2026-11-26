@@ -4,6 +4,17 @@ All notable changes to **Chrome Browser MCP** are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.2] - 2026-11-27
+
+### Fixed
+
+- **Claude Code Mod (`plugins/claude`) passes `claude plugin validate`**: removed all `node:*` built-in imports (`node:child_process`, `node:fs`, `node:os`, `node:path`, `node:url`), Node globals, and `npx` fallback from `hooks/register.js`; switched to the sandboxed Claude Code Mods `$` API (`$.env`, `$.fs`, `$.http`, `$.store`, `$.clock`, `$.command`, `$.ui`) with a top-level `register(on)` entrypoint and bundled self-contained `plugins/claude/server/` artifacts.
+- **Codex local installer (`scripts/install-local.mjs --codex`)**: now installs and activates `chrome-browser-mcp@chrome-browser-mcp` via `codex plugin marketplace add` + `codex plugin add` (with a direct `config.toml` + versioned cache installer fallback when `codex` CLI is unavailable) instead of leaving the plugin `not installed`.
+
+### Changed
+
+- **Patched LTS Node.js engine range**: updated root `engines.node` to `^22.23.0 || ^24.19.0 || >=26.0.0` (and `.mcpb` runtime to `>=22.23.0`), supporting patched Node 22 LTS, Node 24 LTS, and Node 26 Active LTS while excluding older unpatched 22.x/24.x releases.
+
 ## [2.3.1] - 2026-11-25
 
 ### Changed

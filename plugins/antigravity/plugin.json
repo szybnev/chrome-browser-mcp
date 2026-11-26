@@ -1,7 +1,7 @@
 {
   "name": "chrome-browser-mcp",
   "displayName": "Chrome Browser MCP",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "Next-gen Chrome Extension & MCP Server for real-session AI browser use — hybrid Content Script + on-demand CDP, WebMCP, Prompt-Injection Shield, Workflow Recorder, and Browser Control Deck.",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [
